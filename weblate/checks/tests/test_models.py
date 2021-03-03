@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,41 +19,39 @@
 
 """Tests for unitdata models."""
 
-
 from django.urls import reverse
-from django.utils.encoding import force_str
 
 from weblate.checks.models import Check
 from weblate.trans.tests.test_views import FixtureTestCase
 
 
-class UnitdataTestCase(FixtureTestCase):
+class CheckModelTestCase(FixtureTestCase):
     def create_check(self, name):
         return Check.objects.create(unit=self.get_unit(), check=name)
 
     def test_check(self):
         check = self.create_check("same")
         self.assertEqual(
-            force_str(check.get_description()), "Source and translation are identical"
+            str(check.get_description()), "Source and translation are identical"
         )
-        self.assertEqual(check.get_severity(), "warning")
         self.assertTrue(check.get_doc_url().endswith("user/checks.html#check-same"))
-        self.assertEqual(force_str(check), "Hello, world!\n: same")
+        self.assertEqual(str(check), "Unchanged translation")
 
     def test_check_nonexisting(self):
         check = self.create_check("-invalid-")
         self.assertEqual(check.get_description(), "-invalid-")
-        self.assertEqual(check.get_severity(), "info")
         self.assertEqual(check.get_doc_url(), "")
 
     def test_check_render(self):
         unit = self.get_unit()
-        unit.source_info.extra_flags = "max-size:1:1"
-        unit.source_info.save()
+        unit.source_unit.extra_flags = "max-size:1:1"
+        unit.source_unit.save()
         check = self.create_check("max-size")
-        url = reverse("render-check", kwargs={"check_id": check.pk})
+        url = reverse(
+            "render-check", kwargs={"check_id": check.check, "unit_id": unit.id}
+        )
         self.assertEqual(
-            force_str(check.get_description()),
+            str(check.get_description()),
             '<a href="{0}?pos=0" class="thumbnail">'
             '<img class="img-responsive" src="{0}?pos=0" /></a>'.format(url),
         )

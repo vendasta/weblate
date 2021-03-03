@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,7 +18,7 @@
 #
 
 from django.http import Http404, HttpResponse
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
@@ -32,6 +31,7 @@ from weblate.trans.models import Component
 from weblate.trans.util import render
 from weblate.trans.widgets import WIDGETS, SiteOpenGraphWidget
 from weblate.utils.site import get_site_url
+from weblate.utils.stats import ProjectLanguage
 from weblate.utils.views import get_component, get_project, try_set_language
 
 
@@ -44,7 +44,7 @@ def widgets(request, project):
     obj = get_project(request, project)
 
     # Parse possible language selection
-    form = EngageForm(obj, request.GET)
+    form = EngageForm(request.user, obj, request.GET)
     lang = None
     component = None
     if form.is_valid():
@@ -59,7 +59,6 @@ def widgets(request, project):
     if lang is not None:
         kwargs["lang"] = lang
     engage_url = get_site_url(reverse("engage", kwargs=kwargs))
-    engage_url_track = "{0}?utm_source=widget".format(engage_url)
     engage_link = mark_safe(
         '<a href="{0}" id="engage-link">{0}</a>'.format(escape(engage_url))
     )
@@ -93,7 +92,6 @@ def widgets(request, project):
         {
             "engage_url": engage_url,
             "engage_link": engage_link,
-            "engage_url_track": engage_url_track,
             "widget_list": widget_list,
             "widget_base_url": widget_base_url,
             "object": obj,
@@ -118,11 +116,15 @@ def render_widget(
     # We intentionally skip ACL here to allow widget sharing
     if component is None:
         obj = get_project(request, project, skip_acl=True)
+    elif component == "-":
+        project = get_project(request, project, skip_acl=True)
+        lang = get_object_or_404(Language, code=lang)
+        obj = ProjectLanguage(project, lang)
     else:
         obj = get_component(request, project, component, skip_acl=True)
 
     # Handle language parameter
-    if lang is not None:
+    if lang is not None and isinstance(lang, str):
         lang = Language.objects.fuzzy_get(code=lang, strict=True)
         if lang is None:
             raise Http404()

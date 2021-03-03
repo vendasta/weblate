@@ -14,7 +14,7 @@ Install it, or use the Hosted Weblate service at `weblate.org`_.
 
 .. image:: https://hosted.weblate.org/widgets/weblate/-/svg-badge.svg
     :alt: Translation status
-    :target: https://hosted.weblate.org/engage/weblate/?utm_source=widget
+    :target: https://hosted.weblate.org/engage/weblate/
 
 .. image:: https://bestpractices.coreinfrastructure.org/projects/552/badge
     :alt: CII Best Practices
@@ -23,17 +23,23 @@ Install it, or use the Hosted Weblate service at `weblate.org`_.
 .. image:: https://img.shields.io/pypi/v/Weblate.svg
     :target: https://pypi.org/project/Weblate/
 
-.. image:: https://img.shields.io/readthedocs/weblate.svg
+.. image:: https://readthedocs.org/projects/weblate/badge/
     :target: https://docs.weblate.org/
 
 .. image:: https://img.shields.io/github/license/WeblateOrg/weblate.svg
     :alt: License
     :target: https://github.com/WeblateOrg/weblate/blob/master/COPYING
 
+Support
+-------
+
+Weblate is a libre software with optional professional support and cloud
+hosting offerings. Check out https://weblate.org/hosting/ for more information.
+
 Documentation
 -------------
 
-To be found in the ``docs`` directory the source code, or
+To be found in the ``docs`` directory of the source code, or
 viewed online on https://docs.weblate.org/
 
 Installation
@@ -41,7 +47,7 @@ Installation
 
 Setup instructions:
 
-https://docs.weblate.org/en/latest/admin/quick.html
+https://docs.weblate.org/en/latest/admin/install.html
 
 Bugs
 ----
@@ -53,7 +59,7 @@ https://github.com/WeblateOrg/weblate/issues
 License
 -------
 
-Copyright © 2012–2020 Michal Čihař michal@cihar.com
+Copyright © 2012–2021 Michal Čihař michal@cihar.com
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software

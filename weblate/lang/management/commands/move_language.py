@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -36,11 +35,11 @@ class Command(BaseCommand):
         for translation in source.translation_set.iterator():
             other = translation.component.translation_set.filter(language=target)
             if other.exists():
-                self.stderr.write("Already exists: {}".format(translation))
+                self.stderr.write(f"Already exists: {translation}")
                 continue
             translation.language = target
             translation.save()
-        source.whiteboardmessage_set.update(language=target)
+        source.announcement_set.update(language=target)
 
         for profile in source.profile_set.iterator():
             profile.languages.remove(source)
@@ -50,15 +49,14 @@ class Command(BaseCommand):
             profile.secondary_languages.remove(source)
             profile.secondary_languages.add(target)
 
-        source.project_set.update(source_language=target)
+        source.component_set.update(source_language=target)
         for group in source.group_set.iterator():
             group.languages.remove(source)
             group.languages.add(target)
-        source.dictionary_set.update(language=target)
 
         for plural in source.plural_set.iterator():
             try:
-                new_plural = target.plural_set.get(equation=plural.equation)
+                new_plural = target.plural_set.get(formula=plural.formula)
                 plural.translation_set.update(plural=new_plural)
             except Plural.DoesNotExist:
                 plural.language = target

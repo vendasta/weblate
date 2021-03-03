@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -23,7 +22,7 @@ import argparse
 
 from django.core.management.base import CommandError
 
-from weblate.memory.storage import MemoryImportError, TranslationMemory
+from weblate.memory.models import Memory, MemoryImportError
 from weblate.utils.management.base import BaseCommand
 
 
@@ -46,14 +45,9 @@ class Command(BaseCommand):
         """Translation memory import."""
         langmap = None
         if options["language_map"]:
-            langmap = {
-                x: y
-                for (x, y) in (
-                    z.split(":", 1) for z in options["language_map"].split(",")
-                )
-            }
+            langmap = dict(z.split(":", 1) for z in options["language_map"].split(","))
 
         try:
-            TranslationMemory.import_file(None, options["file"], langmap)
+            Memory.objects.import_file(None, options["file"], langmap)
         except MemoryImportError as error:
-            raise CommandError("Import failed: {}".format(error))
+            raise CommandError(f"Import failed: {error}")

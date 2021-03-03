@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,10 +18,10 @@
 #
 
 import cProfile
+import os
 import pstats
 
 from weblate.trans.models import Component, Project
-from weblate.trans.search import Fulltext
 from weblate.utils.management.base import BaseCommand
 
 
@@ -33,11 +32,16 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
+        prefix = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        )
         parser.add_argument(
             "--profile-sort", default="cumulative", help="sort order for profile stats"
         )
         parser.add_argument(
-            "--profile-filter", default="/weblate", help="filter for profile stats"
+            "--profile-filter",
+            default=prefix,
+            help=f"filter for profile stats, defaults to {prefix}",
         )
         parser.add_argument(
             "--profile-count",
@@ -55,7 +59,6 @@ class Command(BaseCommand):
         parser.add_argument("mask", help="File mask")
 
     def handle(self, *args, **options):
-        Fulltext.FAKE = True
         project = Project.objects.get(slug=options["project"])
         # Delete any possible previous tests
         Component.objects.filter(project=project, slug="benchmark").delete()
@@ -70,6 +73,7 @@ class Command(BaseCommand):
             file_format=options["format"],
             project=project,
         )
+        profiler.runcall(component.after_save, True, False, False, False, True, True)
         stats = pstats.Stats(profiler, stream=self.stdout)
         stats.sort_stats(options["profile_sort"])
         stats.print_stats(options["profile_filter"], options["profile_count"])

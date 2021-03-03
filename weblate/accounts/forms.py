@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,19 +17,15 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import HTML, Fieldset, Layout
+from crispy_forms.layout import HTML, Div, Field, Fieldset, Layout
 from django import forms
-from django.contrib.auth import (
-    authenticate,
-    password_validation,
-    update_session_auth_hash,
-)
+from django.contrib.auth import authenticate, password_validation
 from django.contrib.auth.forms import SetPasswordForm as DjangoSetPasswordForm
 from django.db.models import Q
 from django.forms.widgets import EmailInput
 from django.middleware.csrf import rotate_token
+from django.utils.functional import cached_property
 from django.utils.html import escape
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import pgettext
@@ -41,29 +36,26 @@ from weblate.accounts.models import AuditLog, Profile
 from weblate.accounts.notifications import (
     NOTIFICATIONS,
     SCOPE_ADMIN,
+    SCOPE_ALL,
     SCOPE_CHOICES,
-    SCOPE_DEFAULT,
     SCOPE_PROJECT,
+    SCOPE_WATCHED,
 )
-from weblate.accounts.utils import get_all_user_mails, invalidate_reset_codes
+from weblate.accounts.utils import (
+    adjust_session_expiry,
+    cycle_session_keys,
+    get_all_user_mails,
+    invalidate_reset_codes,
+)
 from weblate.auth.models import User
 from weblate.lang.models import Language
 from weblate.logger import LOGGER
-from weblate.trans.defines import (
-    EMAIL_LENGTH,
-    FULLNAME_LENGTH,
-    PROJECT_NAME_LENGTH,
-    USERNAME_LENGTH,
-)
+from weblate.trans.defines import EMAIL_LENGTH, FULLNAME_LENGTH
 from weblate.trans.models import Component, Project
 from weblate.utils import messages
-from weblate.utils.forms import SortedSelect, SortedSelectMultiple
+from weblate.utils.forms import SortedSelect, SortedSelectMultiple, UsernameField
 from weblate.utils.ratelimit import check_rate_limit, reset_rate_limit
-from weblate.utils.validators import (
-    validate_email,
-    validate_fullname,
-    validate_username,
-)
+from weblate.utils.validators import validate_email, validate_fullname
 
 
 class UniqueEmailMixin:
@@ -74,7 +66,7 @@ class UniqueEmailMixin:
         self.cleaned_data["email_user"] = None
         mail = self.cleaned_data["email"]
         users = User.objects.filter(
-            Q(social_auth__verifiedemail__email__iexact=mail) | Q(email__iexact=mail),
+            Q(social_auth__verifiedemail__email__iexact=mail) | Q(email=mail),
             is_active=True,
         )
         if users.exists():
@@ -113,21 +105,7 @@ class EmailField(forms.CharField):
         super().__init__(*args, **kwargs)
 
 
-class UsernameField(forms.CharField):
-    default_validators = [validate_username]
-
-    def __init__(self, *args, **kwargs):
-        kwargs["max_length"] = USERNAME_LENGTH
-        kwargs["help_text"] = _(
-            "Username may only contain letters, "
-            "numbers or the following characters: @ . + - _"
-        )
-        kwargs["label"] = _("Username")
-        kwargs["required"] = True
-        self.valid = None
-
-        super().__init__(*args, **kwargs)
-
+class UniqueUsernameField(UsernameField):
     def clean(self, value):
         """Username validation, requires a unique name."""
         if value is None:
@@ -136,7 +114,7 @@ class UsernameField(forms.CharField):
             existing = User.objects.filter(username=value)
             if existing.exists() and value != self.valid:
                 raise forms.ValidationError(
-                    _("This username is already taken. " "Please choose another.")
+                    _("This username is already taken. Please choose another.")
                 )
 
         return super().clean(value)
@@ -159,8 +137,19 @@ class ProfileBaseForm(forms.ModelForm):
             return cls(request.POST, instance=request.user.profile)
         return cls(instance=request.user.profile)
 
+    def add_error(self, field, error):
+        if field is None and hasattr(error, "error_dict"):
+            # Skip errors from model clean method on unknown fields as
+            # this is partial form. This is really bound to how Profile.clean
+            # behaves.
+            ignored_fields = ("dashboard_component_list", "dashboard_view")
+            for field_name, _error_list in error.error_dict.items():
+                if field_name in ignored_fields and not hasattr(self, field_name):
+                    return
+        super().add_error(field, error)
 
-class ProfileForm(ProfileBaseForm):
+
+class LanguagesForm(ProfileBaseForm):
     """User profile editing."""
 
     class Meta:
@@ -183,12 +172,50 @@ class ProfileForm(ProfileBaseForm):
         self.helper.form_tag = False
 
 
+class ProfileForm(ProfileBaseForm):
+    """User profile editing."""
+
+    public_email = forms.ChoiceField(
+        label=_("Public e-mail"),
+        choices=(("", ""),),
+        required=False,
+    )
+
+    class Meta:
+        model = Profile
+        fields = (
+            "website",
+            "public_email",
+            "liberapay",
+            "codesite",
+            "github",
+            "fediverse",
+            "twitter",
+            "linkedin",
+            "location",
+            "company",
+        )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        emails = get_all_user_mails(self.instance.user)
+        emails.add("")
+
+        self.fields["public_email"].choices = [(x, x) for x in sorted(emails)]
+        self.helper = FormHelper(self)
+        self.helper.disable_csrf = True
+        self.helper.form_tag = False
+
+
 class SubscriptionForm(ProfileBaseForm):
     """User watched projects management."""
 
     class Meta:
         model = Profile
-        fields = ("watched",)
+        fields = (
+            "auto_watch",
+            "watched",
+        )
         widgets = {"watched": forms.SelectMultiple}
 
     def __init__(self, *args, **kwargs):
@@ -211,6 +238,7 @@ class UserSettingsForm(ProfileBaseForm):
             "hide_completed",
             "translate_mode",
             "zen_mode",
+            "nearby_strings",
             "secondary_in_zen",
             "hide_source_secondary",
             "editor_link",
@@ -219,6 +247,7 @@ class UserSettingsForm(ProfileBaseForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["special_chars"].strip = False
         self.helper = FormHelper(self)
         self.helper.disable_csrf = True
         self.helper.form_tag = False
@@ -242,7 +271,7 @@ class DashboardSettingsForm(ProfileBaseForm):
 class UserForm(forms.ModelForm):
     """User information form."""
 
-    username = UsernameField()
+    username = UniqueUsernameField()
     email = forms.ChoiceField(
         label=_("E-mail"),
         help_text=_("You can add another e-mail address below."),
@@ -337,7 +366,7 @@ class RegistrationForm(EmailForm):
     required_css_class = "required"
     error_css_class = "error"
 
-    username = UsernameField()
+    username = UniqueUsernameField()
     # This has to be without underscore for social-auth
     fullname = FullNameField()
     content = forms.CharField(required=False)
@@ -357,7 +386,7 @@ class RegistrationForm(EmailForm):
     def clean(self):
         if not check_rate_limit("registration", self.request):
             raise forms.ValidationError(
-                _("Too many failed registration attempts from this location!")
+                _("Too many failed registration attempts from this location.")
             )
         return self.cleaned_data
 
@@ -380,11 +409,8 @@ class SetPasswordForm(DjangoSetPasswordForm):
         self.user.save(update_fields=["password"])
 
         # Updating the password logs out all other sessions for the user
-        # except the current one.
-        update_session_auth_hash(request, self.user)
-
-        # Change key for current session
-        request.session.cycle_key()
+        # except the current one and change key for current session
+        cycle_session_keys(request, self.user)
 
         # Invalidate password reset codes
         invalidate_reset_codes(self.user)
@@ -484,10 +510,7 @@ class LoginForm(forms.Form):
     password = PasswordField(label=_("Password"))
 
     error_messages = {
-        "invalid_login": _(
-            "Please enter the correct username and password. "
-            "Note that both fields may be case-sensitive."
-        ),
+        "invalid_login": _("Please enter the correct username and password."),
         "inactive": _("This account is inactive."),
     }
 
@@ -505,7 +528,7 @@ class LoginForm(forms.Form):
         if username and password:
             if not check_rate_limit("login", self.request):
                 raise forms.ValidationError(
-                    _("Too many authentication attempts from this location!")
+                    _("Too many authentication attempts from this location.")
                 )
             self.user_cache = authenticate(
                 self.request, username=username, password=password
@@ -516,7 +539,7 @@ class LoginForm(forms.Form):
                         user,
                         self.request,
                         "failed-auth",
-                        method="Password",
+                        method="password",
                         name=username,
                     )
                     audit.check_rate_limit(self.request)
@@ -529,61 +552,24 @@ class LoginForm(forms.Form):
                     self.error_messages["inactive"], code="inactive"
                 )
             AuditLog.objects.create(
-                self.user_cache, self.request, "login", method="Password", name=username
+                self.user_cache, self.request, "login", method="password", name=username
             )
+            adjust_session_expiry(self.request)
             reset_rate_limit("login", self.request)
         return self.cleaned_data
-
-    def get_user_id(self):
-        if self.user_cache:
-            return self.user_cache.id
-        return None
 
     def get_user(self):
         return self.user_cache
 
 
-class HostingForm(forms.Form):
-    """Form for asking for hosting."""
-
-    name = forms.CharField(
-        label=_("Your name"), required=True, max_length=FULLNAME_LENGTH
-    )
-    email = EmailField(label=_("Your e-mail"), required=True)
-    project = forms.CharField(
-        label=_("Project name"), required=True, max_length=PROJECT_NAME_LENGTH
-    )
-    url = forms.URLField(label=_("Project website"), required=True, max_length=200)
-    repo = forms.CharField(
-        label=_("Source code repository"),
-        help_text=_("URL of source code repository, for example Git or Mercurial."),
-        required=True,
-        max_length=200,
-    )
-    mask = forms.CharField(
-        label=_("Filemask"),
-        help_text=_(
-            "Path of files to translate, use * instead of language code, "
-            "for example: po/*.po or locale/*/LC_MESSAGES/django.po."
-        ),
-        required=True,
-        max_length=200,
-    )
-
-    message = forms.CharField(
-        label=_("Additional message"),
-        required=True,
-        widget=forms.Textarea,
-        max_length=1000,
-        help_text=_("Please describe the project and your relation to it."),
-    )
-    content = forms.CharField(required=False)
-
-    def clean_content(self):
-        """Check if content is empty."""
-        if self.cleaned_data["content"] != "":
-            raise forms.ValidationError("Invalid value")
-        return ""
+class AdminLoginForm(LoginForm):
+    def clean(self):
+        data = super().clean()
+        if self.user_cache and not self.user_cache.is_superuser:
+            raise forms.ValidationError(
+                self.error_messages["inactive"], code="inactive"
+            )
+        return data
 
 
 class NotificationForm(forms.Form):
@@ -603,9 +589,7 @@ class NotificationForm(forms.Form):
         self.is_active = is_active
         self.show_default = show_default
         self.fields["project"].queryset = user.allowed_projects
-        self.fields["component"].queryset = Component.objects.filter(
-            project_id__in=user.allowed_project_ids
-        )
+        self.fields["component"].queryset = Component.objects.filter_access(user)
         language_fields = []
         component_fields = []
         for field, notification_cls in self.notification_fields():
@@ -630,34 +614,20 @@ class NotificationForm(forms.Form):
             "component",
             Fieldset(
                 _("Component wide notifications"),
-                HTML(
-                    escape(
-                        _(
-                            "You will receive a notification for every such event"
-                            " in your watched projects."
-                        )
-                    )
-                ),
-                *component_fields
+                HTML(escape(self.get_help_component())),
+                *component_fields,
             ),
             Fieldset(
                 _("Translation notifications"),
-                HTML(
-                    escape(
-                        _(
-                            "You will only receive these notifications for your"
-                            " translated languages in your watched projects."
-                        )
-                    )
-                ),
-                *language_fields
+                HTML(escape(self.get_help_translation())),
+                *language_fields,
             ),
         )
 
     @staticmethod
     def notification_fields():
         for notification_cls in NOTIFICATIONS:
-            yield ("notify-{}".format(notification_cls.get_name()), notification_cls)
+            yield (f"notify-{notification_cls.get_name()}", notification_cls)
 
     @staticmethod
     def get_initial(notification_cls, subscriptions, show_default):
@@ -671,22 +641,88 @@ class NotificationForm(forms.Form):
         result.extend(notification_cls.get_freq_choices())
         return result
 
-    def get_name(self):
+    @cached_property
+    def form_params(self):
         if self.is_bound:
             self.is_valid()
-            params = self.cleaned_data
-        else:
-            params = self.initial
-        scope = params.get("scope", SCOPE_DEFAULT)
-        project = params.get("project", None)
-        component = params.get("component", None)
-        if scope == SCOPE_DEFAULT:
+            return self.cleaned_data
+        return self.initial
+
+    @cached_property
+    def form_scope(self):
+        return self.form_params.get("scope", SCOPE_WATCHED)
+
+    @cached_property
+    def form_project(self):
+        return self.form_params.get("project", None)
+
+    @cached_property
+    def form_component(self):
+        return self.form_params.get("component", None)
+
+    def get_name(self):
+        scope = self.form_scope
+        if scope == SCOPE_ALL:
+            return _("Other projects")
+        if scope == SCOPE_WATCHED:
             return _("Watched projects")
         if scope == SCOPE_ADMIN:
-            return _("Administered projects")
+            return _("Managed projects")
         if scope == SCOPE_PROJECT:
-            return _("Project: {}").format(project)
-        return _("Component: {}").format(component)
+            return _("Project: {}").format(self.form_project)
+        return _("Component: {}").format(self.form_component)
+
+    def get_help_component(self):
+        scope = self.form_scope
+        if scope == SCOPE_ALL:
+            return _(
+                "You will receive a notification for every such event"
+                " in non-watched projects."
+            )
+        if scope == SCOPE_WATCHED:
+            return _(
+                "You will receive a notification for every such event"
+                " in your watched projects."
+            )
+        if scope == SCOPE_ADMIN:
+            return _(
+                "You will receive a notification for every such event"
+                " in projects where you have admin permissions."
+            )
+        if scope == SCOPE_PROJECT:
+            return _(
+                "You will receive a notification for every such event in %(project)s."
+            ) % {"project": self.form_project}
+        return _(
+            "You will receive a notification for every such event in %(component)s."
+        ) % {"component": self.form_component}
+
+    def get_help_translation(self):
+        scope = self.form_scope
+        if scope == SCOPE_ALL:
+            return _(
+                "You will only receive these notifications for your translated "
+                "languages in non-watched projects."
+            )
+        if scope == SCOPE_WATCHED:
+            return _(
+                "You will only receive these notifications for your translated "
+                "languages in your watched projects."
+            )
+        if scope == SCOPE_ADMIN:
+            return _(
+                "You will only receive these notifications for your translated "
+                "languages in projects where you have admin permissions."
+            )
+        if scope == SCOPE_PROJECT:
+            return _(
+                "You will only receive these notifications for your"
+                " translated languages in %(project)s."
+            ) % {"project": self.form_project}
+        return _(
+            "You will only receive these notifications for your"
+            " translated languages in %(component)s."
+        ) % {"component": self.form_component}
 
     def save(self):
         # Lookup for this form
@@ -705,7 +741,7 @@ class NotificationForm(forms.Form):
             subscription, created = self.user.subscription_set.get_or_create(
                 notification=notification_cls.get_name(),
                 defaults={"frequency": frequency},
-                **lookup
+                **lookup,
             )
             # Update old subscription
             if not created and subscription.frequency != frequency:
@@ -714,3 +750,45 @@ class NotificationForm(forms.Form):
             handled.add(subscription.pk)
         # Delete stale subscriptions
         self.user.subscription_set.filter(**lookup).exclude(pk__in=handled).delete()
+
+
+class UserSearchForm(forms.Form):
+    """User searching form."""
+
+    # pylint: disable=invalid-name
+    q = forms.CharField(required=False)
+    sort_by = forms.CharField(required=False, widget=forms.HiddenInput)
+
+    sort_choices = {
+        "username": _("Username"),
+        "full_name": _("Full name"),
+        "date_joined": _("Date joined"),
+        "profile__translated": _("Translations made"),
+        "profile__suggested": _("Suggestions made"),
+        "profile__commented": _("Comments made"),
+        "profile__uploaded": _("Screenshots uploaded"),
+    }
+    sort_values = set(sort_choices) | {f"-{val}" for val in sort_choices}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.helper = FormHelper(self)
+        self.helper.form_tag = False
+        self.helper.disable_csrf = True
+        self.helper.layout = Layout(
+            Div(
+                Field("q", template="snippets/user-query-field.html"),
+                Field("sort_by", template="snippets/user-sort-field.html"),
+                css_class="btn-toolbar",
+                role="toolbar",
+            ),
+        )
+
+    def clean_sort_by(self):
+        sort_by = self.cleaned_data.get("sort_by")
+        if sort_by:
+            if sort_by not in self.sort_values:
+                raise forms.ValidationError(_("Chosen sorting is not supported."))
+            return sort_by
+        return None

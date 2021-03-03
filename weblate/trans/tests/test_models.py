@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,15 +16,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
-
 """Test for translation models."""
-
-
 import os
-import shutil
 
 from django.core.management.color import no_style
-from django.db import connection
+from django.db import connection, transaction
 from django.test import LiveServerTestCase, TestCase
 from django.test.utils import override_settings
 
@@ -33,15 +28,19 @@ from weblate.auth.models import Group, User
 from weblate.checks.models import Check
 from weblate.lang.models import Language, Plural
 from weblate.trans.models import (
+    Announcement,
     AutoComponentList,
+    Comment,
     Component,
     ComponentList,
     Project,
+    Suggestion,
     Unit,
-    WhiteboardMessage,
+    Vote,
 )
 from weblate.trans.tests.utils import RepoTestMixin, create_test_user
 from weblate.utils.django_hacks import immediate_on_commit, immediate_on_commit_leave
+from weblate.utils.files import remove_tree
 from weblate.utils.state import STATE_TRANSLATED
 
 
@@ -56,6 +55,8 @@ def fixup_languages_seq():
         with connection.cursor() as cursor:
             for sql in commands:
                 cursor.execute(sql)
+    # Invalidate object cache for languages
+    Language.objects.flush_object_cache()
 
 
 class BaseTestCase(TestCase):
@@ -116,10 +117,11 @@ class ProjectTest(RepoTestCase):
                 component.translation_set.get(language_code="cs").get_filename()
             )
         )
+        project.name = "Changed"
         project.slug = "changed"
         project.save()
         new_path = project.full_path
-        self.addCleanup(shutil.rmtree, new_path, True)
+        self.addCleanup(remove_tree, new_path, True)
         self.assertFalse(os.path.exists(old_path))
         self.assertTrue(os.path.exists(new_path))
         self.assertTrue(
@@ -138,6 +140,18 @@ class ProjectTest(RepoTestCase):
         self.assertTrue(os.path.exists(project.full_path))
         project.delete()
         self.assertFalse(os.path.exists(project.full_path))
+
+    def test_delete_votes(self):
+        with transaction.atomic():
+            component = self.create_po(
+                suggestion_voting=True, suggestion_autoaccept=True
+            )
+            user = create_test_user()
+            translation = component.translation_set.get(language_code="cs")
+            unit = translation.unit_set.first()
+            suggestion = Suggestion.objects.add(unit, "Test", None)
+            Vote.objects.create(suggestion=suggestion, value=Vote.POSITIVE, user=user)
+        component.project.delete()
 
     def test_delete_all(self):
         project = self.create_project()
@@ -225,9 +239,9 @@ class TranslationTest(RepoTestCase):
         # Translation from other author should trigger commmit
         for i, unit in enumerate(translation.unit_set.iterator()):
             user = User.objects.create(
-                full_name="User {}".format(unit.pk),
-                username="user-{}".format(unit.pk),
-                email="{}@example.com".format(unit.pk),
+                full_name=f"User {unit.pk}",
+                username=f"user-{unit.pk}",
+                email=f"{unit.pk}@example.com",
             )
             # Fetch current pending state, it might have been
             # updated by background commit
@@ -261,7 +275,7 @@ class ComponentListTest(RepoTestCase):
         AutoComponentList.objects.create(
             project_match="^.*$", component_match="^.*$", componentlist=clist
         )
-        self.assertEqual(clist.components.count(), 1)
+        self.assertEqual(clist.components.count(), 2)
 
     def test_auto_create(self):
         clist = ComponentList.objects.create(name="Name", slug="slug")
@@ -270,7 +284,7 @@ class ComponentListTest(RepoTestCase):
         )
         self.assertEqual(clist.components.count(), 0)
         self.create_component()
-        self.assertEqual(clist.components.count(), 1)
+        self.assertEqual(clist.components.count(), 2)
 
     def test_auto_nomatch(self):
         self.create_component()
@@ -290,14 +304,16 @@ class ModelTestCase(RepoTestCase):
 class SourceUnitTest(ModelTestCase):
     """Source Unit objects testing."""
 
-    def test_source_info(self):
+    def test_source_unit(self):
         unit = Unit.objects.filter(translation__language_code="cs")[0]
-        self.assertIsNotNone(unit.source_info)
+        self.assertIsNotNone(unit.source_unit)
+        unit = Unit.objects.filter(translation__language_code="en")[0]
+        self.assertEqual(unit.source_unit, unit)
 
     def test_priority(self):
         unit = Unit.objects.filter(translation__language_code="cs")[0]
         self.assertEqual(unit.priority, 100)
-        source = unit.source_info
+        source = unit.source_unit
         source.extra_flags = "priority:200"
         source.save()
         unit2 = Unit.objects.get(pk=unit.pk)
@@ -309,35 +325,90 @@ class SourceUnitTest(ModelTestCase):
         check = Check.objects.all()[0]
         unit = check.unit
         self.assertEqual(self.component.stats.allchecks, 3)
-        source = unit.source_info
-        source.extra_flags = "ignore-{0}".format(check.check)
+        source = unit.source_unit
+        source.extra_flags = f"ignore-{check.check}"
         source.save()
         self.assertEqual(Check.objects.count(), 0)
         self.assertEqual(Component.objects.get(pk=self.component.pk).stats.allchecks, 0)
 
 
 class UnitTest(ModelTestCase):
-    def test_more_like(self):
-        unit = Unit.objects.filter(translation__language_code="cs")[0]
-        self.assertEqual(Unit.objects.more_like_this(unit).count(), 0)
-
     def test_newlines(self):
         user = create_test_user()
-        unit = Unit.objects.filter(translation__language_code="cs")[0]
-        unit.translate(user, "new\nstring", STATE_TRANSLATED)
-        self.assertEqual(unit.target, "new\nstring")
+        unit = Unit.objects.filter(
+            translation__language_code="cs", source="Hello, world!\n"
+        )[0]
+        unit.translate(user, "new\nstring\n", STATE_TRANSLATED)
+        self.assertEqual(unit.target, "new\nstring\n")
         # New object to clear all_flags cache
         unit = Unit.objects.get(pk=unit.pk)
         unit.flags = "dos-eol"
         unit.translate(user, "new\nstring", STATE_TRANSLATED)
-        self.assertEqual(unit.target, "new\r\nstring")
+        self.assertEqual(unit.target, "new\r\nstring\r\n")
         unit.translate(user, "other\r\nstring", STATE_TRANSLATED)
-        self.assertEqual(unit.target, "other\r\nstring")
+        self.assertEqual(unit.target, "other\r\nstring\r\n")
 
     def test_flags(self):
         unit = Unit.objects.filter(translation__language_code="cs")[0]
         unit.flags = "no-wrap, ignore-same"
         self.assertEqual(unit.all_flags.items(), {"no-wrap", "ignore-same"})
+
+    def test_order_by_request(self):
+        unit = Unit.objects.filter(translation__language_code="cs")[0]
+        source = unit.source_unit
+        source.extra_flags = "priority:200"
+        source.save()
+
+        # test both ascending and descending order works
+        unit1 = Unit.objects.filter(translation__language_code="cs")
+        unit1 = unit1.order_by_request({"sort_by": "-priority"})
+        self.assertEqual(unit1[0].priority, 200)
+        unit1 = Unit.objects.filter(translation__language_code="cs")
+        unit1 = unit1.order_by_request({"sort_by": "priority"})
+        self.assertEqual(unit1[0].priority, 100)
+
+        # test if invalid sorting, then sorted in default order
+        unit2 = Unit.objects.filter(translation__language_code="cs")
+        unit2 = unit2.order()
+        unit3 = Unit.objects.filter(translation__language_code="cs")
+        unit3 = unit3.order_by_request({"sort_by": "invalid"})
+        self.assertEqual(unit3[0], unit2[0])
+
+        # test sorting by count
+        unit4 = Unit.objects.filter(translation__language_code="cs")[2]
+        Comment.objects.create(unit=unit4, comment="Foo")
+        unit5 = Unit.objects.filter(translation__language_code="cs")
+        unit5 = unit5.order_by_request({"sort_by": "-num_comments"})
+        self.assertEqual(unit5[0].comment_set.count(), 1)
+        unit5 = Unit.objects.filter(translation__language_code="cs")
+        unit5 = unit5.order_by_request({"sort_by": "num_comments"})
+        self.assertEqual(unit5[0].comment_set.count(), 0)
+
+        # check all order options produce valid queryset
+        order_options = [
+            "priority",
+            "position",
+            "context",
+            "num_words",
+            "labels",
+            "timestamp",
+            "num_failing_checks",
+        ]
+        for order_option in order_options:
+            ordered_unit = Unit.objects.filter(
+                translation__language_code="cs"
+            ).order_by_request({"sort_by": order_option})
+            ordered_desc_unit = Unit.objects.filter(
+                translation__language_code="cs"
+            ).order_by_request({"sort_by": f"-{order_option}"})
+            self.assertEqual(len(ordered_unit), 4)
+            self.assertEqual(len(ordered_desc_unit), 4)
+
+        # check sorting with multiple options work
+        multiple_ordered_unit = Unit.objects.filter(
+            translation__language_code="cs"
+        ).order_by_request({"sort_by": "position,timestamp"})
+        self.assertEqual(multiple_ordered_unit.count(), 4)
 
     def test_get_max_length_no_pk(self):
         unit = Unit.objects.filter(translation__language_code="cs")[0]
@@ -371,26 +442,26 @@ class UnitTest(ModelTestCase):
         self.assertEqual(unit.get_max_length(), 10000)
 
 
-class WhiteboardMessageTest(ModelTestCase):
-    """Test(s) for WhiteboardMessage model."""
+class AnnouncementTest(ModelTestCase):
+    """Test(s) for Announcement model."""
 
     def setUp(self):
         super().setUp()
-        WhiteboardMessage.objects.create(
+        Announcement.objects.create(
             language=Language.objects.get(code="cs"), message="test cs"
         )
-        WhiteboardMessage.objects.create(
+        Announcement.objects.create(
             language=Language.objects.get(code="de"), message="test de"
         )
-        WhiteboardMessage.objects.create(
+        Announcement.objects.create(
             project=self.component.project, message="test project"
         )
-        WhiteboardMessage.objects.create(
+        Announcement.objects.create(
             component=self.component,
             project=self.component.project,
             message="test component",
         )
-        WhiteboardMessage.objects.create(message="test global")
+        Announcement.objects.create(message="test global")
 
     def verify_filter(self, messages, count, message=None):
         """Verify whether messages have given count and first contains string."""
@@ -399,23 +470,23 @@ class WhiteboardMessageTest(ModelTestCase):
             self.assertEqual(messages[0].message, message)
 
     def test_contextfilter_global(self):
-        self.verify_filter(WhiteboardMessage.objects.context_filter(), 1, "test global")
+        self.verify_filter(Announcement.objects.context_filter(), 1, "test global")
 
     def test_contextfilter_project(self):
         self.verify_filter(
-            WhiteboardMessage.objects.context_filter(project=self.component.project),
+            Announcement.objects.context_filter(project=self.component.project),
             1,
             "test project",
         )
 
     def test_contextfilter_component(self):
         self.verify_filter(
-            WhiteboardMessage.objects.context_filter(component=self.component), 2
+            Announcement.objects.context_filter(component=self.component), 2
         )
 
     def test_contextfilter_translation(self):
         self.verify_filter(
-            WhiteboardMessage.objects.context_filter(
+            Announcement.objects.context_filter(
                 component=self.component, language=Language.objects.get(code="cs")
             ),
             3,
@@ -423,14 +494,14 @@ class WhiteboardMessageTest(ModelTestCase):
 
     def test_contextfilter_language(self):
         self.verify_filter(
-            WhiteboardMessage.objects.context_filter(
+            Announcement.objects.context_filter(
                 language=Language.objects.get(code="cs")
             ),
             1,
             "test cs",
         )
         self.verify_filter(
-            WhiteboardMessage.objects.context_filter(
+            Announcement.objects.context_filter(
                 language=Language.objects.get(code="de")
             ),
             1,

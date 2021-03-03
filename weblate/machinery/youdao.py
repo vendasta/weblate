@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Copyright ©2018 Sun Zhigang <hzsunzhigang@corp.netease.com>
 #
@@ -17,7 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
-
 
 from django.conf import settings
 
@@ -64,7 +62,16 @@ class YoudaoTranslation(MachineTranslation):
             "id",
         ]
 
-    def download_translations(self, source, language, text, unit, user):
+    def download_translations(
+        self,
+        source,
+        language,
+        text: str,
+        unit,
+        user,
+        search: bool,
+        threshold: int = 75,
+    ):
         """Download list of possible translations from a service."""
         salt, sign = self.signed_salt(
             settings.MT_YOUDAO_ID, settings.MT_YOUDAO_SECRET, text

@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -48,7 +47,7 @@ class SSHTest(TestCase):
         wrapper = SSHWrapper()
         filename = wrapper.filename
         wrapper.create()
-        with open(filename, "r") as handle:
+        with open(filename) as handle:
             data = handle.read()
             self.assertTrue(ssh_file("known_hosts") in data)
             self.assertTrue(ssh_file("id_rsa") in data)

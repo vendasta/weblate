@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,108 +17,90 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+from django.db import transaction
 
-import os
-from time import sleep
-
-from celery.schedules import crontab
-from celery_batches import Batches
-from django.db.models import F
-from django.utils.encoding import force_str
-from whoosh.index import LockError
-
-from weblate.memory.storage import (
-    CATEGORY_PRIVATE_OFFSET,
-    CATEGORY_SHARED,
-    CATEGORY_USER_OFFSET,
-    TranslationMemory,
-)
-from weblate.utils.celery import app, extract_batch_kwargs
-from weblate.utils.data import data_dir
+from weblate.machinery.base import get_machinery_language
+from weblate.memory.models import Memory
+from weblate.utils.celery import app
 from weblate.utils.state import STATE_TRANSLATED
 
 
 @app.task(trail=False)
-def memory_backup(indent=2):
-    if not os.path.exists(data_dir("backups")):
-        os.makedirs(data_dir("backups"))
-    filename = data_dir("backups", "memory.json")
-    memory = TranslationMemory()
-    with open(filename, "w") as handle:
-        memory.dump(handle, indent)
+def import_memory(project_id):
+    from weblate.trans.models import Project, Unit
+
+    project = Project.objects.get(pk=project_id)
+
+    for component in project.component_set.iterator():
+        with transaction.atomic():
+            units = Unit.objects.filter(
+                translation__component=component, state__gte=STATE_TRANSLATED
+            )
+            if not component.intermediate:
+                units = units.exclude(
+                    translation__language_id=component.source_language_id
+                )
+            for unit in units.prefetch_related("translation", "translation__language"):
+                update_memory(None, unit, component, project)
 
 
 @app.task(trail=False)
-def import_memory(project_id):
+def handle_unit_translation_change(unit_id, user_id=None):
+    from weblate.auth.models import User
     from weblate.trans.models import Unit
 
-    units = Unit.objects.filter(
-        translation__component__project_id=project_id, state__gte=STATE_TRANSLATED
-    ).exclude(
-        translation__language=F("translation__component__project__source_language")
-    )
-    for unit in units.iterator():
-        update_memory(None, unit)
+    user = None if user_id is None else User.objects.get(pk=user_id)
+    unit = Unit.objects.get(pk=unit_id)
+    update_memory(user, unit)
 
 
-def update_memory(user, unit):
-    component = unit.translation.component
-    project = component.project
+def update_memory(user, unit, component=None, project=None):
+    component = component or unit.translation.component
+    project = project or component.project
+    params = {
+        "source_language": get_machinery_language(component.source_language),
+        "target_language": get_machinery_language(unit.translation.language),
+        "source": unit.source,
+        "target": unit.target,
+        "origin": component.full_slug,
+    }
 
-    categories = [CATEGORY_PRIVATE_OFFSET + project.pk]
-    if user:
-        categories.append(CATEGORY_USER_OFFSET + user.id)
-    if unit.translation.component.project.contribute_shared_tm:
-        categories.append(CATEGORY_SHARED)
+    add_project = True
+    add_shared = project.contribute_shared_tm
+    add_user = user is not None
 
-    for category in categories:
-        update_memory_task.delay(
-            source_language=project.source_language.code,
-            target_language=unit.translation.language.code,
-            source=unit.source,
-            target=unit.target,
-            origin=component.full_slug,
-            category=category,
+    # Check matching entries in memory
+    for matching in Memory.objects.filter(from_file=False, **params):
+        if (
+            matching.user_id is None
+            and matching.project_id == project.id
+            and not matching.shared
+        ):
+            add_project = False
+        elif (
+            add_shared
+            and matching.user_id is None
+            and matching.project_id is None
+            and matching.shared
+        ):
+            add_shared = False
+        elif (
+            add_user
+            and matching.user_id == user.id
+            and matching.project_id is None
+            and not matching.shared
+        ):
+            add_user = False
+
+    if add_project:
+        Memory.objects.create(
+            user=None, project=project, from_file=False, shared=False, **params
         )
-
-
-@app.task(trail=False, base=Batches, flush_every=1000, flush_interval=300, bind=True)
-def update_memory_task(self, *args, **kwargs):
-    def fixup_strings(data):
-        result = {}
-        for key, value in data.items():
-            if isinstance(value, int):
-                result[key] = value
-            else:
-                result[key] = force_str(value)
-        return result
-
-    data = extract_batch_kwargs(*args, **kwargs)
-
-    memory = TranslationMemory()
-    try:
-        with memory.writer() as writer:
-            for item in data:
-                writer.add_document(**fixup_strings(item))
-    except LockError:
-        # Manually handle retries, it doesn't work
-        # with celery-batches
-        sleep(10)
-        for unit in data:
-            update_memory_task.delay(**unit)
-
-
-@app.task(trail=False)
-def memory_optimize():
-    memory = TranslationMemory()
-    memory.index.optimize()
-
-
-@app.on_after_finalize.connect
-def setup_periodic_tasks(sender, **kwargs):
-    sender.add_periodic_task(
-        crontab(hour=1, minute=0), memory_backup.s(), name="translation-memory-backup"
-    )
-    sender.add_periodic_task(
-        3600 * 24 * 7, memory_optimize.s(), name="translation-memory-optimize"
-    )
+    if add_shared:
+        Memory.objects.create(
+            user=None, project=None, from_file=False, shared=True, **params
+        )
+    if add_user:
+        Memory.objects.create(
+            user=user, project=None, from_file=False, shared=False, **params
+        )

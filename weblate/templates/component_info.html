@@ -1,13 +1,12 @@
 {% load i18n %}
 {% load permissions %}
+{% load translations %}
 
-{% with object.project as object %}
-{% include "project_info.html" %}
-{% endwith %}
+{% include "project_info.html" with object=object.project %}
 
 <tr>
 <th>{% trans "Translation process" %}</th>
-<td colspan="2">
+<td class="full-cell">
 <ul>
 {% if object.suggestion_voting and object.suggestion_autoaccept %}
 <li>{% trans "Translations can only be done through suggestions." %}</li>
@@ -42,7 +41,7 @@
 {% if object.license %}
 <tr>
 <th>{% trans "Translation license" %}</th>
-<td colspan="2">
+<td class="full-cell">
 {% if object.license_url %}
 <a href="{{ object.license_url }}">{{ object.get_license_display }}</a>
 {% else %}
@@ -55,18 +54,23 @@
 {% if object.agreement %}
 <tr>
 <th>{% trans "Contributor agreement" %}</th>
-<td><a class="btn btn-primary" href="{% url 'contributor-agreement' project=object.project.slug component=object.slug %}">{% trans "View" %}</a></td>
+<td>
+  <a class="btn btn-primary pull-right flip" href="{% url 'contributor-agreement' project=object.project.slug component=object.slug %}">{% trans "View" %}</a>
+  {{ object.agreement|markdown }}
+</td>
 </tr>
 {% endif %}
 
 {% include "snippets/git-info.html" %}
 
 <tr>
-<th>{% trans "Filemask" %}</th><td><code>{{ object.filemask }}</code></td>
+<th>{% trans "Filemask" %}</th>
+<td><code>{{ object.filemask }}</code></td>
 </tr>
 
 {% if object.template %}
 <tr>
-<th>{% trans "Monolingual base language file" %}</th><td><code>{{ object.template }}</code></td>
+<th>{% trans "Monolingual base language file" %}</th>
+<td><code>{{ object.template }}</code></td>
 </tr>
 {% endif %}

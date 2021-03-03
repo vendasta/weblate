@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -21,6 +20,7 @@
 from collections import defaultdict
 from copy import copy
 from email.utils import formataddr
+from typing import Iterable, Optional
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
@@ -29,20 +29,19 @@ from django.core.signing import TimestampSigner
 from django.db.models import Q
 from django.template.loader import render_to_string
 from django.utils import timezone
-from django.utils.encoding import force_str
 from django.utils.translation import get_language, get_language_bidi
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import override
 
-from weblate import VERSION
 from weblate.accounts.tasks import send_mails
 from weblate.auth.models import User
 from weblate.lang.models import Language
 from weblate.logger import LOGGER
 from weblate.trans.models import Alert, Change, Translation
-from weblate.utils.markdown import get_mentions
+from weblate.utils.markdown import get_mention_users
 from weblate.utils.site import get_site_domain, get_site_url
 from weblate.utils.stats import prefetch_stats
+from weblate.utils.version import USER_AGENT
 
 FREQ_NONE = 0
 FREQ_INSTANT = 1
@@ -58,14 +57,16 @@ FREQ_CHOICES = (
     (FREQ_MONTHLY, _("Monthly digest")),
 )
 
-SCOPE_DEFAULT = 10
+SCOPE_ALL = 0
+SCOPE_WATCHED = 10
 SCOPE_ADMIN = 20
 SCOPE_PROJECT = 30
 SCOPE_COMPONENT = 40
 
 SCOPE_CHOICES = (
-    (SCOPE_DEFAULT, "Defaults"),
-    (SCOPE_ADMIN, "Admin"),
+    (SCOPE_ALL, "All"),
+    (SCOPE_WATCHED, "Watched"),
+    (SCOPE_ADMIN, "Administered"),
     (SCOPE_PROJECT, "Project"),
     (SCOPE_COMPONENT, "Component"),
 )
@@ -85,13 +86,13 @@ def register_notification(handler):
 
 
 class Notification:
-    actions = ()
-    verbose = ""
-    template_name = None
-    digest_template = "digest"
-    filter_languages = False
-    ignore_watched = False
-    required_attr = None
+    actions: Iterable[int] = ()
+    verbose: str = ""
+    template_name: str = ""
+    digest_template: str = "digest"
+    filter_languages: bool = False
+    ignore_watched: bool = False
+    required_attr: Optional[str] = None
 
     def __init__(self, outgoing, perm_cache=None):
         self.outgoing = outgoing
@@ -114,7 +115,7 @@ class Notification:
 
     @classmethod
     def get_name(cls):
-        return force_str(cls.__name__)
+        return cls.__name__
 
     def filter_subscriptions(self, project, component, translation, users, lang_filter):
         from weblate.accounts.models import Subscription
@@ -122,7 +123,7 @@ class Notification:
         result = Subscription.objects.filter(notification=self.get_name())
         if users is not None:
             result = result.filter(user_id__in=users)
-        query = Q(scope=SCOPE_DEFAULT) | Q(scope=SCOPE_ADMIN)
+        query = Q(scope__in=(SCOPE_WATCHED, SCOPE_ADMIN, SCOPE_ALL))
         if component:
             query |= Q(component=component)
         if project:
@@ -132,7 +133,7 @@ class Notification:
         return (
             result.filter(query)
             .order_by("user", "-scope")
-            .prefetch_related("user__profile")
+            .prefetch_related("user__profile__watched")
         )
 
     def get_subscriptions(self, change, project, component, translation, users):
@@ -202,12 +203,12 @@ class Notification:
                     subscription.scope == SCOPE_ADMIN
                     and not self.is_admin(user, project)
                 )
-                # Default scope for not watched
+                # Watched scope for not watched
                 or (
-                    subscription.scope == SCOPE_DEFAULT
+                    subscription.scope == SCOPE_WATCHED
                     and not self.ignore_watched
                     and project is not None
-                    and not user.profile.watched.filter(pk=project.id).exists()
+                    and not user.profile.watches_project(project)
                 )
             ):
                 continue
@@ -232,7 +233,9 @@ class Notification:
         )
         return render_to_string(template_name, context).strip()
 
-    def get_context(self, change=None, subscription=None, extracontext=None):
+    def get_context(
+        self, change=None, subscription=None, extracontext=None, changes=None
+    ):
         """Return context for rendering mail."""
         result = {
             "LANGUAGE_CODE": get_language(),
@@ -241,6 +244,8 @@ class Notification:
             "site_title": settings.SITE_TITLE,
             "notification_name": self.verbose,
         }
+        if changes is not None:
+            result["changes"] = changes
         if subscription is not None:
             result["unsubscribe_nonce"] = TimestampSigner().sign(subscription.pk)
         if extracontext:
@@ -253,10 +258,9 @@ class Notification:
                 "translation",
                 "component",
                 "project",
-                "dictionary",
                 "comment",
                 "suggestion",
-                "whiteboard",
+                "announcement",
                 "alert",
                 "user",
                 "target",
@@ -276,7 +280,7 @@ class Notification:
             "Auto-Submitted": "auto-generated",
             "X-AutoGenerated": "yes",
             "Precedence": "bulk",
-            "X-Mailer": "Weblate {0}".format(VERSION),
+            "X-Mailer": "Weblate" if settings.HIDE_VERSION else USER_AGENT,
             "X-Weblate-Notification": self.get_name(),
         }
 
@@ -291,14 +295,16 @@ class Notification:
         references = None
         unit = context.get("unit")
         if unit:
-            references = "{0}/{1}/{2}/{3}".format(
-                unit.translation.component.project.slug,
-                unit.translation.component.slug,
-                unit.translation.language.code,
+            translation = unit.translation
+            component = translation.component
+            references = "{}/{}/{}/{}".format(
+                component.project.slug,
+                component.slug,
+                translation.language.code,
                 unit.id,
             )
         if references is not None:
-            references = "<{0}@{1}>".format(references, get_site_domain())
+            references = f"<{references}@{get_site_domain()}>"
             headers["In-Reply-To"] = references
             headers["References"] = references
         return headers
@@ -335,11 +341,13 @@ class Notification:
                     change,
                     subscription=user.current_subscription,
                 )
+                # Delete onetime subscription
+                if user.current_subscription.onetime:
+                    user.current_subscription.delete()
 
     def send_digest(self, language, email, changes, subscription=None):
         with override("en" if language is None else language):
-            context = self.get_context(subscription=subscription)
-            context["changes"] = changes
+            context = self.get_context(subscription=subscription, changes=changes)
             subject = self.render_template("_subject.txt", context, digest=True)
             context["subject"] = subject
             LOGGER.info(
@@ -394,9 +402,13 @@ class MergeFailureNotification(Notification):
         Change.ACTION_FAILED_REBASE,
         Change.ACTION_FAILED_PUSH,
     )
+    # Translators: Notification name
     verbose = _("Repository failure")
     template_name = "repository_error"
-    fake_notify = None
+
+    def __init__(self, outgoing, perm_cache=None):
+        super().__init__(outgoing, perm_cache)
+        self.fake_notify = None
 
     def should_skip(self, user, change):
         fake = copy(change)
@@ -418,13 +430,34 @@ class RepositoryNotification(Notification):
         Change.ACTION_REBASE,
         Change.ACTION_MERGE,
     )
+    # Translators: Notification name
     verbose = _("Repository operation")
     template_name = "repository_operation"
 
 
 @register_notification
+class LockNotification(Notification):
+    actions = (
+        Change.ACTION_LOCK,
+        Change.ACTION_UNLOCK,
+    )
+    # Translators: Notification name
+    verbose = _("Component locking")
+    template_name = "component_lock"
+
+
+@register_notification
+class LicenseNotification(Notification):
+    actions = (Change.ACTION_LICENSE_CHANGE, Change.ACTION_AGREEMENT_CHANGE)
+    # Translators: Notification name
+    verbose = _("Changed license")
+    template_name = "component_license"
+
+
+@register_notification
 class ParseErrorNotification(Notification):
     actions = (Change.ACTION_PARSE_ERROR,)
+    # Translators: Notification name
     verbose = _("Parse error")
     template_name = "parse_error"
 
@@ -432,6 +465,7 @@ class ParseErrorNotification(Notification):
 @register_notification
 class NewStringNotificaton(Notification):
     actions = (Change.ACTION_NEW_STRING,)
+    # Translators: Notification name
     verbose = _("New string")
     template_name = "new_string"
     filter_languages = True
@@ -440,6 +474,7 @@ class NewStringNotificaton(Notification):
 @register_notification
 class NewContributorNotificaton(Notification):
     actions = (Change.ACTION_NEW_CONTRIBUTOR,)
+    # Translators: Notification name
     verbose = _("New contributor")
     template_name = "new_contributor"
     filter_languages = True
@@ -448,6 +483,7 @@ class NewContributorNotificaton(Notification):
 @register_notification
 class NewSuggestionNotificaton(Notification):
     actions = (Change.ACTION_SUGGESTION,)
+    # Translators: Notification name
     verbose = _("New suggestion")
     template_name = "new_suggestion"
     filter_languages = True
@@ -457,11 +493,15 @@ class NewSuggestionNotificaton(Notification):
 @register_notification
 class LastAuthorCommentNotificaton(Notification):
     actions = (Change.ACTION_COMMENT,)
+    # Translators: Notification name
     verbose = _("Comment on own translation")
     template_name = "new_comment"
     ignore_watched = True
     required_attr = "comment"
-    fake_notify = None
+
+    def __init__(self, outgoing, perm_cache=None):
+        super().__init__(outgoing, perm_cache)
+        self.fake_notify = None
 
     def should_skip(self, user, change):
         if self.fake_notify is None:
@@ -492,11 +532,15 @@ class LastAuthorCommentNotificaton(Notification):
 @register_notification
 class MentionCommentNotificaton(Notification):
     actions = (Change.ACTION_COMMENT,)
+    # Translators: Notification name
     verbose = _("Mentioned in comment")
     template_name = "new_comment"
     ignore_watched = True
     required_attr = "comment"
-    fake_notify = None
+
+    def __init__(self, outgoing, perm_cache=None):
+        super().__init__(outgoing, perm_cache)
+        self.fake_notify = None
 
     def should_skip(self, user, change):
         if self.fake_notify is None:
@@ -516,52 +560,77 @@ class MentionCommentNotificaton(Notification):
     ):
         if self.has_required_attrs(change):
             return []
-        users = [user.pk for user in get_mentions(change.comment.comment)]
         return super().get_users(
-            frequency, change, project, component, translation, users
+            frequency,
+            change,
+            project,
+            component,
+            translation,
+            list(
+                get_mention_users(change.comment.comment).values_list("id", flat=True)
+            ),
         )
 
 
 @register_notification
 class NewCommentNotificaton(Notification):
     actions = (Change.ACTION_COMMENT,)
+    # Translators: Notification name
     verbose = _("New comment")
     template_name = "new_comment"
     filter_languages = True
     required_attr = "comment"
 
     def need_language_filter(self, change):
-        return not change.comment.unit.translation.is_source
+        return not change.comment.unit.is_source
 
     def notify_immediate(self, change):
         super().notify_immediate(change)
 
         # Notify upstream
         report_source_bugs = change.component.report_source_bugs
-        if (
-            change.comment
-            and change.comment.unit.translation.is_source
-            and report_source_bugs
-        ):
+        if change.comment and change.comment.unit.is_source and report_source_bugs:
             self.send_immediate("en", report_source_bugs, change)
 
 
 @register_notification
 class ChangedStringNotificaton(Notification):
     actions = Change.ACTIONS_CONTENT
+    # Translators: Notification name
     verbose = _("Changed string")
     template_name = "changed_translation"
     filter_languages = True
 
 
 @register_notification
+class TranslatedStringNotificaton(Notification):
+    actions = (Change.ACTION_CHANGE, Change.ACTION_NEW)
+    # Translators: Notification name
+    verbose = _("Translated string")
+    template_name = "translated_string"
+    filter_languages = True
+
+
+@register_notification
+class ApprovedStringNotificaton(Notification):
+    actions = (Change.ACTION_APPROVE,)
+    # Translators: Notification name
+    verbose = _("Approved string")
+    template_name = "approved_string"
+    filter_languages = True
+
+
+@register_notification
 class NewTranslationNotificaton(Notification):
     actions = (Change.ACTION_ADDED_LANGUAGE, Change.ACTION_REQUESTED_LANGUAGE)
+    # Translators: Notification name
     verbose = _("New language")
     template_name = "new_language"
 
-    def get_context(self, change=None, subscription=None, extracontext=None):
-        context = super().get_context(change, subscription, extracontext)
+    def get_context(
+        self, change=None, subscription=None, extracontext=None, changes=None
+    ):
+        context = super().get_context(change, subscription, extracontext, changes)
         if change:
             context["language"] = Language.objects.get(code=change.details["language"])
             context["was_added"] = change.action == Change.ACTION_ADDED_LANGUAGE
@@ -571,21 +640,27 @@ class NewTranslationNotificaton(Notification):
 @register_notification
 class NewComponentNotificaton(Notification):
     actions = (Change.ACTION_CREATE_COMPONENT,)
+    # Translators: Notification name
     verbose = _("New translation component")
     template_name = "new_component"
 
 
 @register_notification
-class NewWhiteboardMessageNotificaton(Notification):
-    actions = (Change.ACTION_MESSAGE,)
-    verbose = _("New whiteboard message")
-    template_name = "new_whiteboard"
-    required_attr = "whiteboard"
+class NewAnnouncementNotificaton(Notification):
+    actions = (Change.ACTION_ANNOUNCEMENT,)
+    # Translators: Notification name
+    verbose = _("New announcement")
+    template_name = "new_announcement"
+    required_attr = "announcement"
+
+    def should_skip(self, user, change):
+        return not change.announcement.notify
 
 
 @register_notification
 class NewAlertNotificaton(Notification):
     actions = (Change.ACTION_ALERT,)
+    # Translators: Notification name
     verbose = _("New alert")
     template_name = "new_alert"
     required_attr = "alert"
@@ -615,21 +690,21 @@ class SummaryNotification(Notification):
     def notify_monthly(self):
         self.notify_summary(FREQ_MONTHLY)
 
-    def should_notify(self, translation):
-        return False
-
     def notify_summary(self, frequency):
         users = {}
         notifications = defaultdict(list)
         for translation in prefetch_stats(Translation.objects.prefetch()):
-            if not self.should_notify(translation):
+            count = self.get_count(translation)
+            if not count:
                 continue
             context = {
                 "project": translation.component.project,
                 "component": translation.component,
                 "translation": translation,
             }
-            for user in self.get_users(frequency, **context):
+            current_users = self.get_users(frequency, **context)
+            context["count"] = count
+            for user in current_users:
                 users[user.pk] = user
                 notifications[user.pk].append(context)
         for userid, changes in notifications.items():
@@ -641,23 +716,38 @@ class SummaryNotification(Notification):
                 subscription=user.current_subscription,
             )
 
+    @staticmethod
+    def get_count(translation):
+        raise NotImplementedError()
+
+    def get_context(
+        self, change=None, subscription=None, extracontext=None, changes=None
+    ):
+        context = super().get_context(change, subscription, extracontext, changes)
+        context["total_count"] = sum(change["count"] for change in changes)
+        return context
+
 
 @register_notification
 class PendingSuggestionsNotification(SummaryNotification):
+    # Translators: Notification name
     verbose = _("Pending suggestions")
     digest_template = "pending_suggestions"
 
-    def should_notify(self, translation):
-        return translation.stats.suggestions > 0
+    @staticmethod
+    def get_count(translation):
+        return translation.stats.suggestions
 
 
 @register_notification
 class ToDoStringsNotification(SummaryNotification):
+    # Translators: Notification name
     verbose = _("Strings needing action")
     digest_template = "todo_strings"
 
-    def should_notify(self, translation):
-        return translation.stats.todo > 0
+    @staticmethod
+    def get_count(translation):
+        return translation.stats.todo
 
 
 def get_notification_emails(
@@ -673,7 +763,7 @@ def get_notification_emails(
 
     with override("en" if language is None else language):
         # Template name
-        context["subject_template"] = "mail/{0}_subject.txt".format(notification)
+        context["subject_template"] = f"mail/{notification}_subject.txt"
         context["LANGUAGE_CODE"] = get_language()
         context["LANGUAGE_BIDI"] = get_language_bidi()
 
@@ -686,13 +776,13 @@ def get_notification_emails(
         context["subject"] = subject
 
         # Render body
-        body = render_to_string("mail/{0}.html".format(notification), context)
+        body = render_to_string(f"mail/{notification}.html", context)
 
         # Define headers
         headers["Auto-Submitted"] = "auto-generated"
         headers["X-AutoGenerated"] = "yes"
         headers["Precedence"] = "bulk"
-        headers["X-Mailer"] = "Weblate {0}".format(VERSION)
+        headers["X-Mailer"] = "Weblate" if settings.HIDE_VERSION else USER_AGENT
 
         # Return the mail content
         return [

@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,7 +17,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-import shutil
 import subprocess
 import tempfile
 from base64 import b64encode
@@ -32,6 +30,7 @@ from weblate.trans.models import Project
 from weblate.trans.tests.test_models import BaseLiveServerTestCase
 from weblate.trans.tests.test_views import ViewTestCase
 from weblate.trans.tests.utils import RepoTestMixin, create_test_user
+from weblate.utils.files import remove_tree
 
 
 class GitExportTest(ViewTestCase):
@@ -41,7 +40,7 @@ class GitExportTest(ViewTestCase):
         self.client.logout()
 
     def get_auth_string(self, code):
-        encoded = b64encode("{0}:{1}".format(self.user.username, code).encode())
+        encoded = b64encode(f"{self.user.username}:{code}".encode())
         return "basic " + encoded.decode("ascii")
 
     def test_authenticate_invalid(self):
@@ -79,18 +78,18 @@ class GitExportTest(ViewTestCase):
         )
 
     def get_git_url(self, path, component=None):
-        kwargs = {"path": path}
+        kwargs = {"path": ""}
         if component is None:
             component = self.kw_component
         kwargs.update(component)
-        return reverse("git-export", kwargs=kwargs)
+        return reverse("git-export", kwargs=kwargs) + path
 
     def test_git_root(self):
         response = self.client.get(self.get_git_url(""))
         self.assertEqual(302, response.status_code)
 
     def test_git_info(self):
-        response = self.client.get(self.get_git_url("info"))
+        response = self.client.get(self.get_git_url("info"), follow=True)
         self.assertEqual(404, response.status_code)
 
     def git_receive(self, **kwargs):
@@ -98,7 +97,7 @@ class GitExportTest(ViewTestCase):
             self.get_git_url("info/refs"),
             QUERY_STRING="?service=git-upload-pack",
             CONTENT_TYPE="application/x-git-upload-pack-advertisement",
-            **kwargs
+            **kwargs,
         )
 
     def test_redirect_link(self):
@@ -181,9 +180,7 @@ class GitCloneTest(BaseLiveServerTestCase, RepoTestMixin):
                 .replace("http://example.com", self.live_server_url)
                 .replace(
                     "http://",
-                    "http://{0}:{1}@".format(
-                        self.user.username, self.user.auth_token.key
-                    ),
+                    f"http://{self.user.username}:{self.user.auth_token.key}@",
                 )
             )
             process = subprocess.Popen(
@@ -196,10 +193,10 @@ class GitCloneTest(BaseLiveServerTestCase, RepoTestMixin):
             output = process.communicate()[0]
             retcode = process.poll()
         finally:
-            shutil.rmtree(testdir)
+            remove_tree(testdir)
 
         check = self.assertEqual if self.acl else self.assertNotEqual
-        check(retcode, 0, "Failed: {0}".format(output))
+        check(retcode, 0, f"Failed: {output}")
 
 
 class GitCloneFailTest(GitCloneTest):

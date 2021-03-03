@@ -7,7 +7,7 @@ extension-pkg-whitelist=siphashc
 
 # Add files or directories to the blacklist. They should be base names, not
 # paths.
-ignore=migrations,settings.py,settings_test.py,.git,test-repos,repos,settings_test_nose.py,build,.venv
+ignore=migrations,settings.py,settings_test.py,.git,test-repos,repos,build,.venv
 
 # Add files or directories matching the regex patterns to the blacklist. The
 # regex matches against base names, not paths.
@@ -54,7 +54,7 @@ confidence=
 # --enable=similarities". If you want to run only the classes checker, but have
 # no Warning level messages displayed, use"--disable=all --enable=classes
 # --disable=W"
-disable=missing-docstring,unused-argument,no-self-use,no-member,broad-except,locally-disabled,star-args,cyclic-import
+disable=missing-docstring,unused-argument,no-self-use,no-member,broad-except,locally-disabled,star-args,cyclic-import,bad-continuation
 
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
@@ -387,7 +387,9 @@ single-line-if-stmt=no
 # List of method names used to declare (i.e. assign) instance attributes.
 defining-attr-methods=__init__,
                       __new__,
-                      setUp
+                      setUp,
+                      initialize_options,
+                      setup
 
 # List of member names, which should be excluded from the protected access
 # warning.

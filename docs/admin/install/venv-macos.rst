@@ -1,19 +1,21 @@
 Installing on macOS
 ===================
 
-.. warning::
-
-   This guide is currently untested, please provide feedback or corrections to it.
-
-
 .. include:: steps/hw.rst
 
 .. include:: steps/install-system-devel.rst
 
 .. code-block:: sh
 
-    brew install pango cairo libjpeg python git libyaml gobject-introspection
+    brew install python pango cairo gobject-introspection libffi glib libyaml
     pip3 install virtualenv
+
+Make sure pip will be able to find the ``libffi`` version provided by homebrew
+— this will be needed during the installation build step.
+
+.. code-block:: sh
+
+    export PKG_CONFIG_PATH="/usr/local/opt/libffi/lib/pkgconfig"
 
 .. include:: steps/install-system-optional.rst
 

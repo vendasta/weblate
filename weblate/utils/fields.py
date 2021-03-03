@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -39,7 +38,7 @@ class JSONField(models.TextField):
             return None
         try:
             return json.loads(value)
-        except ValueError:
+        except (ValueError, TypeError):
             return value
 
     def get_prep_value(self, value):
@@ -61,3 +60,27 @@ class JSONField(models.TextField):
     def value_from_object(self, obj):
         value = super().value_from_object(obj)
         return json.dumps(value, cls=DjangoJSONEncoder)
+
+
+class CaseInsensitiveFieldMixin:
+    """Field mixin that uses case-insensitive lookup alternatives if they exist."""
+
+    LOOKUP_CONVERSIONS = {
+        "exact": "iexact",
+        "contains": "icontains",
+        "startswith": "istartswith",
+        "endswith": "iendswith",
+        "regex": "iregex",
+    }
+
+    def get_lookup(self, lookup_name):
+        converted = self.LOOKUP_CONVERSIONS.get(lookup_name, lookup_name)
+        return super().get_lookup(converted)
+
+
+class UsernameField(CaseInsensitiveFieldMixin, models.CharField):
+    pass
+
+
+class EmailField(CaseInsensitiveFieldMixin, models.EmailField):
+    pass

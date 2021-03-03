@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -24,14 +23,27 @@ from django.db import models
 
 from weblate.trans.mixins import UserDisplayMixin
 from weblate.trans.models.change import Change
+from weblate.utils.antispam import report_spam
+from weblate.utils.fields import JSONField
+from weblate.utils.request import get_ip_address, get_user_agent_raw
 
 
 class CommentManager(models.Manager):
     # pylint: disable=no-init
 
-    def add(self, unit, user, text):
+    def add(self, unit, request, text):
         """Add comment to this unit."""
-        new_comment = self.create(user=user, unit=unit, comment=text)
+        user = request.user
+        new_comment = self.create(
+            user=user,
+            unit=unit,
+            comment=text,
+            userdetails={
+                "address": get_ip_address(request),
+                "agent": get_user_agent_raw(request),
+            },
+        )
+        user.profile.increase_count("commented")
         Change.objects.create(
             unit=unit,
             comment=new_comment,
@@ -58,13 +70,21 @@ class Comment(models.Model, UserDisplayMixin):
     )
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
     resolved = models.BooleanField(default=False, db_index=True)
+    userdetails = JSONField()
 
     objects = CommentManager.from_queryset(CommentQuerySet)()
 
     class Meta:
         app_label = "trans"
+        verbose_name = "string comment"
+        verbose_name_plural = "string comments"
 
     def __str__(self):
-        return "comment for {0} by {1}".format(
+        return "comment for {} by {}".format(
             self.unit, self.user.username if self.user else "unknown"
+        )
+
+    def report_spam(self):
+        report_spam(
+            self.userdetails["address"], self.userdetails["agent"], self.comment
         )

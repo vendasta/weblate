@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,9 +18,9 @@
 #
 
 from django.apps import AppConfig
-from django.core.checks import Critical, Info, register
+from django.core.checks import Info, register
 
-from weblate.utils.docs import get_doc_url
+from weblate.utils.checks import weblate_check
 
 
 class WLAdminConfig(AppConfig):
@@ -40,11 +39,11 @@ def check_backups(app_configs, **kwargs):
     errors = []
     if not BackupService.objects.filter(enabled=True).exists():
         errors.append(
-            Info(
+            weblate_check(
+                "weblate.I028",
                 "Backups are not configured, "
                 "it is highly recommended for production use",
-                hint=get_doc_url("admin/backup"),
-                id="weblate.I028",
+                Info,
             )
         )
     for service in BackupService.objects.filter(enabled=True):
@@ -57,10 +56,9 @@ def check_backups(app_configs, **kwargs):
             last_log = "missing"
         if last_event == "error":
             errors.append(
-                Critical(
-                    "There was error while performing backups: {}".format(last_log),
-                    hint=get_doc_url("admin/backup"),
-                    id="weblate.C029",
+                weblate_check(
+                    "weblate.C029",
+                    f"There was error while performing backups: {last_log}",
                 )
             )
             break

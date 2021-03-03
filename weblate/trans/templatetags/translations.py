@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,40 +17,43 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-
 import re
+from collections import defaultdict
 from datetime import date
 from uuid import uuid4
 
+from diff_match_patch import diff_match_patch
 from django import template
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.encoding import force_str
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext, gettext_lazy, ngettext, pgettext
+from siphashc import siphash
 
 from weblate.accounts.avatar import get_user_display
 from weblate.accounts.models import Profile
 from weblate.auth.models import User
-from weblate.checks import CHECKS, highlight_string
-from weblate.lang.models import Language
-from weblate.trans.filter import get_filter_choice
+from weblate.checks.models import CHECKS
+from weblate.checks.utils import highlight_string
+from weblate.trans.filter import FILTERS, get_filter_choice
 from weblate.trans.models import (
+    Announcement,
     Component,
     ContributorAgreement,
-    Dictionary,
     Project,
     Translation,
-    WhiteboardMessage,
 )
-from weblate.trans.simplediff import html_diff
+from weblate.trans.models.translation import GhostTranslation
 from weblate.trans.util import get_state_css, split_plural
 from weblate.utils.docs import get_doc_url
+from weblate.utils.hash import hash_to_checksum
 from weblate.utils.markdown import render_markdown
-from weblate.utils.stats import BaseStats, ProjectLanguageStats
+from weblate.utils.messages import get_message_kind as get_message_kind_impl
+from weblate.utils.stats import BaseStats, GhostProjectLanguageStats, ProjectLanguage
+from weblate.utils.views import SORT_CHOICES
 
 register = template.Library()
 
@@ -59,14 +61,10 @@ HIGHLIGTH_SPACE = '<span class="hlspace">{}</span>{}'
 SPACE_TEMPLATE = '<span class="{}"><span class="sr-only">{}</span></span>'
 SPACE_SPACE = SPACE_TEMPLATE.format("space-space", " ")
 SPACE_NL = HIGHLIGTH_SPACE.format(SPACE_TEMPLATE.format("space-nl", ""), "<br />")
-SPACE_TAB = HIGHLIGTH_SPACE.format(SPACE_TEMPLATE.format("space-tab", "\t"), "")
 
-HL_CHECK = (
-    '<span class="hlcheck">' '<span class="highlight-number"></span>' "{0}" "</span>"
-)
+GLOSSARY_TEMPLATE = """<span class="glossary-term" title="{}">"""
 
 WHITESPACE_RE = re.compile(r"(  +| $|^ )")
-NEWLINES_RE = re.compile(r"\r\n|\r|\n")
 TYPE_MAPPING = {True: "yes", False: "no", None: "unknown"}
 # Mapping of status report flags to names
 NAME_MAPPING = {
@@ -92,72 +90,157 @@ PERM_TEMPLATE = """
 
 SOURCE_LINK = """
 <a href="{0}" target="_blank" rel="noopener noreferrer"
-    class="long-filename" dir="ltr">{1}</a>
+    class="wrap-text" dir="ltr">{1}</a>
 """
 
 
-def replace_whitespace(match):
-    spaces = match.group(1).replace(" ", SPACE_SPACE)
-    return HIGHLIGTH_SPACE.format(spaces, "")
+class Formatter:
+    def __init__(self, idx, value, unit, terms, diff, search_match, match):
+        # Inputs
+        self.idx = idx
+        self.value = value
+        self.unit = unit
+        self.terms = terms
+        self.diff = diff
+        self.search_match = search_match
+        self.match = match
+        # Tags output
+        self.tags = [[] for i in range(len(value) + 1)]
+        self.dmp = diff_match_patch()
 
+    def parse(self):
+        if self.diff:
+            self.parse_diff()
+        if self.unit:
+            self.parse_highlight()
+        if self.terms:
+            self.parse_glossary()
+        if self.search_match:
+            self.parse_search()
+        self.parse_whitespace()
 
-def fmt_whitespace(value):
-    """Format whitespace so that it is more visible."""
-    # Highlight exta whitespace
-    value = WHITESPACE_RE.sub(replace_whitespace, value)
+    def parse_diff(self):
+        """Highlights diff, including extra whitespace."""
+        dmp = self.dmp
+        diff = dmp.diff_main(self.diff[self.idx], self.value)
+        dmp.diff_cleanupSemantic(diff)
+        offset = 0
+        for op, data in diff:
+            if op == dmp.DIFF_DELETE:
+                self.tags[offset].append(
+                    "<del>{}</del>".format(SPACE_SPACE if data == " " else escape(data))
+                )
+            elif op == dmp.DIFF_INSERT:
+                self.tags[offset].append("<ins>")
+                if data == " ":
+                    # This matches SPACE_SPACE
+                    self.tags[offset].append(
+                        '<span class="space-space"><span class="sr-only">'
+                    )
+                offset += len(data)
+                if data == " ":
+                    self.tags[offset].append("</span></span>")
+                self.tags[offset].append("</ins>")
+            elif op == dmp.DIFF_EQUAL:
+                offset += len(data)
 
-    # Highlight tabs
-    value = value.replace("\t", SPACE_TAB.format(gettext("Tab character")))
-
-    return value
-
-
-def fmt_diff(value, diff, idx):
-    """Format diff if there is any."""
-    if diff is None:
-        return value
-    diffvalue = escape(force_str(diff[idx]))
-    return html_diff(diffvalue, value)
-
-
-def fmt_highlights(raw_value, value, unit):
-    """Format check highlights."""
-    if unit is None:
-        return value
-    highlights = highlight_string(raw_value, unit)
-    start_search = 0
-    for highlight in highlights:
-        htext = escape(force_str(highlight[2]))
-        find_highlight = value.find(htext, start_search)
-        if find_highlight >= 0:
-            newpart = HL_CHECK.format(htext)
-            next_part = value[(find_highlight + len(htext)) :]
-            value = value[:find_highlight] + newpart + next_part
-            start_search = find_highlight + len(newpart)
-    return value
-
-
-def fmt_search(value, search_match, match):
-    """Format search match."""
-    if search_match:
-        search_match = escape(search_match)
-        if match == "search":
-            # Since the search ignored case, we need to highlight any
-            # combination of upper and lower case we find.
-            return re.sub(
-                r"(" + re.escape(search_match) + ")",
-                r'<span class="hlmatch">\1</span>',
-                value,
-                flags=re.IGNORECASE,
+    def parse_highlight(self):
+        """Highlights unit placeables."""
+        highlights = highlight_string(self.value, self.unit)
+        for start, end, _content in highlights:
+            self.tags[start].append(
+                '<span class="hlcheck"><span class="highlight-number"></span>'
             )
-        if match in ("replacement", "replaced"):
-            return value.replace(
-                search_match, '<span class="{0}">{1}</span>'.format(match, search_match)
+            self.tags[end].append("</span>")
+
+    @staticmethod
+    def format_terms(terms):
+        forbidden = []
+        nontranslatable = []
+        translations = []
+        for term in terms:
+            flags = term.all_flags
+            target = escape(term.target)
+            if "forbidden" in flags:
+                forbidden.append(target)
+            elif "read-only" in flags:
+                nontranslatable.append(target)
+            else:
+                translations.append(target)
+
+        output = []
+        if forbidden:
+            output.append(gettext("Forbidden translation: %s") % ", ".join(forbidden))
+        if nontranslatable:
+            output.append(gettext("Not-translatable: %s") % ", ".join(nontranslatable))
+        if translations:
+            output.append(gettext("Glossary translation: %s") % ", ".join(translations))
+        return "; ".join(output)
+
+    def parse_glossary(self):
+        """Highlights glossary entries."""
+        for htext, entries in self.terms.items():
+            for match in re.finditer(
+                r"\b{}\b".format(re.escape(htext)), self.value, re.IGNORECASE
+            ):
+                self.tags[match.start()].append(
+                    GLOSSARY_TEMPLATE.format(self.format_terms(entries))
+                )
+                self.tags[match.end()].append("</span>")
+
+    def parse_search(self):
+        """Highlights search matches."""
+        tag = self.match
+        if self.match == "search":
+            tag = "hlmatch"
+
+        start_tag = f'<span class="{tag}">'
+        end_tag = "</span>"
+
+        for match in re.finditer(
+            re.escape(self.search_match), self.value, flags=re.IGNORECASE
+        ):
+            self.tags[match.start()].append(start_tag)
+            self.tags[match.end()].append(end_tag)
+
+    def parse_whitespace(self):
+        """Highlight whitespaces."""
+        for match in WHITESPACE_RE.finditer(self.value):
+            self.tags[match.start()].append(
+                '<span class="hlspace"><span class="space-space"><span class="sr-only">'
             )
-    return value
+            self.tags[match.end()].append("</span></span></span>")
+
+        for match in re.finditer("\t", self.value):
+            self.tags[match.start()].append(
+                '<span class="hlspace"><span class="space-tab"><span class="sr-only">'
+            )
+            self.tags[match.end()].append("</span></span></span>")
+
+    def format(self):
+        tags = self.tags
+        value = self.value
+        newline = SPACE_NL.format(gettext("New line"))
+        output = []
+        was_cr = False
+        newlines = {"\r", "\n"}
+        for pos, char in enumerate(value):
+            output.append("".join(tags[pos]))
+            if char in newlines:
+                is_cr = char == "\r"
+                if was_cr and not is_cr:
+                    # treat "\r\n" as single newline
+                    continue
+                was_cr = is_cr
+                output.append(newline)
+            else:
+                output.append(escape(char))
+        # Trailing tags
+        output.append("".join(tags[len(value)]))
+        return mark_safe("".join(output))
 
 
-@register.inclusion_tag("format-translation.html")
+@register.inclusion_tag("snippets/format-translation.html")
 def format_translation(
     value,
     language,
@@ -165,9 +248,11 @@ def format_translation(
     diff=None,
     search_match=None,
     simple=False,
+    wrap=False,
     num_plurals=2,
     unit=None,
     match="search",
+    glossary=None,
 ):
     """Nicely formats translation text possibly handling plurals or diff."""
     # Split plurals to separate strings
@@ -180,9 +265,6 @@ def format_translation(
     if int(num_plurals) <= 1:
         plurals = plurals[-1:]
 
-    # Newline concatenator
-    newline = SPACE_NL.format(gettext("New line"))
-
     # Split diff plurals
     if diff is not None:
         diff = split_plural(diff)
@@ -190,33 +272,17 @@ def format_translation(
         while len(diff) < len(plurals):
             diff.append(diff[0])
 
+    terms = defaultdict(list)
+    for term in glossary or []:
+        terms[term.source].append(term)
+
     # We will collect part for each plural
     parts = []
+    has_content = False
 
-    for idx, raw_value in enumerate(plurals):
-        # HTML escape
-        value = escape(force_str(raw_value))
-
-        # Content of the Copy to clipboard button
-        copy = value
-
-        # Format diff if there is any
-        value = fmt_diff(value, diff, idx)
-
-        # Create span for checks highlights
-        value = fmt_highlights(raw_value, value, unit)
-
-        # Format search term
-        value = fmt_search(value, search_match, match)
-
-        # Normalize newlines
-        value = NEWLINES_RE.sub("\n", value)
-
-        # Split string
-        paras = value.split("\n")
-
-        # Format whitespace in each paragraph
-        paras = [fmt_whitespace(p) for p in paras]
+    for idx, value in enumerate(plurals):
+        formatter = Formatter(idx, value, unit, terms, diff, search_match, match)
+        formatter.parse()
 
         # Show label for plural (if there are any)
         title = ""
@@ -224,20 +290,25 @@ def format_translation(
             title = plural.get_plural_name(idx)
 
         # Join paragraphs
-        content = mark_safe(newline.join(paras))
+        content = formatter.format()
 
-        parts.append({"title": title, "content": content, "copy": copy})
+        parts.append({"title": title, "content": content, "copy": escape(value)})
+        has_content |= bool(content)
 
-    return {"simple": simple, "items": parts, "language": language, "unit": unit}
+    return {
+        "simple": simple,
+        "wrap": wrap,
+        "items": parts,
+        "language": language,
+        "unit": unit,
+        "has_content": has_content,
+    }
 
 
 @register.simple_tag
-def check_severity(check):
-    """Return check severity, or its id if check is not known."""
-    try:
-        return escape(CHECKS[check].severity)
-    except KeyError:
-        return "info"
+def search_name(query):
+    """Returns name for a query string."""
+    return FILTERS.get_search_name(query)
 
 
 @register.simple_tag
@@ -258,39 +329,30 @@ def check_description(check):
         return escape(check)
 
 
-@register.simple_tag
-def project_name(prj):
-    """Get project name based on slug."""
-    return escape(force_str(Project.objects.get(slug=prj)))
-
-
-@register.simple_tag
-def component_name(prj, subprj):
-    """Get component name based on slug."""
-    return escape(force_str(Component.objects.get(project__slug=prj, slug=subprj)))
-
-
-@register.simple_tag
-def language_name(code):
-    """Get language name based on its code."""
-    return escape(force_str(Language.objects.get(code=code)))
-
-
-@register.simple_tag
-def dictionary_count(lang, project):
-    """Return number of words in dictionary."""
-    return Dictionary.objects.filter(project=project, language=lang).count()
-
-
-@register.simple_tag
-def documentation(page, anchor=""):
+@register.simple_tag(takes_context=True)
+def documentation(context, page, anchor=""):
     """Return link to Weblate documentation."""
-    return get_doc_url(page, anchor)
+    # User might not be present on error pages
+    user = context.get("user")
+    # Use object method get_doc_url if present
+    if hasattr(page, "get_doc_url"):
+        return page.get_doc_url(user=user)
+    return get_doc_url(page, anchor, user=user)
 
 
-@register.inclusion_tag("documentation-icon.html")
-def documentation_icon(page, anchor="", right=False):
-    return {"right": right, "doc_url": get_doc_url(page, anchor)}
+@register.inclusion_tag("documentation-icon.html", takes_context=True)
+def documentation_icon(context, page, anchor="", right=False):
+    return {"right": right, "doc_url": documentation(context, page, anchor)}
+
+
+@register.inclusion_tag("documentation-icon.html", takes_context=True)
+def form_field_doc_link(context, form, field):
+    if hasattr(form, "get_field_doc"):
+        return {
+            "right": False,
+            "doc_url": get_doc_url(*form.get_field_doc(field), user=context["user"]),
+        }
+    return {}
 
 
 @register.inclusion_tag("message.html")
@@ -438,66 +500,50 @@ def naturaltime(value, now=None):
     else:
         text = naturaltime_future(value, now)
     return mark_safe(
-        '<span title="{0}">{1}</span>'.format(
+        '<span title="{}">{}</span>'.format(
             escape(value.replace(microsecond=0).isoformat()), escape(text)
         )
     )
 
 
-def translation_progress_data(approved, translated, fuzzy, checks):
+def get_stats(obj):
+    if isinstance(obj, BaseStats):
+        return obj
+    return obj.stats
+
+
+def translation_progress_data(readonly, approved, translated, fuzzy, checks):
     return {
-        "approved": "{0:.1f}".format(approved),
-        "good": "{0:.1f}".format(max(translated - checks - approved, 0)),
-        "checks": "{0:.1f}".format(checks),
-        "fuzzy": "{0:.1f}".format(fuzzy),
-        "percent": "{0:.1f}".format(translated),
+        "readonly": f"{readonly:.1f}",
+        "approved": f"{approved:.1f}",
+        "good": "{:.1f}".format(max(translated - checks - approved - readonly, 0)),
+        "checks": f"{checks:.1f}",
+        "fuzzy": f"{fuzzy:.1f}",
+        "percent": f"{translated:.1f}",
     }
 
 
-def get_stats_parent(obj, parent):
-    if not isinstance(obj, BaseStats):
-        obj = obj.stats
-    if parent is None:
-        return obj
-    return obj.get_parent_stats(parent)
-
-
-@register.simple_tag
-def global_stats(obj, stats, parent):
-    """Return attribute from global stats."""
-    if not parent:
-        return None
-    if isinstance(parent, str):
-        parent = getattr(obj, parent)
-    return get_stats_parent(stats, parent)
-
-
-@register.simple_tag
-def get_stats(obj, attr):
-    if not attr:
-        attr = "stats"
-    return getattr(obj, attr)
-
-
 @register.inclusion_tag("progress.html")
-def translation_progress(obj, parent=None):
-    stats = get_stats_parent(obj, parent)
+def translation_progress(obj):
+    stats = get_stats(obj)
     return translation_progress_data(
+        stats.readonly_percent,
         stats.approved_percent,
         stats.translated_percent,
         stats.fuzzy_percent,
-        stats.allchecks_percent,
+        stats.translated_checks_percent,
     )
 
 
 @register.inclusion_tag("progress.html")
-def words_progress(obj, parent=None):
-    stats = get_stats_parent(obj, parent)
+def words_progress(obj):
+    stats = get_stats(obj)
     return translation_progress_data(
+        stats.readonly_words_percent,
         stats.approved_words_percent,
         stats.translated_words_percent,
         stats.fuzzy_words_percent,
-        stats.allchecks_words_percent,
+        stats.translated_checks_words_percent,
     )
 
 
@@ -522,15 +568,23 @@ def get_state_badge(unit):
 
 
 @register.inclusion_tag("snippets/unit-state.html")
-def get_state_flags(unit):
+def get_state_flags(unit, detail=False):
     """Return state flags."""
-    return {"state": " ".join(get_state_css(unit))}
+    return {
+        "state": " ".join(get_state_css(unit)),
+        "unit": unit,
+        "detail": detail,
+    }
 
 
 @register.simple_tag
 def get_location_links(profile, unit):
     """Generate links to source files where translation was used."""
     ret = []
+
+    # Fallback to source unit if it has more information
+    if not unit.location and unit.source_unit.location:
+        unit = unit.source_unit
 
     # Do we have any locations?
     if not unit.location:
@@ -553,27 +607,23 @@ def get_location_links(profile, unit):
 
 
 @register.simple_tag(takes_context=True)
-def whiteboard_messages(context, project=None, component=None, language=None):
-    """Display whiteboard messages for given context."""
+def announcements(context, project=None, component=None, language=None):
+    """Display announcement messages for given context."""
     ret = []
-
-    whiteboards = WhiteboardMessage.objects.context_filter(project, component, language)
 
     user = context["user"]
 
-    for whiteboard in whiteboards:
-        can_delete = user.has_perm(
-            "component.edit", whiteboard.component
-        ) or user.has_perm("project.edit", whiteboard.project)
-
+    for announcement in Announcement.objects.context_filter(
+        project, component, language
+    ):
         ret.append(
             render_to_string(
                 "message.html",
                 {
-                    "tags": " ".join((whiteboard.category, "whiteboard")),
-                    "message": whiteboard.render(),
-                    "whiteboard": whiteboard,
-                    "can_delete": can_delete,
+                    "tags": " ".join((announcement.category, "announcement")),
+                    "message": render_markdown(announcement.message),
+                    "announcement": announcement,
+                    "can_delete": user.has_perm("announcement.delete", announcement),
                 },
             )
         )
@@ -584,7 +634,7 @@ def whiteboard_messages(context, project=None, component=None, language=None):
 @register.simple_tag(takes_context=True)
 def active_tab(context, slug):
     active = "active" if slug == context["active_tab_slug"] else ""
-    return mark_safe('class="tab-pane {0}" id="{1}"'.format(active, slug))
+    return mark_safe(f'class="tab-pane {active}" id="{slug}"')
 
 
 @register.simple_tag(takes_context=True)
@@ -618,7 +668,7 @@ def show_contributor_agreement(context, component):
         return ""
 
     return render_to_string(
-        "show-contributor-agreement.html",
+        "snippets/component/contributor-agreement.html",
         {"object": component, "next": context["request"].get_full_path()},
     )
 
@@ -626,7 +676,7 @@ def show_contributor_agreement(context, component):
 @register.simple_tag(takes_context=True)
 def get_translate_url(context, obj):
     """Get translate URL based on user preference."""
-    if not isinstance(obj, Translation):
+    if isinstance(obj, BaseStats) or not hasattr(obj, "get_translate_url"):
         return ""
     if context["user"].profile.translate_mode == Profile.TRANSLATE_ZEN:
         name = "zen"
@@ -643,13 +693,6 @@ def get_browse_url(context, obj):
         return reverse(
             "project-language",
             kwargs={"lang": context["language"].code, "project": obj.slug},
-        )
-
-    # Language listing on porject page
-    if isinstance(obj, ProjectLanguageStats):
-        return reverse(
-            "project-language",
-            kwargs={"lang": obj.language.code, "project": obj.obj.slug},
         )
 
     return obj.get_absolute_url()
@@ -673,6 +716,55 @@ def get_filter_name(name):
     return names[name]
 
 
+def translation_alerts(translation):
+    if translation.is_source:
+        yield (
+            "state/source.svg",
+            gettext("This translation is used for source strings."),
+            None,
+        )
+
+
+def component_alerts(component):
+    if component.is_repo_link:
+        yield (
+            "state/link.svg",
+            gettext("This component is linked to the %(target)s repository.")
+            % {"target": component.linked_component},
+            None,
+        )
+
+    if component.all_alerts:
+        yield (
+            "state/alert.svg",
+            gettext("Fix this component to clear its alerts."),
+            component.get_absolute_url() + "#alerts",
+        )
+
+    if component.locked:
+        yield ("state/lock.svg", gettext("This translation is locked."), None)
+
+    if component.in_progress():
+        yield (
+            "state/update.svg",
+            gettext("Updating translation component…"),
+            reverse("component_progress", kwargs=component.get_reverse_url_kwargs())
+            + "?info=1",
+        )
+
+
+def project_alerts(project):
+    if project.has_alerts:
+        yield (
+            "state/alert.svg",
+            gettext("Some of the components within this project have alerts."),
+            None,
+        )
+
+    if project.locked:
+        yield ("state/lock.svg", gettext("This translation is locked."), None)
+
+
 @register.inclusion_tag("trans/embed-alert.html", takes_context=True)
 def indicate_alerts(context, obj):
     result = []
@@ -681,7 +773,9 @@ def indicate_alerts(context, obj):
     component = None
     project = None
 
-    if isinstance(obj, Translation):
+    global_base = context.get("global_base")
+
+    if isinstance(obj, (Translation, GhostTranslation)):
         translation = obj
         component = obj.component
         project = component.project
@@ -690,81 +784,59 @@ def indicate_alerts(context, obj):
         project = component.project
     elif isinstance(obj, Project):
         project = obj
+    elif isinstance(obj, ProjectLanguage):
+        project = obj.project
+    elif isinstance(obj, GhostProjectLanguageStats):
+        component = obj.component
+        project = component.project
 
-    if context["user"].has_perm("project.edit", project):
+    if project is not None and context["user"].has_perm("project.edit", project):
         result.append(
             ("state/admin.svg", gettext("You administrate this project."), None)
         )
 
-    if translation:
-        if translation.is_source:
+    if translation is not None:
+        result.extend(translation_alerts(translation))
+
+    if component is not None:
+        result.extend(component_alerts(component))
+    elif project is not None:
+        result.extend(project_alerts(project))
+
+    if getattr(obj, "is_ghost", False):
+        result.append(
+            ("state/ghost.svg", gettext("This translation does not yet exist."), None)
+        )
+    elif global_base:
+        if isinstance(global_base, str):
+            global_base = getattr(obj, global_base)
+        stats = get_stats(obj)
+
+        count = global_base.source_strings - stats.all
+        if count:
             result.append(
                 (
-                    "state/source.svg",
-                    gettext("This translation is used for source strings."),
-                    None,
-                )
-            )
-
-    if component:
-        project = component.project
-
-        if component.is_repo_link:
-            result.append(
-                (
-                    "state/link.svg",
-                    gettext("This component is linked to the %(target)s repository.")
-                    % {"target": component.linked_component},
-                    None,
-                )
-            )
-
-        if component.all_alerts.exists():
-            result.append(
-                (
-                    "state/alert.svg",
-                    gettext("Fix this component to clear its alerts."),
-                    component.get_absolute_url() + "#alerts",
-                )
-            )
-
-        if component.locked:
-            result.append(
-                ("state/lock.svg", gettext("This translation is locked."), None)
-            )
-
-        if component.in_progress():
-            result.append(
-                (
-                    "state/update.svg",
-                    gettext("Updating translation component…"),
-                    reverse(
-                        "component_progress", kwargs=component.get_reverse_url_kwargs()
+                    "state/ghost.svg",
+                    ngettext(
+                        "%(count)s string is not being translated here.",
+                        "%(count)s strings are not being translated here.",
+                        count,
                     )
-                    + "?info=1",
-                )
-            )
-    elif project:
-        if project.all_alerts.exists():
-            result.append(
-                (
-                    "state/alert.svg",
-                    gettext("Some of the components within this project have alerts."),
+                    % {"count": count},
                     None,
                 )
             )
 
-        if project.locked:
-            result.append(
-                ("state/lock.svg", gettext("This translation is locked."), None)
+    if getattr(obj, "is_shared", False):
+        result.append(
+            (
+                "state/share.svg",
+                gettext("Shared from the %s project.") % obj.is_shared,
+                None,
             )
+        )
 
     return {"icons": result, "component": component, "project": project}
-
-
-@register.filter
-def replace_english(value, language):
-    return value.replace("English", force_str(language))
 
 
 @register.filter
@@ -774,18 +846,18 @@ def markdown(text):
 
 @register.filter
 def choiceval(boundfield):
-    """Get literal value from field's choices.
+    """Get literal value from a field's choices.
 
     Empty value is returned if value is not selected or invalid.
     """
     value = boundfield.value()
-    if not hasattr(boundfield.field, "choices"):
-        return value
     if value is None:
         return ""
-    choices = dict(boundfield.field.choices)
     if value is True:
         return gettext("enabled")
+    if not hasattr(boundfield.field, "choices"):
+        return value
+    choices = {str(choice): value for choice, value in boundfield.field.choices}
     if isinstance(value, list):
         return ", ".join(choices.get(val, val) for val in value)
     return choices.get(value, value)
@@ -806,3 +878,24 @@ def percent_format(number):
     return pgettext("Translated percents", "%(percent)s%%") % {
         "percent": intcomma(int(number))
     }
+
+
+@register.filter
+def hash_text(name):
+    """Hash text for use in HTML id."""
+    return hash_to_checksum(siphash("Weblate URL hash", name.encode()))
+
+
+@register.simple_tag
+def sort_choices():
+    return SORT_CHOICES.items()
+
+
+@register.simple_tag(takes_context=True)
+def render_alert(context, alert):
+    return alert.render(user=context["user"])
+
+
+@register.simple_tag
+def get_message_kind(tags):
+    return get_message_kind_impl(tags)

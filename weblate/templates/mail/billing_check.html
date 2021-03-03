@@ -8,7 +8,7 @@
 
 <ul>
 {% for bill in limit %}
-<li>{{ bill }}</li>
+<li><a href="{{ bill.get_absolute_url }}">{{ bill }}</a></li>
 {% endfor %}
 </ul>
 {% endif %}
@@ -19,6 +19,26 @@
 <ul>
 {% for bill in due %}
 <li><a href="{{ bill.get_absolute_url }}">{{ bill }}</a></li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% if toremove %}
+<p>Following billings are scheduled for removal:</p>
+
+<ul>
+{% for bill in toremove %}
+<li><a href="{{ bill.get_absolute_url }}">{{ bill }}</a> [{{ bill.removal }}]</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% if trial %}
+<p>Following trials are active:</p>
+
+<ul>
+{% for bill in trial %}
+<li><a href="{{ bill.get_absolute_url }}">{{ bill }}</a> [{{ bill.expiry }}]</li>
 {% endfor %}
 </ul>
 {% endif %}

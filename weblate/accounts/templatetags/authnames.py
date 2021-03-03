@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -31,6 +30,10 @@ SOCIALS = {
     "auth0": {
         "name": settings.SOCIAL_AUTH_AUTH0_TITLE,
         "image": settings.SOCIAL_AUTH_AUTH0_IMAGE,
+    },
+    "saml": {
+        "name": settings.SOCIAL_AUTH_SAML_TITLE,
+        "image": settings.SOCIAL_AUTH_SAML_IMAGE,
     },
     "google": {"name": "Google", "image": "google.svg"},
     "google-oauth2": {"name": "Google", "image": "google.svg"},

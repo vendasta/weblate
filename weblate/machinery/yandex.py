@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,7 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
-
 
 from django.conf import settings
 
@@ -45,7 +43,7 @@ class YandexTranslation(MachineTranslation):
             return
         if "message" in response:
             raise MachineTranslationError(response["message"])
-        raise MachineTranslationError("Error: {0}".format(response["code"]))
+        raise MachineTranslationError("Error: {}".format(response["code"]))
 
     def download_languages(self):
         """Download list of supported languages from a service."""
@@ -58,7 +56,16 @@ class YandexTranslation(MachineTranslation):
         self.check_failure(payload)
         return payload["langs"].keys()
 
-    def download_translations(self, source, language, text, unit, user):
+    def download_translations(
+        self,
+        source,
+        language,
+        text: str,
+        unit,
+        user,
+        search: bool,
+        threshold: int = 75,
+    ):
         """Download list of possible translations from a service."""
         response = self.request(
             "get",
@@ -66,7 +73,7 @@ class YandexTranslation(MachineTranslation):
             params={
                 "key": settings.MT_YANDEX_KEY,
                 "text": text,
-                "lang": "{0}-{1}".format(source, language),
+                "lang": f"{source}-{language}",
                 "target": language,
             },
         )
@@ -81,3 +88,9 @@ class YandexTranslation(MachineTranslation):
                 "service": self.name,
                 "source": text,
             }
+
+    def get_error_message(self, exc):
+        try:
+            return exc.response.json()["message"]
+        except Exception:
+            return super().get_error_message(exc)

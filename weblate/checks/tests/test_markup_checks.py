@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -32,6 +31,7 @@ from weblate.checks.markup import (
     XMLValidityCheck,
 )
 from weblate.checks.tests.test_checks import CheckTestCase
+from weblate.trans.models import Unit
 
 
 class BBCodeCheckTest(CheckTestCase):
@@ -186,6 +186,100 @@ class MarkdownLinkCheckTest(CheckTestCase):
             ),
         )
 
+    def test_spacing(self):
+        self.do_test(
+            True,
+            (
+                "[My Home Page](http://example.com)",
+                "[Moje stránka] (http://example.com)",
+                "md-text",
+            ),
+        )
+
+    def test_fixup(self):
+        unit = Unit(
+            source="[My Home Page](http://example.com)",
+            target="[Moje stránka] (http://example.com)",
+        )
+
+        self.assertEqual(self.check.get_fixup(unit), [(r"\] +\(", "](")])
+
+        unit = Unit(
+            source="[My Home Page](http://example.com)",
+            target="[Moje stránka]",
+        )
+
+        self.assertEqual(self.check.get_fixup(unit), None)
+
+    def test_mutliple_ordered(self):
+        self.do_test(
+            False,
+            (
+                "[Weblate](#weblate) has an [example]({{example}}) "
+                "for illustrating the useage of [Weblate](#weblate)",
+                "Ein [Beispiel]({{example}}) in [Webspät](#weblate) "
+                "illustriert die Verwendung von [Webspät](#weblate)",
+                "md-text",
+            ),
+        )
+
+        self.do_test(
+            True,
+            (
+                "[Weblate](#weblate) has an [example]({{example}}) "
+                "for illustrating the useage of [Weblate](#weblate)",
+                "Ein [Beispiel]({{example}}) in [Webspät](#weblate) "
+                "illustriert die Verwendung von [Webspät](#Webspät)",
+                "md-text",
+            ),
+        )
+        self.do_test(
+            True,
+            (
+                "[Weblate](#weblate) has an [example]({{example}}) "
+                "for illustrating the useage of [Weblate](#weblate)",
+                "Ein [Beispiel]({{example}}) in [Webspät](#weblate) "
+                "illustriert die Verwendung von Webspät",
+                "md-text",
+            ),
+        )
+
+    def test_url(self):
+        self.do_test(
+            False,
+            (
+                "See <https://weblate.org/>",
+                "Viz <https://weblate.org/>",
+                "md-text",
+            ),
+        )
+        self.do_test(
+            True,
+            (
+                "See <https://weblate.org/>",
+                "Viz <https:>",
+                "md-text",
+            ),
+        )
+
+    def test_email(self):
+        self.do_test(
+            False,
+            (
+                "See <noreply@weblate.org>",
+                "Viz <noreply@weblate.org>",
+                "md-text",
+            ),
+        )
+        self.do_test(
+            True,
+            (
+                "See <noreply@weblate.org>",
+                "Viz <noreply>",
+                "md-text",
+            ),
+        )
+
 
 class MarkdownSyntaxCheckTest(CheckTestCase):
     check = MarkdownSyntaxCheck()
@@ -200,7 +294,7 @@ class MarkdownSyntaxCheckTest(CheckTestCase):
         self.test_failure_3 = ("_string_", "*string*", "md-text")
         self.test_highlight = (
             "md-text",
-            "**string** ~~strike~~ `code`",
+            "**string** ~~strike~~ `code` <https://weblate.org> <noreply@weblate.org>",
             [
                 (0, 2, "**"),
                 (8, 10, "**"),
@@ -208,6 +302,10 @@ class MarkdownSyntaxCheckTest(CheckTestCase):
                 (19, 21, "~~"),
                 (22, 23, "`"),
                 (27, 28, "`"),
+                (29, 30, "<"),
+                (49, 50, ">"),
+                (51, 52, "<"),
+                (71, 72, ">"),
             ],
         )
 

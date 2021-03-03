@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -22,25 +21,16 @@
 from ssl import CertificateError
 
 from django.conf import settings
-from django.core.checks import Critical
 
-from weblate.utils.docs import get_doc_url
+from weblate.accounts.avatar import download_avatar_image
+from weblate.utils.checks import weblate_check
 
 
 def check_avatars(app_configs, **kwargs):
-    from weblate.auth.models import get_anonymous
-    from weblate.accounts.avatar import download_avatar_image
-
     if not settings.ENABLE_AVATARS:
         return []
     try:
-        download_avatar_image(get_anonymous(), 32)
+        download_avatar_image("noreply@weblate.org", 32)
         return []
-    except (IOError, CertificateError) as error:
-        return [
-            Critical(
-                "Failed to download avatar: {}".format(error),
-                hint=get_doc_url("admin/optionals", "avatars"),
-                id="weblate.E018",
-            )
-        ]
+    except (OSError, CertificateError) as error:
+        return [weblate_check("weblate.E018", f"Failed to download avatar: {error}")]

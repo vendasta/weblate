@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -34,6 +33,7 @@ MENU = (
     ("cookies", "legal:cookies", _("Cookies")),
     ("security", "legal:security", _("Security")),
     ("privacy", "legal:privacy", _("Privacy")),
+    ("contracts", "legal:contracts", _("Subcontractors")),
 )
 
 
@@ -49,7 +49,7 @@ class LegalView(TemplateView):
         return context
 
     def get_template_names(self):
-        return ["legal/{0}.html".format(self.page)]
+        return [f"legal/{self.page}.html"]
 
 
 class TermsView(LegalView):
@@ -66,6 +66,10 @@ class SecurityView(LegalView):
 
 class PrivacyView(LegalView):
     page = "privacy"
+
+
+class ContractsView(LegalView):
+    page = "contracts"
 
 
 @never_cache
