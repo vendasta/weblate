@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -23,7 +22,7 @@ from weblate.wladmin.models import WeblateModelAdmin
 
 
 class ScreenshotAdmin(WeblateModelAdmin):
-    list_display = ["name", "component"]
+    list_display = ["name", "translation"]
     search_fields = ["name", "image"]
-    list_filter = [("component", admin.RelatedOnlyFieldListFilter)]
+    list_filter = [("translation__component", admin.RelatedOnlyFieldListFilter)]
     raw_id_fields = ("units",)

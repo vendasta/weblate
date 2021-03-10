@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -39,7 +38,7 @@ from weblate.checks.chars import (
     KashidaCheck,
     MaxLengthCheck,
     NewLineCountCheck,
-    PuctuationSpacingCheck,
+    PunctuationSpacingCheck,
     ZeroWidthSpaceCheck,
 )
 from weblate.checks.tests.test_checks import CheckTestCase, MockUnit
@@ -121,6 +120,11 @@ class EndStopCheckTest(CheckTestCase):
         self.do_test(False, ("Text:", "Text`", ""), "hy")
         self.do_test(False, ("Text:", "Text՝", ""), "hy")
         self.do_test(True, ("Text.", "Text", ""), "hy")
+
+    def test_santali(self):
+        self.do_test(False, ("Text.", "Text.", ""), "sat")
+        self.do_test(False, ("Text.", "Text᱾", ""), "sat")
+        self.do_test(True, ("Text.", "Text", ""), "sat")
 
 
 class EndColonCheckTest(CheckTestCase):
@@ -227,8 +231,8 @@ class ZeroWidthSpaceCheckTest(CheckTestCase):
     def setUp(self):
         super().setUp()
         self.test_good_matching = ("str\u200bing", "str\u200bing", "")
-        self.test_failure_1 = ("str\u200bing", "string", "")
-        self.test_failure_2 = ("string", "str\u200bing", "")
+        self.test_good_none = ("str\u200bing", "string", "")
+        self.test_failure_1 = ("string", "str\u200bing", "")
 
 
 class MaxLengthCheckTest(TestCase):
@@ -273,6 +277,22 @@ class MaxLengthCheckTest(TestCase):
             )
         )
 
+    def test_replace_check(self):
+        self.assertFalse(
+            self.check.check_target(
+                ["hi %s"],
+                ["ahoj %s"],
+                MockUnit(flags="max-length:10"),
+            )
+        )
+        self.assertTrue(
+            self.check.check_target(
+                ["hi %s"],
+                ["ahoj %s"],
+                MockUnit(flags='max-length:10, replacements:%s:"very long text"'),
+            )
+        )
+
 
 class EndSemicolonCheckTest(CheckTestCase):
     check = EndSemicolonCheck()
@@ -287,6 +307,9 @@ class EndSemicolonCheckTest(CheckTestCase):
     def test_greek(self):
         self.do_test(False, ("Text?", "Texte;", ""), "el")
 
+    def test_xml(self):
+        self.do_test(False, ("Text", "Texte&amp;", ""))
+
 
 class KashidaCheckTest(CheckTestCase):
     check = KashidaCheck()
@@ -299,8 +322,8 @@ class KashidaCheckTest(CheckTestCase):
         self.test_failure_3 = ("string", "string\uFE7F", "")
 
 
-class PuctuationSpacingCheckTest(CheckTestCase):
-    check = PuctuationSpacingCheck()
+class PunctuationSpacingCheckTest(CheckTestCase):
+    check = PunctuationSpacingCheck()
     default_lang = "fr"
 
     def setUp(self):
@@ -318,3 +341,7 @@ class PuctuationSpacingCheckTest(CheckTestCase):
         self.test_failure_1 = ("string", "string!", "")
         self.test_failure_2 = ("string", "string\u00A0? string;", "")
         self.test_failure_3 = ("string", "string\u00A0; string?", "")
+
+    def test_fr_ca(self):
+        self.do_test(True, ("string", "string!", ""), "fr")
+        self.do_test(False, ("string", "string!", ""), "fr_CA")

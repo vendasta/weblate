@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -44,7 +43,7 @@ def sort_key(line):
 
 def unicode_format(match):
     """Callback for re.sub for formatting unicode chars."""
-    return "\\u{0}".format(match.group(0)[2:].upper())
+    return "\\u{}".format(match.group(0)[2:].upper())
 
 
 def fix_newlines(lines):
@@ -124,7 +123,7 @@ def filter_lines(lines):
 
 def format_file(filename):
     """Format single properties file."""
-    with open(filename, "r") as handle:
+    with open(filename) as handle:
         lines = handle.readlines()
 
     result = sorted(lines, key=sort_key)
@@ -142,8 +141,8 @@ class PropertiesSortAddon(BaseAddon):
     events = (EVENT_PRE_COMMIT,)
     name = "weblate.properties.sort"
     verbose = _("Formats the Java properties file")
-    description = _("This addon sorts the Java properties file.")
-    compat = {"file_format": frozenset(("properties-utf8", "properties"))}
+    description = _("Sorts the Java properties file.")
+    compat = {"file_format": {"properties-utf8", "properties", "gwt"}}
     icon = "sort-alphabetical.svg"
 
     def pre_commit(self, translation, author):

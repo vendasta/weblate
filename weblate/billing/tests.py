@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -40,6 +39,8 @@ from weblate.billing.tasks import (
     schedule_removal,
 )
 from weblate.trans.models import Project
+from weblate.trans.tests.test_models import RepoTestCase
+from weblate.trans.tests.utils import create_test_billing
 
 TEST_DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test-data")
 
@@ -49,9 +50,8 @@ class BillingTest(TestCase):
         self.user = User.objects.create_user(
             username="bill", password="kill", email="noreply@example.net"
         )
-        self.plan = Plan.objects.create(name="test", limit_projects=1, price=1.0)
-        self.billing = Billing.objects.create(plan=self.plan)
-        self.billing.owners.add(self.user)
+        self.billing = create_test_billing(self.user, invoice=False)
+        self.plan = self.billing.plan
         self.invoice = Invoice.objects.create(
             billing=self.billing,
             start=timezone.now().date() - timedelta(days=2),
@@ -61,8 +61,11 @@ class BillingTest(TestCase):
         )
         self.projectnum = 0
 
+    def refresh_from_db(self):
+        self.billing = Billing.objects.get(pk=self.billing.pk)
+
     def add_project(self):
-        name = "test{0}".format(self.projectnum)
+        name = f"test{self.projectnum}"
         self.projectnum += 1
         project = Project.objects.create(
             name=name, slug=name, access_control=Project.ACCESS_PROTECTED
@@ -84,22 +87,23 @@ class BillingTest(TestCase):
 
         # Owner
         self.client.login(username="bill", password="kill")
-        response = self.client.get(reverse("billing"))
+        response = self.client.get(reverse("billing"), follow=True)
+        self.assertRedirects(response, self.billing.get_absolute_url())
         self.assertContains(response, "Current plan")
 
         # Admin
         self.user.is_superuser = True
         self.user.save()
         response = self.client.get(reverse("billing"))
-        self.assertContains(response, "Current plan")
+        self.assertContains(response, "Owners")
 
     def test_limit_projects(self):
         self.assertTrue(self.billing.in_limits)
         self.add_project()
-        self.billing.refresh_from_db()
+        self.refresh_from_db()
         self.assertTrue(self.billing.in_limits)
         self.add_project()
-        self.billing.refresh_from_db()
+        self.refresh_from_db()
         self.assertFalse(self.billing.in_limits)
 
     def test_commands(self):
@@ -112,7 +116,7 @@ class BillingTest(TestCase):
         call_command("billing_check", stdout=out)
         self.assertEqual(
             out.getvalue(),
-            "Following billings are over limit:\n" " * test0, test1 (test)\n",
+            "Following billings are over limit:\n" " * test0, test1 (Basic plan)\n",
         )
         out = StringIO()
         call_command("billing_check", "--valid", stdout=out)
@@ -123,9 +127,9 @@ class BillingTest(TestCase):
         self.assertEqual(
             out.getvalue(),
             "Following billings are over limit:\n"
-            " * test0, test1 (test)\n"
+            " * test0, test1 (Basic plan)\n"
             "Following billings are past due date:\n"
-            " * test0, test1 (test)\n",
+            " * test0, test1 (Basic plan)\n",
         )
         call_command("billing_check", "--notify", stdout=out)
         self.assertEqual(len(mail.outbox), 1)
@@ -218,8 +222,9 @@ class BillingTest(TestCase):
         perform_removal()
         billing_alert()
         self.assertEqual(len(mail.outbox), 0)
-        self.billing.refresh_from_db()
+        self.refresh_from_db()
         self.assertIsNone(self.billing.removal)
+        self.assertTrue(self.billing.paid)
         self.assertEqual(self.billing.state, Billing.STATE_ACTIVE)
         self.assertEqual(self.billing.projects.count(), 1)
 
@@ -232,9 +237,10 @@ class BillingTest(TestCase):
         perform_removal()
         billing_alert()
         self.assertEqual(len(mail.outbox), 1)
-        self.billing.refresh_from_db()
+        self.refresh_from_db()
         self.assertIsNone(self.billing.removal)
         self.assertEqual(self.billing.state, Billing.STATE_ACTIVE)
+        self.assertTrue(self.billing.paid)
         self.assertEqual(self.billing.projects.count(), 1)
         self.assertEqual(mail.outbox.pop().subject, "Your billing plan has expired")
 
@@ -247,9 +253,10 @@ class BillingTest(TestCase):
         perform_removal()
         billing_alert()
         self.assertEqual(len(mail.outbox), 1)
-        self.billing.refresh_from_db()
+        self.refresh_from_db()
         self.assertIsNotNone(self.billing.removal)
         self.assertEqual(self.billing.state, Billing.STATE_ACTIVE)
+        self.assertFalse(self.billing.paid)
         self.assertEqual(self.billing.projects.count(), 1)
         self.assertEqual(
             mail.outbox.pop().subject,
@@ -258,10 +265,11 @@ class BillingTest(TestCase):
 
         # Final removal
         self.billing.removal = timezone.now() - timedelta(days=30)
-        self.billing.save()
+        self.billing.save(skip_limits=True)
         perform_removal()
-        self.billing.refresh_from_db()
+        self.refresh_from_db()
         self.assertEqual(self.billing.state, Billing.STATE_TERMINATED)
+        self.assertFalse(self.billing.paid)
         self.assertEqual(self.billing.projects.count(), 0)
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(
@@ -271,7 +279,7 @@ class BillingTest(TestCase):
     @override_settings(EMAIL_SUBJECT_PREFIX="")
     def test_trial(self):
         self.billing.state = Billing.STATE_TRIAL
-        self.billing.save()
+        self.billing.save(skip_limits=True)
         self.billing.invoice_set.all().delete()
         self.add_project()
 
@@ -279,32 +287,67 @@ class BillingTest(TestCase):
         billing_check()
         notify_expired()
         perform_removal()
-        self.billing.refresh_from_db()
+        self.refresh_from_db()
         self.assertEqual(self.billing.state, Billing.STATE_TRIAL)
+        self.assertTrue(self.billing.paid)
         self.assertEqual(self.billing.projects.count(), 1)
         self.assertIsNone(self.billing.removal)
         self.assertEqual(len(mail.outbox), 0)
 
         # Future expiry
-        self.billing.expiry = timezone.now() + timedelta(days=1)
-        self.billing.save()
+        self.billing.expiry = timezone.now() + timedelta(days=30)
+        self.billing.save(skip_limits=True)
         billing_check()
         notify_expired()
         perform_removal()
-        self.billing.refresh_from_db()
+        self.refresh_from_db()
         self.assertEqual(self.billing.state, Billing.STATE_TRIAL)
+        self.assertTrue(self.billing.paid)
         self.assertEqual(self.billing.projects.count(), 1)
         self.assertIsNone(self.billing.removal)
         self.assertEqual(len(mail.outbox), 0)
 
-        # Past expiry
-        self.billing.expiry = timezone.now() - timedelta(days=1)
-        self.billing.save()
+        # Close expiry
+        self.billing.expiry = timezone.now() + timedelta(days=1)
+        self.billing.save(skip_limits=True)
         billing_check()
         notify_expired()
         perform_removal()
-        self.billing.refresh_from_db()
-        self.assertEqual(self.billing.state, Billing.STATE_EXPIRED)
+        self.refresh_from_db()
+        self.assertEqual(self.billing.state, Billing.STATE_TRIAL)
+        self.assertTrue(self.billing.paid)
+        self.assertEqual(self.billing.projects.count(), 1)
+        self.assertIsNone(self.billing.removal)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(
+            mail.outbox.pop().subject, "Your trial period is about to expire"
+        )
+
+        # Past expiry
+        self.billing.expiry = timezone.now() - timedelta(days=1)
+        self.billing.save(skip_limits=True)
+        billing_check()
+        notify_expired()
+        perform_removal()
+        self.refresh_from_db()
+        self.assertEqual(self.billing.state, Billing.STATE_TRIAL)
+        self.assertTrue(self.billing.paid)
+        self.assertEqual(self.billing.projects.count(), 1)
+        self.assertIsNone(self.billing.expiry)
+        self.assertIsNotNone(self.billing.removal)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(
+            mail.outbox.pop().subject,
+            "Your translation project is scheduled for removal",
+        )
+
+        # There should be notification sent when removal is scheduled
+        billing_check()
+        notify_expired()
+        perform_removal()
+        self.refresh_from_db()
+        self.assertEqual(self.billing.state, Billing.STATE_TRIAL)
+        self.assertTrue(self.billing.paid)
         self.assertEqual(self.billing.projects.count(), 1)
         self.assertIsNotNone(self.billing.removal)
         self.assertEqual(len(mail.outbox), 1)
@@ -314,14 +357,113 @@ class BillingTest(TestCase):
         )
 
         # Removal
-        self.billing.removal = timezone.now() - timedelta(days=30)
-        self.billing.save()
+        self.billing.removal = timezone.now() - timedelta(days=1)
+        self.billing.save(skip_limits=True)
         billing_check()
         perform_removal()
-        self.billing.refresh_from_db()
+        self.refresh_from_db()
         self.assertEqual(self.billing.state, Billing.STATE_TERMINATED)
+        self.assertFalse(self.billing.paid)
         self.assertEqual(self.billing.projects.count(), 0)
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(
             mail.outbox.pop().subject, "Your translation project was removed"
         )
+
+    def test_free_trial(self):
+        self.plan.price = 0
+        self.plan.yearly_price = 0
+        self.plan.save()
+        self.test_trial()
+
+
+class HostingTest(RepoTestCase):
+    def get_user(self):
+        user = User.objects.create_user(
+            username="testuser", password="testpassword", full_name="Test User"
+        )
+        user.full_name = "First Second"
+        user.email = "noreply@example.com"
+        user.save()
+        return user
+
+    @override_settings(
+        OFFER_HOSTING=True,
+        ADMINS_HOSTING=["noreply@example.com"],
+    )
+    def test_hosting(self):
+        """Test for hosting form with enabled hosting."""
+        Plan.objects.create(price=0, slug="libre", name="Libre")
+        user = self.get_user()
+        self.client.login(username="testuser", password="testpassword")
+        response = self.client.get(reverse("hosting"))
+        self.assertContains(response, "trial")
+
+        # Creating a trial
+        response = self.client.post(reverse("trial"), {"plan": "libre"}, follow=True)
+        self.assertContains(response, "Create project")
+        # Flush outbox
+        mail.outbox = []
+
+        # Add component to a trial
+        component = self.create_component()
+        billing = user.billing_set.get()
+        billing.projects.add(component.project)
+
+        # Not valid for libre
+        self.assertFalse(billing.valid_libre)
+        response = self.client.post(
+            billing.get_absolute_url(),
+            {"request": "1", "message": "msg"},
+            follow=True,
+        )
+        self.assertNotContains(response, "Pending approval")
+
+        # Add missing license info
+        component.project.component_set.update(license="GPL-3.0-or-later")
+        billing = user.billing_set.get()
+
+        # Valid for libre
+        self.assertTrue(billing.valid_libre)
+        response = self.client.post(
+            billing.get_absolute_url(),
+            {"request": "1", "message": "msg"},
+            follow=True,
+        )
+        self.assertContains(response, "Pending approval")
+
+        # Verify message
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(
+            mail.outbox[0].subject, "[Weblate] Hosting request for Test (Libre, trial)"
+        )
+        self.assertIn("testuser", mail.outbox[0].body)
+        self.assertEqual(mail.outbox[0].to, ["noreply@example.com"])
+
+        # Non-admin approval
+        response = self.client.post(
+            billing.get_absolute_url(),
+            {"approve": "1"},
+            follow=True,
+        )
+        self.assertContains(response, "Pending approval")
+
+        # Admin extension
+        user.is_superuser = True
+        user.save()
+        response = self.client.post(
+            billing.get_absolute_url(),
+            {"extend": "1"},
+            follow=True,
+        )
+        self.assertContains(response, "Pending approval")
+
+        # Admin approval
+        user.is_superuser = True
+        user.save()
+        response = self.client.post(
+            billing.get_absolute_url(),
+            {"approve": "1"},
+            follow=True,
+        )
+        self.assertNotContains(response, "Pending approval")

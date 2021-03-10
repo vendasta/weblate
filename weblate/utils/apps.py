@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,22 +19,31 @@
 
 from django.apps import AppConfig
 from django.core.checks import register
+from django.db.models import CharField, TextField
 
 from weblate.utils.checks import (
     check_cache,
     check_celery,
     check_data_writable,
-    check_database,
+    check_diskspace,
+    check_encoding,
     check_errors,
     check_mail_connection,
     check_perms,
     check_settings,
     check_site,
     check_templates,
+    check_version,
 )
-from weblate.utils.django_hacks import monkey_patch_translate
+from weblate.utils.db import using_postgresql
 from weblate.utils.errors import init_error_collection
-from weblate.utils.version import check_version
+
+from .db import (
+    MySQLSearchLookup,
+    MySQLSubstringLookup,
+    PostgreSQLSearchLookup,
+    PostgreSQLSubstringLookup,
+)
 
 
 class UtilsConfig(AppConfig):
@@ -48,15 +56,25 @@ class UtilsConfig(AppConfig):
         register(check_data_writable)
         register(check_mail_connection, deploy=True)
         register(check_celery, deploy=True)
-        register(check_database, deploy=True)
         register(check_cache, deploy=True)
         register(check_settings, deploy=True)
         register(check_templates, deploy=True)
-        register(check_site, deploy=True)
+        register(check_site)
         register(check_perms, deploy=True)
         register(check_errors, deploy=True)
-        register(check_version)
-
-        monkey_patch_translate()
+        register(check_version, deploy=True)
+        register(check_encoding)
+        register(check_diskspace, deploy=True)
 
         init_error_collection()
+
+        if using_postgresql():
+            CharField.register_lookup(PostgreSQLSearchLookup)
+            TextField.register_lookup(PostgreSQLSearchLookup)
+            CharField.register_lookup(PostgreSQLSubstringLookup)
+            TextField.register_lookup(PostgreSQLSubstringLookup)
+        else:
+            CharField.register_lookup(MySQLSearchLookup)
+            TextField.register_lookup(MySQLSearchLookup)
+            CharField.register_lookup(MySQLSubstringLookup)
+            TextField.register_lookup(MySQLSubstringLookup)

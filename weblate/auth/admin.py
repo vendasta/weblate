@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -24,15 +23,22 @@ from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
-from weblate.accounts.forms import FullNameField, UniqueEmailMixin, UsernameField
+from weblate.accounts.forms import FullNameField, UniqueEmailMixin, UniqueUsernameField
 from weblate.accounts.utils import remove_user
+from weblate.auth.data import ROLES
 from weblate.auth.models import AutoGroup, Group, User
 from weblate.wladmin.models import WeblateModelAdmin
+
+BUILT_IN_ROLES = {role[0] for role in ROLES}
 
 
 def block_group_edit(obj):
     """Whether to allo user editing of an group."""
     return obj and obj.internal and "@" in obj.name
+
+
+def block_role_edit(obj):
+    return obj and obj.name in BUILT_IN_ROLES
 
 
 class InlineAutoGroupAdmin(admin.TabularInline):
@@ -59,12 +65,22 @@ class RoleAdmin(WeblateModelAdmin):
     list_display = ("name",)
     filter_horizontal = ("permissions",)
 
+    def has_change_permission(self, request, obj=None):
+        if block_role_edit(obj):
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        if block_role_edit(obj):
+            return False
+        return super().has_delete_permission(request, obj)
+
 
 class WeblateUserChangeForm(UserChangeForm):
     class Meta:
         model = User
         fields = "__all__"
-        field_classes = {"username": UsernameField, "full_name": FullNameField}
+        field_classes = {"username": UniqueUsernameField, "full_name": FullNameField}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -78,14 +94,31 @@ class WeblateUserCreationForm(UserCreationForm, UniqueEmailMixin):
     class Meta:
         model = User
         fields = ("username", "email", "full_name")
-        field_classes = {"username": UsernameField, "full_name": FullNameField}
+        field_classes = {"username": UniqueUsernameField, "full_name": FullNameField}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["email"].required = True
 
 
-class WeblateUserAdmin(UserAdmin):
+class WeblateAuthAdmin(WeblateModelAdmin):
+    def get_deleted_objects(self, objs, request):
+        (
+            deleted_objects,
+            model_count,
+            perms_needed,
+            protected,
+        ) = super().get_deleted_objects(objs, request)
+        # Discard permission check for objects where deletion in admin is disabled
+        perms_needed.discard("profile")
+        perms_needed.discard("audit_log")
+        perms_needed.discard("audit log")
+        perms_needed.discard("verified_email")
+        perms_needed.discard("verified email")
+        return deleted_objects, model_count, perms_needed, protected
+
+
+class WeblateUserAdmin(WeblateAuthAdmin, UserAdmin):
     """Custom UserAdmin class.
 
     Used to add listing of group membership and whether user is active.
@@ -118,7 +151,7 @@ class WeblateUserAdmin(UserAdmin):
 
     def user_groups(self, obj):
         """Display comma separated list of user groups."""
-        return ",".join((g.name for g in obj.groups.iterator()))
+        return ",".join(g.name for g in obj.groups.iterator())
 
     def action_checkbox(self, obj):
         if obj.is_anonymous:
@@ -144,7 +177,7 @@ class WeblateUserAdmin(UserAdmin):
             self.delete_model(request, obj)
 
 
-class WeblateGroupAdmin(WeblateModelAdmin):
+class WeblateGroupAdmin(WeblateAuthAdmin):
     save_as = True
     model = Group
     inlines = [InlineAutoGroupAdmin]

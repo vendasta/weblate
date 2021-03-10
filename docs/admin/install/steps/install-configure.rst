@@ -9,7 +9,7 @@ Configuring Weblate
    ``~/weblate-env/bin/weblate``.
 
 #. Copy the file :file:`~/weblate-env/lib/python3.7/site-packages/weblate/settings_example.py`
-   to :file:`~/weblate-env/lib/python3.7/site-packages/weblate/settings.py`
+   to :file:`~/weblate-env/lib/python3.7/site-packages/weblate/settings.py`.
 
 #.
    .. include:: steps/adjust-config.rst
@@ -28,11 +28,17 @@ Configuring Weblate
 
         weblate createadmin
 
-#. Collect static files for web server (see :ref:`server`):
+#. Collect static files for web server (see :ref:`server` and :ref:`static-files`):
 
    .. code-block:: sh
 
         weblate collectstatic
+
+#. Compress JavaScript and CSS files (optional, see :ref:`production-compress`):
+
+   .. code-block:: sh
+
+        weblate compress
 
 #. Start Celery workers. This is not necessary for development purposes, but
    strongly recommended otherwise. See :ref:`celery` for more info:

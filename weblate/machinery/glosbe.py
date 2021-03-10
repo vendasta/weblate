@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,7 +17,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-
 from weblate.machinery.base import MachineTranslation
 
 
@@ -27,16 +25,26 @@ class GlosbeTranslation(MachineTranslation):
 
     name = "Glosbe"
     max_score = 90
+    do_cleanup = False
 
-    def convert_language(self, language):
+    def map_code_code(self, code):
         """Convert language to service specific code."""
-        return language.replace("_", "-").split("-")[0].lower()
+        return code.replace("_", "-").split("-")[0].lower()
 
     def is_supported(self, source, language):
         """Any language is supported."""
         return True
 
-    def download_translations(self, source, language, text, unit, user):
+    def download_translations(
+        self,
+        source,
+        language,
+        text: str,
+        unit,
+        user,
+        search: bool,
+        threshold: int = 75,
+    ):
         """Download list of possible translations from a service."""
         params = {"from": source, "dest": language, "format": "json", "phrase": text}
         response = self.request(

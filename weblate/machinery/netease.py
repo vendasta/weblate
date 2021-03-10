@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Copyright ©2018 Sun Zhigang <hzsunzhigang@corp.netease.com>
 #
@@ -17,7 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
-
 
 import random
 import time
@@ -62,7 +60,7 @@ class NeteaseSightTranslation(MachineTranslation):
 
         sign = settings.MT_NETEASE_SECRET + nonce + timestamp
         sign = sign.encode()
-        sign = sha1(sign).hexdigest()
+        sign = sha1(sign).hexdigest()  # nosec
 
         return {
             "Content-Type": "application/json",
@@ -72,7 +70,16 @@ class NeteaseSightTranslation(MachineTranslation):
             "signature": sign,
         }
 
-    def download_translations(self, source, language, text, unit, user):
+    def download_translations(
+        self,
+        source,
+        language,
+        text: str,
+        unit,
+        user,
+        search: bool,
+        threshold: int = 75,
+    ):
         """Download list of possible translations from a service."""
         response = self.request(
             "post", NETEASE_API_ROOT, json={"lang": source, "content": text}

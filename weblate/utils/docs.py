@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,20 +17,28 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-import weblate
+from django.conf import settings
+from django.utils.translation import get_language
+from weblate_language_data.docs import DOCUMENTATION_LANGUAGES
+
+import weblate.utils.version
 
 
-def get_doc_url(page, anchor=""):
+def get_doc_url(page, anchor="", user=None):
     """Return URL to documentation."""
     # Should we use tagged release or latest version
-    if "-dev" in weblate.VERSION:
+    if "-dev" in weblate.utils.version.VERSION or (
+        (user is None or not user.is_authenticated) and settings.HIDE_VERSION
+    ):
         version = "latest"
     else:
-        version = "weblate-{0}".format(weblate.VERSION)
+        version = f"weblate-{weblate.utils.version.VERSION}"
+    # Language variant
+    code = DOCUMENTATION_LANGUAGES.get(get_language(), "en")
     # Generate URL
-    url = "https://docs.weblate.org/en/{0}/{1}.html".format(version, page)
+    url = f"https://docs.weblate.org/{code}/{version}/{page}.html"
     # Optionally append anchor
     if anchor != "":
-        url += "#{0}".format(anchor)
+        url += "#{}".format(anchor.replace("_", "-"))
 
     return url

@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,10 +19,13 @@
 
 from weblate.formats.base import EmptyFormat
 from weblate.formats.exporters import (
+    AndroidResourceExporter,
     CSVExporter,
+    JSONExporter,
     MoExporter,
     PoExporter,
     PoXliffExporter,
+    StringsExporter,
     TBXExporter,
     XliffExporter,
     XlsxExporter,
@@ -33,7 +35,6 @@ from weblate.lang.models import Language, Plural
 from weblate.trans.models import (
     Comment,
     Component,
-    Dictionary,
     Project,
     Suggestion,
     Translation,
@@ -41,14 +42,6 @@ from weblate.trans.models import (
 )
 from weblate.trans.tests.test_models import BaseTestCase
 from weblate.utils.state import STATE_EMPTY, STATE_TRANSLATED
-
-
-def fake_get_comments():
-    return [Comment(comment="Weblate translator comment")]
-
-
-def empty_get_comments():
-    return []
 
 
 class PoExporterTest(BaseTestCase):
@@ -62,7 +55,10 @@ class PoExporterTest(BaseTestCase):
             if created:
                 Plural.objects.create(language=lang)
         return self._class(
-            language=lang, project=Project(slug="test", name="TEST"), **kwargs
+            language=lang,
+            source_language=Language.objects.get(code="en"),
+            project=Project(slug="test", name="TEST"),
+            **kwargs
         )
 
     def check_export(self, exporter):
@@ -74,32 +70,20 @@ class PoExporterTest(BaseTestCase):
         self.assertIn(b"msgid_plural", result)
         self.assertIn(b"msgstr[2]", result)
 
-    def check_dict(self, word):
-        exporter = self.get_exporter()
-        exporter.add_dictionary(word)
-        self.check_export(exporter)
-
-    def test_dictionary(self):
-        self.check_dict(Dictionary(source="foo", target="bar"))
-
-    def test_dictionary_markup(self):
-        self.check_dict(Dictionary(source="<b>foo</b>", target="<b>bar</b>"))
-
-    def test_dictionary_special(self):
-        self.check_dict(Dictionary(source="bar\x1e\x1efoo", target="br\x1eff"))
-
     def check_unit(self, nplurals=3, template=None, source_info=None, **kwargs):
         if nplurals == 3:
-            equation = "n==0 ? 0 : n==1 ? 1 : 2"
+            formula = "n==0 ? 0 : n==1 ? 1 : 2"
         else:
-            equation = "0"
+            formula = "0"
         lang = Language.objects.create(code="zz")
-        plural = Plural.objects.create(
-            language=lang, number=nplurals, equation=equation
-        )
-        project = Project(slug="test", source_language=Language.objects.get(code="en"))
+        plural = Plural.objects.create(language=lang, number=nplurals, formula=formula)
+        project = Project(slug="test")
         component = Component(
-            slug="comp", project=project, file_format="xliff", template=template
+            slug="comp",
+            project=project,
+            file_format="xliff",
+            template=template,
+            source_language=Language.objects.get(code="en"),
         )
         translation = Translation(language=lang, component=component, plural=plural)
         # Fake file format to avoid need for actual files
@@ -108,12 +92,16 @@ class PoExporterTest(BaseTestCase):
         if source_info:
             for key, value in source_info.items():
                 setattr(unit, key, value)
-            unit.get_comments = fake_get_comments
+            # The dashes need special handling in XML based formats
+            unit.__dict__["unresolved_comments"] = [
+                Comment(comment="Weblate translator comment ---- ")
+            ]
             unit.__dict__["suggestions"] = [
                 Suggestion(target="Weblate translator suggestion")
             ]
         else:
-            unit.get_comments = empty_get_comments
+            unit.__dict__["unresolved_comments"] = []
+        unit.source_unit = unit
         exporter = self.get_exporter(lang, translation=translation)
         exporter.add_unit(unit)
         return self.check_export(exporter)
@@ -123,6 +111,15 @@ class PoExporterTest(BaseTestCase):
 
     def test_unit_mono(self):
         self.check_unit(source="xxx", target="yyy", template="template")
+
+    def test_unit_markup(self):
+        self.check_unit(source="<b>foo</b>", target="<b>bar</b>")
+
+    def test_unit_special(self):
+        self.check_unit(source="bar\x1e\x1efoo", target="br\x1eff")
+
+    def _encode(self, string):
+        return string.encode("utf-8")
 
     def test_unit_plural(self):
         result = self.check_unit(
@@ -147,9 +144,9 @@ class PoExporterTest(BaseTestCase):
             source="foo", target="bar", context="context", state=STATE_TRANSLATED
         )
         if self._has_context:
-            self.assertIn(b"context", result)
+            self.assertIn(self._encode("context"), result)
         elif self._has_context is not None:
-            self.assertNotIn(b"context", result)
+            self.assertNotIn(self._encode("context"), result)
 
     def test_extra_info(self):
         result = self.check_unit(
@@ -159,18 +156,19 @@ class PoExporterTest(BaseTestCase):
             state=STATE_TRANSLATED,
             source_info={
                 "extra_flags": "max-length:200",
-                "extra_context": "Context in Weblate",
+                # The dashes need special handling in XML based formats
+                "explanation": "Context in Weblate\n------------------\n",
             },
         )
         if self._has_context:
-            self.assertIn(b"context", result)
+            self.assertIn(self._encode("context"), result)
         elif self._has_context is not None:
-            self.assertNotIn(b"context", result)
+            self.assertNotIn(self._encode("context"), result)
         if self._has_comments:
-            self.assertIn(b"Context in Weblate", result)
-            self.assertIn(b"Weblate translator comment", result)
-            self.assertIn(b"Suggested in Weblate", result)
-            self.assertIn(b"Weblate translator suggestion", result)
+            self.assertIn(self._encode("Context in Weblate"), result)
+            self.assertIn(self._encode("Weblate translator comment"), result)
+            self.assertIn(self._encode("Suggested in Weblate"), result)
+            self.assertIn(self._encode("Weblate translator suggestion"), result)
 
     def setUp(self):
         self.exporter = self.get_exporter()
@@ -198,10 +196,38 @@ class PoXliffExporterTest(PoExporterTest):
     def check_plurals(self, result):
         self.assertIn(b"[2]", result)
 
+    def test_xml_nodes(self):
+        xml = """<xliff:g
+            xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2"
+            example="Launcher3"
+            id="app_name">
+            %1$s
+        </xliff:g>"""
+        result = self.check_unit(source="x " + xml, target="y " + xml).decode()
+        self.assertIn("<g", result)
 
-class XliffExporterTest(PoExporterTest):
+    def test_php_code(self):
+        text = """<?php
+if (!defined("FILENAME")){
+define("FILENAME",0);
+/*
+* @author AUTHOR
+*/
+
+class CLASSNAME extends BASECLASS {
+  //constructor
+  function CLASSNAME(){
+   BASECLASS::BASECLASS();
+  }
+ }
+}
+?>"""
+        result = self.check_unit(source="x " + text, target="y " + text).decode()
+        self.assertIn("&lt;?php", result)
+
+
+class XliffExporterTest(PoXliffExporterTest):
     _class = XliffExporter
-    _has_context = True
 
     def check_plurals(self, result):
         # Doesn't support plurals
@@ -245,6 +271,36 @@ class XlsxExporterTest(PoExporterTest):
     _class = XlsxExporter
     _has_context = False
     _has_comments = False
+
+    def check_plurals(self, result):
+        # Doesn't support plurals
+        pass
+
+
+class AndroidResourceExporterTest(PoExporterTest):
+    _class = AndroidResourceExporter
+    _has_comments = False
+
+    def check_plurals(self, result):
+        self.assertIn(b"<plural", result)
+
+
+class JSONExporterTest(PoExporterTest):
+    _class = JSONExporter
+    _has_comments = False
+
+    def check_plurals(self, result):
+        # Doesn't support plurals
+        pass
+
+
+class StringsExporterTest(PoExporterTest):
+    _class = StringsExporter
+    _has_comments = False
+
+    def _encode(self, string):
+        # Skip BOM
+        return string.encode("utf-16")[2:]
 
     def check_plurals(self, result):
         # Doesn't support plurals

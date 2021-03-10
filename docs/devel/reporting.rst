@@ -25,24 +25,28 @@ and lists all contributors to a given language:
 
     * Czech
 
-        * Michal Čihař <michal@cihar.com>
-        * John Doe <john@example.com>
+        * Michal Čihař <michal@cihar.com> (10)
+        * John Doe <john@example.com> (5)
 
     * Dutch
 
-        * Jane Doe <jane@example.com>
+        * Jane Doe <jane@example.com> (42)
 
 
 It will render as:
 
     * Czech
 
-        * Michal Čihař <michal@cihar.com>
-        * John Doe <john@example.com>
+        * Michal Čihař <michal@cihar.com> (10)
+        * John Doe <john@example.com> (5)
 
     * Dutch
 
-        * Jae Doe <jane@example.com>
+        * Jane Doe <jane@example.com> (42)
+
+.. hint::
+
+    The number in parenthesis indicates number of contributions in given period.
 
 .. _stats:
 
@@ -54,7 +58,6 @@ Generates the number of translated words and strings by translator name:
 
 .. literalinclude:: reporting-example.rst
     :language: rst
-    :encoding: utf-8
 
 And it will get rendered as:
 
@@ -78,6 +81,8 @@ The following metrics are available for each:
 
 `Count`
    Number of strings.
+`Edits`
+   Number of edits in the string, measured in Damerau–Levenshtein distance.
 `Source words`
    Number of words in the source string.
 `Source characters`

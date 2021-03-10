@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -66,7 +65,7 @@ class PastPasswordsValidator:
             for old in passwords:
                 if check_password(password, old):
                     raise ValidationError(
-                        _("Can not reuse previously used password!"),
+                        _("Can not reuse previously used password."),
                         code="password-past",
                     )
 

@@ -2,14 +2,14 @@
 {% load permissions %}
 {% load translations %}
 
-{% perm 'screenshot.edit' object.component as user_can_change_screenshot %}
+{% perm 'screenshot.edit' object.translation.component as user_can_change_screenshot %}
 
-{% for unit in sources %}
-{% if unit %}
+{% for unit in object.units.all %}
 <tr>
-<td class="translatetext">{% format_translation unit.source unit.translation.component.project.source_language %}</td>
+<td class="translatetext">{% format_translation unit.source unit.translation.component.source_language %}</td>
 <td>{{ unit.context }}</td>
 <td>{{ unit.location }}</td>
+<td>{{ unit.screenshots.count }}</td>
 <td>
 <a href="{{ unit.get_absolute_url }}" class="btn btn-primary">{% trans "View" %}</a>
 </td>
@@ -23,7 +23,6 @@
 {% endif %}
 </td>
 </tr>
-{% endif %}
 {% empty %}
 <tr class="warning">
 <td colspan="5">{% trans "No source strings are currently assigned!" %}</td>

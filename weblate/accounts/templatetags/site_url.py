@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -33,7 +32,7 @@ register = template.Library()
 @register.filter
 def add_site_url(content):
     """Automatically add site URL to any relative links or images."""
-    parser = etree.HTMLParser()
+    parser = etree.HTMLParser(collect_ids=False)
     tree = etree.parse(StringIO(content), parser)
     for link in tree.findall("//a"):
         url = link.get("href")

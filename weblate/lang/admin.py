@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -51,9 +50,9 @@ class LanguageAdmin(WeblateModelAdmin):
             lang.plural_set.create(
                 source=Plural.SOURCE_DEFAULT,
                 number=baseplural.number,
-                equation=baseplural.equation,
+                formula=baseplural.formula,
             )
         except (Language.DoesNotExist, IndexError):
             lang.plural_set.create(
-                source=Plural.SOURCE_DEFAULT, number=2, equation="n != 1"
+                source=Plural.SOURCE_DEFAULT, number=2, formula="n != 1"
             )

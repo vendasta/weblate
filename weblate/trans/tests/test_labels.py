@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,7 +17,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-"""Test for shapings."""
+"""Test for variants."""
 
 
 from django.urls import reverse
@@ -70,17 +69,17 @@ class LabelTest(ViewTestCase):
     def test_assign(self):
         self.test_create()
         label = self.project.label_set.get()
-        unit = self.get_unit().source_info
+        unit = self.get_unit().source_unit
         self.client.post(
             reverse("edit_context", kwargs={"pk": unit.pk}),
-            {"extra_context": "", "extra_flags": "", "labels": label.pk},
+            {"explanation": "", "extra_flags": "", "labels": label.pk},
         )
         translation = self.get_translation()
         self.assertEqual(getattr(translation.stats, "label:Test label"), 1)
 
         self.client.post(
             reverse("edit_context", kwargs={"pk": unit.pk}),
-            {"extra_context": "", "extra_flags": ""},
+            {"explanation": "", "extra_flags": ""},
         )
         translation = self.get_translation()
         self.assertEqual(getattr(translation.stats, "label:Test label"), 0)

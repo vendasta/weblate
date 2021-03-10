@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -24,14 +23,14 @@ import sys
 from io import StringIO
 from unittest import SkipTest
 
+import requests
 from django.core.management import call_command
 from django.core.management.base import CommandError, SystemCheckError
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from weblate.accounts.models import Profile
 from weblate.runner import main
 from weblate.trans.models import Component, Translation
-from weblate.trans.search import Fulltext
 from weblate.trans.tests.test_models import RepoTestCase
 from weblate.trans.tests.test_views import FixtureTestCase, ViewTestCase
 from weblate.trans.tests.utils import create_test_user, get_test_file
@@ -61,13 +60,13 @@ class ImportProjectTest(RepoTestCase):
             self.git_repo_path if path is None else path,
             "master",
             "**/*.po",
-            **kwargs
+            **kwargs,
         )
 
     def test_import(self):
         project = self.create_project()
         self.do_import()
-        self.assertEqual(project.component_set.count(), 4)
+        self.assertEqual(project.component_set.count(), 5)
 
     def test_import_deep(self):
         project = self.create_project()
@@ -78,19 +77,19 @@ class ImportProjectTest(RepoTestCase):
             "master",
             "deep/*/locales/*/LC_MESSAGES/**.po",
         )
-        self.assertEqual(project.component_set.count(), 1)
+        self.assertEqual(project.component_set.count(), 2)
 
     def test_import_ignore(self):
         project = self.create_project()
         self.do_import()
         self.do_import()
-        self.assertEqual(project.component_set.count(), 4)
+        self.assertEqual(project.component_set.count(), 5)
 
     def test_import_duplicate(self):
         project = self.create_project()
         self.do_import()
         self.do_import(path="weblate://test/po")
-        self.assertEqual(project.component_set.count(), 4)
+        self.assertEqual(project.component_set.count(), 5)
 
     def test_import_main_1(self, name="po-mono"):
         project = self.create_project()
@@ -103,8 +102,8 @@ class ImportProjectTest(RepoTestCase):
             main_component=name,
         )
         non_linked = project.component_set.with_repo()
-        self.assertEqual(non_linked.count(), 1)
-        self.assertEqual(non_linked[0].slug, name)
+        self.assertEqual(non_linked.count(), 2)
+        self.assertEqual({c.slug for c in non_linked}, {name, "glossary"})
 
     def test_import_main_2(self):
         self.test_import_main_1("second-po")
@@ -123,8 +122,8 @@ class ImportProjectTest(RepoTestCase):
             "**/*.po",
             language_regex="cs",
         )
-        self.assertEqual(project.component_set.count(), 4)
-        for component in project.component_set.iterator():
+        self.assertEqual(project.component_set.count(), 5)
+        for component in project.component_set.filter(is_glossary=False).iterator():
             self.assertEqual(component.translation_set.count(), 2)
 
     def test_import_re(self):
@@ -136,7 +135,7 @@ class ImportProjectTest(RepoTestCase):
             "master",
             r"(?P<component>[^/-]*)/(?P<language>[^/]*)\.po",
         )
-        self.assertEqual(project.component_set.count(), 1)
+        self.assertEqual(project.component_set.count(), 2)
 
     def test_import_name(self):
         project = self.create_project()
@@ -148,7 +147,7 @@ class ImportProjectTest(RepoTestCase):
             r"(?P<component>[^/-]*)/(?P<language>[^/]*)\.po",
             name_template="Test name",
         )
-        self.assertEqual(project.component_set.count(), 1)
+        self.assertEqual(project.component_set.count(), 2)
         self.assertTrue(project.component_set.filter(name="Test name").exists())
 
     def test_import_re_missing(self):
@@ -181,7 +180,7 @@ class ImportProjectTest(RepoTestCase):
             "**/*.po",
             file_format="po",
         )
-        self.assertEqual(project.component_set.count(), 4)
+        self.assertEqual(project.component_set.count(), 5)
 
     def test_import_invalid(self):
         project = self.create_project()
@@ -207,7 +206,7 @@ class ImportProjectTest(RepoTestCase):
             file_format="aresource",
             base_file_template="android/values/strings.xml",
         )
-        self.assertEqual(project.component_set.count(), 2)
+        self.assertEqual(project.component_set.count(), 3)
 
     def test_import_aresource_format(self):
         project = self.create_project()
@@ -220,29 +219,29 @@ class ImportProjectTest(RepoTestCase):
             file_format="aresource",
             base_file_template="%s/values/strings.xml",
         )
-        self.assertEqual(project.component_set.count(), 2)
+        self.assertEqual(project.component_set.count(), 3)
 
     def test_re_import(self):
         project = self.create_project()
         call_command("import_project", "test", self.git_repo_path, "master", "**/*.po")
-        self.assertEqual(project.component_set.count(), 4)
+        self.assertEqual(project.component_set.count(), 5)
 
         call_command("import_project", "test", self.git_repo_path, "master", "**/*.po")
-        self.assertEqual(project.component_set.count(), 4)
+        self.assertEqual(project.component_set.count(), 5)
 
     def test_import_against_existing(self):
         """Test importing with a weblate:// URL."""
         android = self.create_android()
         project = android.project
-        self.assertEqual(project.component_set.count(), 1)
+        self.assertEqual(project.component_set.count(), 2)
         call_command(
             "import_project",
             project.slug,
-            "weblate://{0!s}/{1!s}".format(project.slug, android.slug),
+            f"weblate://{project.slug!s}/{android.slug!s}",
             "master",
             "**/*.po",
         )
-        self.assertEqual(project.component_set.count(), 5)
+        self.assertEqual(project.component_set.count(), 6)
 
     def test_import_missing_project(self):
         """Test of correct handling of missing project."""
@@ -285,7 +284,7 @@ class ImportProjectTest(RepoTestCase):
             "**/*.po",
             vcs="mercurial",
         )
-        self.assertEqual(project.component_set.count(), 4)
+        self.assertEqual(project.component_set.count(), 5)
 
     def test_import_mercurial_mixed(self):
         """Test importing Mercurial project with mixed component/lang."""
@@ -314,24 +313,7 @@ class BasicCommandTest(FixtureTestCase):
             call_command("check", "--deploy")
 
 
-class CleanupCommandTest(RepoTestCase):
-    def test_cleanup(self):
-        orig_fake = Fulltext.FAKE
-        Fulltext.FAKE = False
-        fulltext = Fulltext()
-        try:
-            self.create_component()
-            index = fulltext.get_source_index()
-            self.assertEqual(len(list(index.reader().all_stored_fields())), 16)
-            # Remove all translations
-            Translation.objects.all().delete()
-            call_command("cleanuptrans")
-            self.assertEqual(len(list(index.reader().all_stored_fields())), 0)
-        finally:
-            Fulltext.FAKE = orig_fake
-
-
-class CheckGitTest(ViewTestCase):
+class WeblateComponentCommandTestCase(ViewTestCase):
     """Base class for handling tests of WeblateComponentCommand based commands."""
 
     command_name = "checkgit"
@@ -363,7 +345,7 @@ class CheckGitTest(ViewTestCase):
             self.do_test("test/notest")
 
 
-class CommitPendingTest(CheckGitTest):
+class CommitPendingTest(WeblateComponentCommandTestCase):
     command_name = "commit_pending"
     expected_string = ""
 
@@ -377,59 +359,58 @@ class CommitPendingChangesTest(CommitPendingTest):
         self.edit_unit("Hello, world!\n", "Nazdar svete!\n")
 
 
-class CommitGitTest(CheckGitTest):
+class CommitGitTest(WeblateComponentCommandTestCase):
     command_name = "commitgit"
     expected_string = ""
 
 
-class PushGitTest(CheckGitTest):
+class PushGitTest(WeblateComponentCommandTestCase):
     command_name = "pushgit"
     expected_string = ""
 
 
-class LoadTest(CheckGitTest):
+class LoadTest(WeblateComponentCommandTestCase):
     command_name = "loadpo"
     expected_string = ""
 
 
-class UpdateChecksTest(CheckGitTest):
+class UpdateChecksTest(WeblateComponentCommandTestCase):
     command_name = "updatechecks"
     expected_string = "Processing"
 
 
-class UpdateGitTest(CheckGitTest):
+class UpdateGitTest(WeblateComponentCommandTestCase):
     command_name = "updategit"
     expected_string = ""
 
 
-class RebuildIndexTest(CheckGitTest):
-    command_name = "rebuild_index"
-    expected_string = "Processing"
-
-    def test_all_clean(self):
-        self.do_test(all=True, clean=True)
-
-    def test_optimize(self):
-        self.expected_string = ""
-        try:
-            self.do_test(optimize=True)
-        finally:
-            self.expected_string = "Processing"
-
-
-class LockTranslationTest(CheckGitTest):
+class LockTranslationTest(WeblateComponentCommandTestCase):
     command_name = "lock_translation"
     expected_string = ""
 
 
-class UnLockTranslationTest(CheckGitTest):
+class UnLockTranslationTest(WeblateComponentCommandTestCase):
     command_name = "unlock_translation"
     expected_string = ""
 
 
-class FixupFlagsTest(CheckGitTest):
-    command_name = "fixup_flags"
-    expected_string = "Processing"
+class ImportDemoTestCase(TestCase):
+    def test_import(self):
+        try:
+            requests.get("https://github.com/")
+        except requests.exceptions.ConnectionError as error:
+            raise SkipTest(f"GitHub not reachable: {error}")
+        output = StringIO()
+        call_command("import_demo", stdout=output)
+        self.assertEqual(output.getvalue(), "")
+        self.assertEqual(Component.objects.count(), 5)
+
+
+class CleanupTestCase(TestCase):
+    def test_cleanup(self):
+        output = StringIO()
+        call_command("cleanuptrans", stdout=output)
+        self.assertEqual(output.getvalue(), "")
 
 
 class ListTranslatorsTest(RepoTestCase):
@@ -444,7 +425,7 @@ class ListTranslatorsTest(RepoTestCase):
         output = StringIO()
         call_command(
             "list_translators",
-            "{0}/{1}".format(component.project.slug, component.slug),
+            f"{component.project.slug}/{component.slug}",
             stdout=output,
         )
         self.assertEqual(output.getvalue(), "")
@@ -460,13 +441,11 @@ class LockingCommandTest(RepoTestCase):
     def test_locking(self):
         component = Component.objects.all()[0]
         self.assertFalse(Component.objects.filter(locked=True).exists())
-        call_command(
-            "lock_translation", "{0}/{1}".format(component.project.slug, component.slug)
-        )
+        call_command("lock_translation", f"{component.project.slug}/{component.slug}")
         self.assertTrue(Component.objects.filter(locked=True).exists())
         call_command(
             "unlock_translation",
-            "{0}/{1}".format(component.project.slug, component.slug),
+            f"{component.project.slug}/{component.slug}",
         )
         self.assertFalse(Component.objects.filter(locked=True).exists())
 
@@ -538,8 +517,8 @@ class ImportCommandTest(RepoTestCase):
             TEST_COMPONENTS,
             stdout=output,
         )
-        self.assertEqual(self.component.project.component_set.count(), 3)
-        self.assertEqual(Translation.objects.count(), 10)
+        self.assertEqual(self.component.project.component_set.count(), 4)
+        self.assertEqual(Translation.objects.count(), 14)
         self.assertIn("Imported Test/Gettext PO with 4 translations", output.getvalue())
 
     def test_import_invalid(self):

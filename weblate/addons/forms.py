@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,9 +17,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Div, Field, Layout
+from crispy_forms.layout import Field, Layout
 from django import forms
 from django.http import QueryDict
 from django.utils.functional import cached_property
@@ -44,8 +42,9 @@ class AddonFormMixin:
 
 
 class BaseAddonForm(forms.Form, AddonFormMixin):
-    def __init__(self, addon, instance=None, *args, **kwargs):
+    def __init__(self, user, addon, instance=None, *args, **kwargs):
         self._addon = addon
+        self.user = user
         super().__init__(*args, **kwargs)
 
 
@@ -61,7 +60,10 @@ class GenerateMoForm(BaseAddonForm):
         super().__init__(*args, **kwargs)
         self.helper = FormHelper(self)
         self.helper.layout = Layout(
-            Field("path"), Div(template="addons/generatemo_help.html")
+            Field("path"),
+            ContextDiv(
+                template="addons/generatemo_help.html", context={"user": self.user}
+            ),
         )
 
     def test_render(self, value):
@@ -85,7 +87,9 @@ class GenerateForm(BaseAddonForm):
         self.helper.layout = Layout(
             Field("filename"),
             Field("template"),
-            Div(template="addons/generate_help.html"),
+            ContextDiv(
+                template="addons/generate_help.html", context={"user": self.user}
+            ),
         )
 
     def test_render(self, value):
@@ -105,15 +109,15 @@ class GettextCustomizeForm(BaseAddonForm):
     width = forms.ChoiceField(
         label=_("Long lines wrapping"),
         choices=[
-            (77, _("Wrap lines at 77 chars and at newlines")),
+            (77, _("Wrap lines at 77 characters and at newlines")),
             (65535, _("Only wrap lines at newlines")),
             (-1, _("No line wrapping")),
         ],
         required=True,
         initial=77,
         help_text=_(
-            "By default gettext wraps lines at 77 chars and newlines. "
-            "With --no-wrap parameter, it wraps only at newlines."
+            "By default gettext wraps lines at 77 characters and at newlines. "
+            "With the --no-wrap parameter, wrapping is only done at newlines."
         ),
     )
 
@@ -123,6 +127,11 @@ class MsgmergeForm(BaseAddonForm):
         label=_("Keep previous msgids of translated strings"),
         required=False,
         initial=True,
+    )
+    no_location = forms.BooleanField(
+        label=_("Remove locations of translated strings"),
+        required=False,
+        initial=False,
     )
     fuzzy = forms.BooleanField(
         label=_("Use fuzzy matching"), required=False, initial=True
@@ -142,12 +151,33 @@ class GitSquashForm(BaseAddonForm):
         initial="all",
         required=True,
     )
+    append_trailers = forms.BooleanField(
+        label=_("Append trailers to squashed commit message"),
+        required=False,
+        initial=True,
+        help_text=_(
+            "Trailer lines are lines that look similar to RFC 822 e-mail "
+            "headers, at the end of the otherwise free-form part of a commit "
+            "message, such as 'Co-authored-by: …'."
+        ),
+    )
+    commit_message = forms.CharField(
+        widget=forms.Textarea(),
+        required=False,
+        help_text=_(
+            "This commit message will be used instead of the combined commit "
+            "messages from the squashed commits."
+        ),
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.helper = FormHelper(self)
         self.helper.layout = Layout(
-            Field("squash"), Div(template="addons/squash_help.html")
+            Field("squash"),
+            Field("append_trailers"),
+            Field("commit_message"),
+            ContextDiv(template="addons/squash_help.html", context={"user": self.user}),
         )
 
 
@@ -240,7 +270,7 @@ class DiscoveryForm(BaseAddonForm):
         validators=[validate_re],
         help_text=_(
             "Regular expression to filter "
-            "translation against when scanning for filemask."
+            "translation files against when scanning for filemask."
         ),
     )
     copy_addons = forms.BooleanField(
@@ -269,7 +299,9 @@ class DiscoveryForm(BaseAddonForm):
             Field("language_regex"),
             Field("copy_addons"),
             Field("remove"),
-            Div(template="addons/discovery_help.html"),
+            ContextDiv(
+                template="addons/discovery_help.html", context={"user": self.user}
+            ),
         )
         if self.is_bound:
             # Perform form validation
@@ -289,6 +321,7 @@ class DiscoveryForm(BaseAddonForm):
                             "matches_created": created,
                             "matches_matched": matched,
                             "matches_deleted": deleted,
+                            "user": self.user,
                         },
                     ),
                 )
@@ -341,13 +374,15 @@ class DiscoveryForm(BaseAddonForm):
 
 
 class AutoAddonForm(AutoForm, AddonFormMixin):
-    def __init__(self, addon, instance=None, *args, **kwargs):
+    def __init__(self, user, addon, instance=None, *args, **kwargs):
+        self.user = user
         self._addon = addon
         super().__init__(obj=addon.instance.component, *args, **kwargs)
 
 
 class BulkEditAddonForm(BulkEditForm, AddonFormMixin):
-    def __init__(self, addon, instance=None, *args, **kwargs):
+    def __init__(self, user, addon, instance=None, *args, **kwargs):
+        self.user = user
         self._addon = addon
         component = addon.instance.component
         super().__init__(
@@ -362,3 +397,83 @@ class BulkEditAddonForm(BulkEditForm, AddonFormMixin):
             result["remove_labels"].values_list("name", flat=True)
         )
         return result
+
+
+class CDNJSForm(BaseAddonForm):
+    threshold = forms.IntegerField(
+        label=_("Translation threshold"),
+        initial=0,
+        max_value=100,
+        min_value=0,
+        required=True,
+        help_text=_("Threshold for inclusion of translations."),
+    )
+    css_selector = forms.CharField(
+        label=_("CSS selector"),
+        required=True,
+        initial=".l10n",
+        help_text=_("CSS selector to detect localizable elements."),
+    )
+    cookie_name = forms.CharField(
+        label=_("Language cookie name"),
+        required=False,
+        initial="",
+        help_text=_("Name of cookie which stores language preference."),
+    )
+    files = forms.CharField(
+        widget=forms.Textarea(),
+        label=_("Extract strings from HTML files"),
+        required=False,
+        help_text=_(
+            "List of filenames in current repository or remote URLs to parse "
+            "for translatable strings."
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper(self)
+        self.helper.layout = Layout(
+            Field("threshold"),
+            Field("css_selector"),
+            Field("cookie_name"),
+            Field("files"),
+        )
+        if self.is_bound and self._addon.instance.pk:
+            self.helper.layout.insert(
+                0,
+                ContextDiv(
+                    template="addons/cdnjs.html",
+                    context={"url": self._addon.cdn_js_url, "user": self.user},
+                ),
+            )
+
+
+class PseudolocaleAddonForm(BaseAddonForm):
+    source = forms.ChoiceField(label=_("Source strings"), required=True)
+    target = forms.ChoiceField(label=_("Target translation"), required=True)
+    prefix = forms.CharField(
+        label=_("String prefix"),
+        required=False,
+        initial="",
+    )
+    suffix = forms.CharField(
+        label=_("String suffix"),
+        required=False,
+        initial="",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        choices = [
+            (translation.pk, str(translation.language))
+            for translation in self._addon.instance.component.translation_set.all()
+        ]
+        self.fields["source"].choices = choices
+        self.fields["target"].choices = choices
+
+    def clean(self):
+        if self.cleaned_data["source"] == self.cleaned_data["target"]:
+            raise forms.ValidationError(
+                _("The source and target have to be different languages.")
+            )

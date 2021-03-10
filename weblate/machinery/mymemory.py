@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,7 +17,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-
 from django.conf import settings
 
 from weblate.machinery.base import MachineTranslation
@@ -28,10 +26,11 @@ class MyMemoryTranslation(MachineTranslation):
     """MyMemory machine translation support."""
 
     name = "MyMemory"
+    do_cleanup = False
 
-    def convert_language(self, language):
+    def map_language_code(self, code):
         """Convert language to service specific code."""
-        return language.replace("_", "-").lower()
+        return super().map_language_code(code).replace("_", "-")
 
     def is_supported(self, source, language):
         """Check whether given language combination is supported."""
@@ -46,7 +45,7 @@ class MyMemoryTranslation(MachineTranslation):
         """Almost any language without modifiers is supported."""
         if language in ("ia", "tt", "ug"):
             return False
-        return "@" not in language and len(language) == 2
+        return "@" not in language
 
     def format_match(self, match):
         """Reformat match to (translation, quality) tuple."""
@@ -72,11 +71,20 @@ class MyMemoryTranslation(MachineTranslation):
 
         return result
 
-    def download_translations(self, source, language, text, unit, user):
+    def download_translations(
+        self,
+        source,
+        language,
+        text: str,
+        unit,
+        user,
+        search: bool,
+        threshold: int = 75,
+    ):
         """Download list of possible translations from MyMemory."""
         args = {
             "q": text.split(". ")[0][:500],
-            "langpair": "{0}|{1}".format(source, language),
+            "langpair": f"{source}|{language}",
         }
         if settings.MT_MYMEMORY_EMAIL is not None:
             args["de"] = settings.MT_MYMEMORY_EMAIL

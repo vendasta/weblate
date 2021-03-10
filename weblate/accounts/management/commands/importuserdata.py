@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -103,4 +102,4 @@ class Command(BaseCommand):
 
                 profile.save()
             except User.DoesNotExist:
-                self.stderr.write("User not found: {0}\n".format(username))
+                self.stderr.write(f"User not found: {username}\n")

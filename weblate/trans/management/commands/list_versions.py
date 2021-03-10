@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,6 +18,7 @@
 #
 
 import platform
+import sys
 
 from django import db
 from django.conf import settings
@@ -31,7 +31,7 @@ class Command(BaseCommand):
     help = "lists versions of required software components"
 
     def write_item(self, prefix, value):
-        self.stdout.write(" * {}: {}".format(prefix, value))
+        self.stdout.write(f" * {prefix}: {value}")
 
     def handle(self, *args, **options):
         """Print versions of dependencies."""
@@ -49,7 +49,13 @@ class Command(BaseCommand):
             ),
         )
         self.write_item(
-            "Email setup", "{}: {}".format(settings.EMAIL_BACKEND, settings.EMAIL_HOST)
+            "Email setup", f"{settings.EMAIL_BACKEND}: {settings.EMAIL_HOST}"
+        )
+        self.write_item(
+            "OS encoding",
+            "filesystem={}, default={}".format(
+                sys.getfilesystemencoding(), sys.getdefaultencoding()
+            ),
         )
         self.write_item(
             "Celery",

@@ -2,10 +2,12 @@
 {% load i18n %}
 {% load permissions %}
 {% load crispy_forms_tags %}
+{% load humanize %}
+{% load icons %}
 
 {% block breadcrumbs %}
 <li><a href="{{ object.project.get_absolute_url }}">{{ object.project }}</a></li>
-<li><a href="{{ object.get_absolute_url }}">{{ object.name }}</a></li>
+{% include "snippets/component-breadcrumb.html" %}
 <li><a href="{% url 'screenshots' project=object.project.slug component=object.slug %}">{% trans "Screenshots" %}</a></li>
 {% endblock %}
 
@@ -39,13 +41,20 @@
 <tbody>
 {% for screenshot in object_list %}
 <tr>
-<th><a href="{{ screenshot.get_absolute_url }}">{{ screenshot.name }}</a></th>
+<th><a href="{{ screenshot.get_absolute_url }}">{{ screenshot.name }}</a> <span class="badge">{{ screenshot.translation.language }}</span></th>
 <td>
 <div class="shot-list">
 {% include "screenshots/screenshot_show.html" %}
 </div>
 </td>
-<td>{{ screenshot.sources.count }}</td>
+{% with count=screenshot.units.count %}
+<td data-value="{{ count }}">
+    {{ count | intcomma }}
+    {% if count == 0 %}
+    <span title="{% trans "There are no assigned strings." %}" class="red">{% icon "alert.svg" %}</span>
+    {% endif %}
+</td>
+{% endwith %}
 <td>
 {% if user_can_change_screenshot %}
 <a href="{{ screenshot.get_absolute_url }}" class="btn btn-primary">{% trans "Edit" %}</a>

@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -41,28 +40,30 @@ class RemovalAddon(BaseAddon):
         age = self.instance.configuration["age"]
         return timezone.now() - timedelta(days=age)
 
-    def delete_older(self, objects):
-        objects.filter(timestamp__lt=self.get_cutoff()).delete()
+    def delete_older(self, objects, component):
+        count = objects.filter(timestamp__lt=self.get_cutoff()).delete()[0]
+        if count:
+            component.invalidate_cache()
 
 
 class RemoveComments(RemovalAddon):
     name = "weblate.removal.comments"
     verbose = _("Stale comment removal")
-    description = _("Set timeframe for removal of comments.")
+    description = _("Set a timeframe for removal of comments.")
 
     def daily(self, component):
         self.delete_older(
             Comment.objects.filter(
                 unit__translation__component__project=component.project
-            )
+            ),
+            component,
         )
-        component.project.update_unit_flags()
 
 
 class RemoveSuggestions(RemovalAddon):
     name = "weblate.removal.suggestions"
     verbose = _("Stale suggestion removal")
-    description = _("Set timeframe for removal of suggestions.")
+    description = _("Set a timeframe for removal of suggestions.")
     settings_form = RemoveSuggestionForm
 
     def daily(self, component):
@@ -74,6 +75,6 @@ class RemoveSuggestions(RemovalAddon):
             .filter(
                 Q(vote__value__sum__lte=self.instance.configuration.get("votes", 0))
                 | Q(vote__value__sum=None)
-            )
+            ),
+            component,
         )
-        component.project.update_unit_flags()

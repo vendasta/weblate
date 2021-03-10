@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -23,6 +22,7 @@ import csv
 
 from django.http import HttpResponse, JsonResponse
 
+from weblate.api.serializers import StatisticsSerializer
 from weblate.trans.stats import get_project_stats
 from weblate.utils.views import get_component, get_project
 
@@ -33,7 +33,7 @@ def export_stats_project(request, project):
 
     return export_response(
         request,
-        "stats-{0}.csv".format(obj.slug),
+        f"stats-{obj.slug}.csv",
         (
             "language",
             "code",
@@ -42,7 +42,10 @@ def export_stats_project(request, project):
             "translated_percent",
             "total_words",
             "translated_words",
-            "words_percent",
+            "translated_words_percent",
+            "total_chars",
+            "translated_chars",
+            "translated_chars_percent",
         ),
         get_project_stats(obj),
     )
@@ -55,26 +58,37 @@ def export_stats(request, project, component):
 
     return export_response(
         request,
-        "stats-{0}-{1}.csv".format(subprj.project.slug, subprj.slug),
+        f"stats-{subprj.project.slug}-{subprj.slug}.csv",
         (
             "name",
             "code",
             "total",
             "translated",
             "translated_percent",
+            "translated_words_percent",
             "total_words",
             "translated_words",
+            "total_chars",
+            "translated_chars",
+            "translated_chars_percent",
             "failing",
             "failing_percent",
             "fuzzy",
             "fuzzy_percent",
             "url_translate",
             "url",
+            "translate_url",
             "last_change",
             "last_author",
             "recent_changes",
+            "readonly",
+            "readonly_percent",
+            "approved",
+            "approved_percent",
+            "suggestions",
+            "comments",
         ),
-        [trans.get_stats() for trans in translations.iterator()],
+        StatisticsSerializer(translations, many=True).data,
     )
 
 
@@ -86,7 +100,7 @@ def export_response(request, filename, fields, data):
 
     if output == "csv":
         response = HttpResponse(content_type="text/csv; charset=utf-8")
-        response["Content-Disposition"] = "attachment; filename={0}".format(filename)
+        response["Content-Disposition"] = f"attachment; filename={filename}"
 
         writer = csv.DictWriter(response, fields)
 

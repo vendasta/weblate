@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -21,12 +20,47 @@
 import os
 
 from django.apps import AppConfig
+from django.core.checks import Warning, register
 from filelock import FileLock
 
-from weblate.trans.util import add_configuration_error, delete_configuration_error
+import weblate.vcs.gpg
+from weblate.utils.checks import weblate_check
 from weblate.utils.data import data_dir
 from weblate.vcs.base import RepositoryException
 from weblate.vcs.git import GitRepository
+
+GIT_ERRORS = []
+
+
+def check_gpg(app_configs, **kwargs):
+    from weblate.vcs.gpg import get_gpg_public_key
+
+    get_gpg_public_key()
+    template = "{}: {}"
+    return [
+        weblate_check("weblate.C036", template.format(key, message))
+        for key, message in weblate.vcs.gpg.GPG_ERRORS.items()
+    ]
+
+
+def check_vcs(app_configs, **kwargs):
+    from weblate.vcs.models import VCS_REGISTRY
+
+    message = "Failure in loading VCS module for {}: {}"
+    return [
+        weblate_check(
+            f"weblate.W033.{key}", message.format(key, value.strip()), Warning
+        )
+        for key, value in VCS_REGISTRY.errors.items()
+    ]
+
+
+def check_git(app_configs, **kwargs):
+    template = "Failure in configuring Git: {}"
+    return [
+        weblate_check("weblate.C035", template.format(message))
+        for message in GIT_ERRORS
+    ]
 
 
 class VCSConfig(AppConfig):
@@ -35,6 +69,11 @@ class VCSConfig(AppConfig):
     verbose_name = "VCS"
 
     def ready(self):
+        super().ready()
+        register(check_vcs)
+        register(check_git, deploy=True)
+        register(check_gpg, deploy=True)
+
         home = data_dir("home")
         if not os.path.exists(home):
             os.makedirs(home)
@@ -45,11 +84,8 @@ class VCSConfig(AppConfig):
         with lockfile:
             try:
                 GitRepository.global_setup()
-                delete_configuration_error("Git global setup")
             except RepositoryException as error:
-                add_configuration_error(
-                    "Git global setup", "Failed to do git setup: {0}".format(error)
-                )
+                GIT_ERRORS.append(str(error))
 
         # Use it for *.po by default
         configdir = os.path.join(home, ".config", "git")

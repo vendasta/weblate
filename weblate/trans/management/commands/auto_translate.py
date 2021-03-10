@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -95,7 +94,7 @@ class Command(WeblateTranslationCommand):
             for translator in options["mt"]:
                 if translator not in MACHINE_TRANSLATION_SERVICES.keys():
                     raise CommandError(
-                        "Machine translation {} is not available".format(translator)
+                        f"Machine translation {translator} is not available"
                     )
 
         if options["inconsistent"]:
@@ -109,4 +108,4 @@ class Command(WeblateTranslationCommand):
             auto.process_mt(options["mt"], options["threshold"])
         else:
             auto.process_others(source)
-        self.stdout.write("Updated {0} units".format(auto.updated))
+        self.stdout.write(f"Updated {auto.updated} units")

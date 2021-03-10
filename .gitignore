@@ -2,15 +2,10 @@
 *.pyc
 *.sw[pon]
 /.coverage*
-/weblate/repos/
 /weblate/locale/*/*/*.mo
-/weblate/langdata/locale/*/*/*.mo
-/weblate/whoosh-index/
-/weblate/avatar-cache/
 weblate-*.tar.*
 /*.db
 /weblate/settings.py
-/weblate/test-repos/
 /reports/
 /tags
 .idea/*
@@ -23,7 +18,9 @@ weblate-*.tar.*
 /dist/
 /.vs
 /.venv
-/.venv2
+/.venv*
+/venv
+*.DS_Store
 /weblate-env/
 /.tesseract/
 /test-images/
@@ -32,6 +29,5 @@ weblate-*.tar.*
 /weblate-*.log
 /weblate-*.pid
 /dev-docker/data/
-*.DS_Store
-/venv
+/dev-docker/weblate-dev/requirements.txt
 *~

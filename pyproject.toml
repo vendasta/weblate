@@ -18,7 +18,10 @@ exclude = '''
     | data-test
     | node_modules
     | settings\.py
-    | scripts/iso-codes
   )/
 )
 '''
+
+[build-system]
+# Minimum requirements for the build system to execute.
+requires = ["setuptools", "wheel", "translate-toolkit"]  # PEP 508 specifications.

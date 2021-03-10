@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -21,8 +20,11 @@
 """Tests for placeholder quality checks."""
 
 
+from weblate.checks.flags import Flags
+from weblate.checks.models import Check
 from weblate.checks.placeholders import PlaceholderCheck, RegexCheck
-from weblate.checks.tests.test_checks import CheckTestCase
+from weblate.checks.tests.test_checks import CheckTestCase, MockUnit
+from weblate.trans.models import Unit
 
 
 class PlaceholdersTest(CheckTestCase):
@@ -32,7 +34,7 @@ class PlaceholdersTest(CheckTestCase):
         super().setUp()
         self.test_good_matching = ("string $URL$", "string $URL$", "placeholders:$URL$")
         self.test_good_none = ("string", "string", "placeholders:")
-        self.test_good_ignore = ("$URL", "$OTHER")
+        self.test_good_ignore = ("$URL", "$OTHER", "")
         self.test_failure_1 = ("string $URL$", "string", "placeholders:$URL$")
         self.test_failure_2 = ("string $URL$", "string $URL", "placeholders:$URL$")
         self.test_failure_3 = (
@@ -43,7 +45,27 @@ class PlaceholdersTest(CheckTestCase):
         self.test_highlight = ("placeholders:$URL$", "See $URL$", [(4, 9, "$URL$")])
 
     def do_test(self, expected, data, lang=None):
+        # Skip using check_single as the Check does not use that
         return
+
+    def test_description(self):
+        unit = Unit(source="string $URL$", target="string")
+        unit.__dict__["all_flags"] = Flags("placeholders:$URL$")
+        check = Check(unit=unit)
+        self.assertEqual(
+            self.check.get_description(check),
+            "Following format strings are missing: $URL$",
+        )
+
+    def test_regexp(self):
+        unit = Unit(source="string $URL$", target="string $FOO$")
+        unit.__dict__["all_flags"] = Flags(r"""placeholders:r"\$[^$]*\$" """)
+        check = Check(unit=unit)
+        self.assertEqual(
+            self.check.get_description(check),
+            "Following format strings are missing: $URL$"
+            "<br />Following format strings are extra: $FOO$",
+        )
 
 
 class RegexTest(CheckTestCase):
@@ -59,4 +81,30 @@ class RegexTest(CheckTestCase):
         self.test_highlight = ("regex:URL", "See URL", [(4, 7, "URL")])
 
     def do_test(self, expected, data, lang=None):
+        # Skip using check_single as the Check does not use that
         return
+
+    def test_description(self):
+        unit = Unit(source="string URL", target="string")
+        unit.__dict__["all_flags"] = Flags("regex:URL")
+        check = Check(unit=unit)
+        self.assertEqual(
+            self.check.get_description(check),
+            "Translation does not match regular expression: <code>URL</code>",
+        )
+
+    def test_check_highlight_groups(self):
+        unit = MockUnit(
+            None,
+            r'regex:"((?:@:\(|\{)[^\)\}]+(?:\)|\}))"',
+            self.default_lang,
+            "@:(foo.bar.baz) | @:(hello.world) | {foo32}",
+        )
+        self.assertEqual(
+            self.check.check_highlight(unit.source, unit),
+            [
+                (0, 15, "@:(foo.bar.baz)"),
+                (18, 33, "@:(hello.world)"),
+                (36, 43, "{foo32}"),
+            ],
+        )

@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -22,19 +21,21 @@ import os
 import sys
 
 
-def main(argv=None):
+def main(argv=None, developer_mode: bool = False):
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "weblate.settings")
 
-    from django.core.management import execute_from_command_line
+    from weblate.utils.management import WeblateManagementUtility
 
     if argv is None:
         argv = sys.argv
     try:
-        execute_from_command_line(argv)
-    except Exception as error:
+        # This is essentially Django's execute_from_command_line
+        utility = WeblateManagementUtility(argv=argv, developer_mode=developer_mode)
+        utility.execute()
+    except Exception:
         from weblate.utils.errors import report_error
 
-        report_error(error)
+        report_error()
         raise
 
 

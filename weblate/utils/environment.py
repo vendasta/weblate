@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,16 +19,17 @@
 
 
 import os
+from typing import Dict, List, Optional
 
 
-def get_env_list(name, default=None):
+def get_env_list(name: str, default: Optional[List[str]] = None) -> List[str]:
     """Helper to get list from environment."""
     if name not in os.environ:
         return default or []
     return os.environ[name].split(",")
 
 
-def get_env_map(name, default=None):
+def get_env_map(name: str, default: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     """Helper to get mapping from environment.
 
     parses 'full_name:name,email:mail' into {'email': 'mail', 'full_name': 'name'}
@@ -39,7 +39,14 @@ def get_env_map(name, default=None):
     return default or {}
 
 
-def get_env_bool(name, default=False):
+def get_env_int(name: str, default: int = 0) -> int:
+    """Helper to get integer value from environment."""
+    if name not in os.environ:
+        return default
+    return int(os.environ[name])
+
+
+def get_env_bool(name: str, default: bool = False) -> bool:
     """Helper to get boolean value from environment."""
     if name not in os.environ:
         return default
@@ -47,10 +54,10 @@ def get_env_bool(name, default=False):
     return os.environ[name].lower() in true_values
 
 
-def modify_env_list(current, name):
+def modify_env_list(current: List[str], name: str) -> List[str]:
     """Helper to modify list (for example checks)."""
-    for item in reversed(get_env_list("WEBLATE_ADD_{}".format(name))):
+    for item in reversed(get_env_list(f"WEBLATE_ADD_{name}")):
         current.insert(0, item)
-    for item in get_env_list("WEBLATE_REMOVE_{}".format(name)):
+    for item in get_env_list(f"WEBLATE_REMOVE_{name}"):
         current.remove(item)
     return current

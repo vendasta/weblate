@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,9 +17,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-
+from django.conf import settings
 from django.core.checks import run_checks
 from django.core.mail import send_mail
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
@@ -28,10 +28,16 @@ from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy
 
 from weblate.auth.decorators import management_access
-from weblate.trans.models import Alert, Component
+from weblate.auth.forms import AdminInviteUserForm
+from weblate.auth.models import User
+from weblate.configuration.models import Setting
+from weblate.configuration.views import CustomCSSView
+from weblate.trans.forms import AnnouncementForm
+from weblate.trans.models import Alert, Announcement, Component, Project
 from weblate.utils import messages
 from weblate.utils.celery import get_queue_stats
 from weblate.utils.errors import report_error
+from weblate.utils.tasks import database_backup, settings_backup
 from weblate.utils.views import show_form_errors
 from weblate.vcs.ssh import (
     RSA_KEY,
@@ -42,9 +48,16 @@ from weblate.vcs.ssh import (
     get_key_data,
     ssh_file,
 )
-from weblate.wladmin.forms import ActivateForm, BackupForm, SSHAddForm, TestMailForm
+from weblate.wladmin.forms import (
+    ActivateForm,
+    AppearanceForm,
+    BackupForm,
+    SSHAddForm,
+    TestMailForm,
+    UserSearchForm,
+)
 from weblate.wladmin.models import BackupService, ConfigurationError, SupportStatus
-from weblate.wladmin.tasks import backup_service
+from weblate.wladmin.tasks import backup_service, configuration_health_check
 
 MENU = (
     ("index", "manage", gettext_lazy("Weblate status")),
@@ -52,10 +65,14 @@ MENU = (
     ("memory", "manage-memory", gettext_lazy("Translation memory")),
     ("performance", "manage-performance", gettext_lazy("Performance report")),
     ("ssh", "manage-ssh", gettext_lazy("SSH keys")),
-    ("alerts", "manage-alerts", gettext_lazy("Component alerts")),
-    ("repos", "manage-repos", gettext_lazy("Status of repositories")),
+    ("alerts", "manage-alerts", gettext_lazy("Alerts")),
+    ("repos", "manage-repos", gettext_lazy("Repositories")),
+    ("users", "manage-users", gettext_lazy("Users")),
+    ("appearance", "manage-appearance", gettext_lazy("Appearance")),
     ("tools", "manage-tools", gettext_lazy("Tools")),
 )
+if "weblate.billing" in settings.INSTALLED_APPS:
+    MENU += (("billing", "manage-billing", gettext_lazy("Billing")),)
 
 
 @management_access
@@ -84,23 +101,42 @@ def send_test_mail(email):
 
 @management_access
 def tools(request):
-    emailform = TestMailForm(initial={"email": request.user.email})
+    email_form = TestMailForm(initial={"email": request.user.email})
+    announce_form = AnnouncementForm()
 
     if request.method == "POST":
         if "email" in request.POST:
-            emailform = TestMailForm(request.POST)
-            if emailform.is_valid():
+            email_form = TestMailForm(request.POST)
+            if email_form.is_valid():
                 try:
-                    send_test_mail(**emailform.cleaned_data)
+                    send_test_mail(**email_form.cleaned_data)
                     messages.success(request, _("Test e-mail sent."))
                 except Exception as error:
-                    report_error(error, request)
+                    report_error()
                     messages.error(request, _("Could not send test e-mail: %s") % error)
+
+        if "sentry" in request.POST:
+            try:
+                raise Exception("Test exception")
+            except Exception:
+                report_error()
+
+        if "message" in request.POST:
+            announce_form = AnnouncementForm(request.POST)
+            if announce_form.is_valid():
+                Announcement.objects.create(
+                    user=request.user, **announce_form.cleaned_data
+                )
 
     return render(
         request,
         "manage/tools.html",
-        {"menu_items": MENU, "menu_page": "tools", "email_form": emailform},
+        {
+            "menu_items": MENU,
+            "menu_page": "tools",
+            "email_form": email_form,
+            "announce_form": announce_form,
+        },
     )
 
 
@@ -113,8 +149,8 @@ def activate(request):
             support.refresh()
             support.save()
             messages.success(request, _("Activation completed."))
-        except Exception as error:
-            report_error(error, request)
+        except Exception:
+            report_error()
             messages.error(
                 request,
                 _(
@@ -130,12 +166,15 @@ def activate(request):
 @management_access
 def repos(request):
     """Provide report about Git status of all repos."""
-    context = {
-        "components": Component.objects.order_project(),
-        "menu_items": MENU,
-        "menu_page": "repos",
-    }
-    return render(request, "manage/repos.html", context)
+    return render(
+        request,
+        "manage/repos.html",
+        {
+            "components": Component.objects.order_project(),
+            "menu_items": MENU,
+            "menu_page": "repos",
+        },
+    )
 
 
 @management_access
@@ -157,6 +196,8 @@ def backups(request):
             service.save()
             return redirect("manage-backups")
         elif "trigger" in request.POST:
+            settings_backup.delay()
+            database_backup.delay()
             backup_service.delay(pk=request.POST["service"])
             messages.success(request, _("Backup process triggered"))
             return redirect("manage-backups")
@@ -189,9 +230,11 @@ def performance(request):
     """Show performance tuning tips."""
     if request.method == "POST":
         return handle_dismiss(request)
+    checks = run_checks(include_deployment_checks=True)
+    configuration_health_check.delay()
 
     context = {
-        "checks": run_checks(include_deployment_checks=True),
+        "checks": [check for check in checks if not check.is_silenced()],
         "errors": ConfigurationError.objects.filter(ignored=False),
         "queues": get_queue_stats().items(),
         "menu_items": MENU,
@@ -203,10 +246,10 @@ def performance(request):
 
 @management_access
 def ssh_key(request):
-    with open(ssh_file(RSA_KEY), "r") as handle:
+    with open(ssh_file(RSA_KEY)) as handle:
         data = handle.read()
     response = HttpResponse(data, content_type="text/plain")
-    response["Content-Disposition"] = "attachment; filename={0}".format(RSA_KEY)
+    response["Content-Disposition"] = f"attachment; filename={RSA_KEY}"
     response["Content-Length"] = len(data)
     return response
 
@@ -250,11 +293,158 @@ def ssh(request):
 def alerts(request):
     """Shows component alerts."""
     context = {
-        "alerts": Alert.objects.order_by("name").prefetch_related(
-            "component", "component__project"
+        "alerts": Alert.objects.order_by(
+            "name", "component__project__name", "component__name"
+        ).select_related("component", "component__project"),
+        "no_components": Project.objects.annotate(Count("component")).filter(
+            component__count=0
         ),
         "menu_items": MENU,
         "menu_page": "alerts",
     }
 
     return render(request, "manage/alerts.html", context)
+
+
+@management_access
+def users(request):
+    invite_form = AdminInviteUserForm()
+
+    if request.method == "POST":
+        if "email" in request.POST:
+            invite_form = AdminInviteUserForm(request.POST)
+            if invite_form.is_valid():
+                invite_form.save(request)
+                messages.success(request, _("User has been invited to this project."))
+                return redirect("manage-users")
+
+    return render(
+        request,
+        "manage/users.html",
+        {
+            "menu_items": MENU,
+            "menu_page": "users",
+            "invite_form": invite_form,
+            "search_form": UserSearchForm,
+        },
+    )
+
+
+@management_access
+def users_check(request):
+    form = UserSearchForm(request.GET if request.GET else None)
+
+    user_list = None
+    if form.is_valid():
+        email = form.cleaned_data["email"]
+        user_list = User.objects.filter(
+            Q(email=email)
+            | Q(social_auth__verifiedemail__email__iexact=email)
+            | Q(username=email)
+        ).distinct()
+
+    return render(
+        request,
+        "manage/users_check.html",
+        {
+            "menu_items": MENU,
+            "menu_page": "users",
+            "form": form,
+            "users": user_list,
+        },
+    )
+
+
+@management_access
+def appearance(request):
+
+    current = Setting.objects.get_settings_dict(Setting.CATEGORY_UI)
+    form = AppearanceForm(initial=current)
+
+    if request.method == "POST":
+        if "reset" in request.POST:
+            Setting.objects.filter(category=Setting.CATEGORY_UI).delete()
+            CustomCSSView.drop_cache()
+            return redirect("manage-appearance")
+        form = AppearanceForm(request.POST)
+        if form.is_valid():
+            for name, value in form.cleaned_data.items():
+                if name not in current:
+                    # New setting previously not set
+                    Setting.objects.create(
+                        category=Setting.CATEGORY_UI, name=name, value=value
+                    )
+                else:
+                    if value != current[name]:
+                        # Update setting
+                        Setting.objects.filter(
+                            category=Setting.CATEGORY_UI, name=name
+                        ).update(value=value)
+                    current.pop(name)
+            # Drop stale settings
+            if current:
+                Setting.objects.filter(
+                    category=Setting.CATEGORY_UI, name__in=current.keys()
+                ).delete()
+
+            # Flush cache
+            CustomCSSView.drop_cache()
+            return redirect("manage-appearance")
+
+    return render(
+        request,
+        "manage/appearance.html",
+        {
+            "menu_items": MENU,
+            "menu_page": "appearance",
+            "form": form,
+        },
+    )
+
+
+@management_access
+def billing(request):
+    from weblate.billing.models import Billing
+
+    trial = []
+    pending = []
+    removal = []
+    free = []
+    paid = []
+    terminated = []
+
+    # We will list all billings anyway, so fetch  them at once
+    billings = Billing.objects.prefetch().order_by("expiry", "removal", "id")
+
+    for currrent in billings:
+        if currrent.removal:
+            removal.append(currrent)
+        elif currrent.state == Billing.STATE_TRIAL:
+            if (
+                currrent.plan
+                and currrent.plan.price == 0
+                and currrent.payment.get("libre_request")
+            ):
+                pending.append(currrent)
+            trial.append(currrent)
+        elif currrent.state == Billing.STATE_TERMINATED:
+            terminated.append(currrent)
+        elif currrent.plan.price:
+            paid.append(currrent)
+        else:
+            free.append(currrent)
+
+    return render(
+        request,
+        "manage/billing.html",
+        {
+            "menu_items": MENU,
+            "menu_page": "billing",
+            "trial": trial,
+            "removal": removal,
+            "free": free,
+            "paid": paid,
+            "terminated": terminated,
+            "pending": pending,
+        },
+    )

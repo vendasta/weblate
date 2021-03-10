@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -23,7 +22,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.generic import TemplateView
 
 from weblate.accounts.models import Profile
-from weblate.checks.models import Check
+from weblate.metrics.models import Metric
 from weblate.utils.requirements import get_versions_list
 from weblate.utils.stats import GlobalStats
 from weblate.vcs.gpg import get_gpg_public_key, get_gpg_sign_key
@@ -59,7 +58,7 @@ class AboutView(TemplateView):
         return context
 
     def get_template_names(self):
-        return ["about/{0}.html".format(self.page)]
+        return [f"about/{self.page}.html"]
 
 
 class StatsView(AboutView):
@@ -73,25 +72,23 @@ class StatsView(AboutView):
         totals = Profile.objects.aggregate(
             Sum("translated"), Sum("suggested"), Count("id")
         )
+        metrics = Metric.objects.get_current(Metric.SCOPE_GLOBAL, 0)
 
         context["total_translations"] = totals["translated__sum"]
         context["total_suggestions"] = totals["suggested__sum"]
         context["total_users"] = totals["id__count"]
-        context["source_strings"] = stats.source_strings
-        context["source_words"] = stats.source_words
-        context["total_units"] = stats.all
-        context["total_words"] = stats.all_words
-        context["total_languages"] = stats.languages
-        context["total_checks"] = Check.objects.count()
-        context["ignored_checks"] = Check.objects.filter(ignore=True).count()
+        context["stats"] = stats
+        context["metrics"] = metrics
 
         top_translations = Profile.objects.order_by("-translated")[:10]
         top_suggestions = Profile.objects.order_by("-suggested")[:10]
         top_uploads = Profile.objects.order_by("-uploaded")[:10]
+        top_comments = Profile.objects.order_by("-commented")[:10]
 
         context["top_translations"] = top_translations.select_related("user")
         context["top_suggestions"] = top_suggestions.select_related("user")
         context["top_uploads"] = top_uploads.select_related("user")
+        context["top_comments"] = top_comments.select_related("user")
 
 
 class KeysView(AboutView):

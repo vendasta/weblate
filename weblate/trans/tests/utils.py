@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,13 +16,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
-
 import os.path
 import shutil
 import sys
 from datetime import timedelta
 from tarfile import TarFile
 from tempfile import mkdtemp
+from typing import Set
 from unittest import SkipTest
 
 from celery.contrib.testing.tasks import ping
@@ -36,8 +35,7 @@ from django.utils.functional import cached_property
 from weblate.auth.models import User
 from weblate.formats.models import FILE_FORMATS
 from weblate.trans.models import Component, Project
-from weblate.trans.search import Fulltext
-from weblate.utils.files import remove_readonly
+from weblate.utils.files import remove_tree
 from weblate.vcs.models import VCS_REGISTRY
 
 # Directory holding test data
@@ -79,7 +77,7 @@ def create_another_user():
 class RepoTestMixin:
     """Mixin for testing with test repositories."""
 
-    updated_base_repos = set()
+    updated_base_repos: Set[str] = set()
 
     local_repo_path = "local:"
 
@@ -96,7 +94,7 @@ class RepoTestMixin:
 
             # Remove directory if outdated
             if os.path.exists(output):
-                shutil.rmtree(output, onerror=remove_readonly)
+                remove_tree(output)
 
             # Extract new content
             tar = TarFile(tarname)
@@ -156,7 +154,7 @@ class RepoTestMixin:
         for name in dirs:
             path = self.get_repo_path(name)
             if os.path.exists(path):
-                shutil.rmtree(path, onerror=remove_readonly)
+                remove_tree(path)
 
         # Remove cached paths
         keys = ["git_repo_path", "mercurial_repo_path", "subversion_repo_path"]
@@ -164,26 +162,24 @@ class RepoTestMixin:
             if key in self.__dict__:
                 del self.__dict__[key]
 
-        # Remove possibly existing project directory
-        test_repo_path = os.path.join(settings.DATA_DIR, "vcs", "test")
+        # Remove possibly existing project directories
+        test_repo_path = os.path.join(settings.DATA_DIR, "vcs")
         if os.path.exists(test_repo_path):
-            shutil.rmtree(test_repo_path, onerror=remove_readonly)
-
-        # Remove indexes
-        Fulltext.cleanup()
+            remove_tree(test_repo_path)
+        os.makedirs(test_repo_path)
 
     def create_project(self, **kwargs):
         """Create test project."""
         project = Project.objects.create(
             name="Test", slug="test", web="https://nonexisting.weblate.org/", **kwargs
         )
-        self.addCleanup(shutil.rmtree, project.full_path, True)
+        self.addCleanup(remove_tree, project.full_path, True)
         return project
 
     def format_local_path(self, path):
         """Format path for local access to the repository."""
         if sys.platform != "win32":
-            return "file://{}".format(path)
+            return f"file://{path}"
         return "file:///{}".format(path.replace("\\", "/"))
 
     def _create_component(
@@ -194,17 +190,17 @@ class RepoTestMixin:
         new_base="",
         vcs="git",
         branch=None,
-        **kwargs
+        **kwargs,
     ):
         """Create real test component."""
         if file_format not in FILE_FORMATS:
-            raise SkipTest("File format {0} is not supported!".format(file_format))
+            raise SkipTest(f"File format {file_format} is not supported!")
         if "project" not in kwargs:
             kwargs["project"] = self.create_project()
 
-        repo = push = self.format_local_path(getattr(self, "{0}_repo_path".format(vcs)))
+        repo = push = self.format_local_path(getattr(self, f"{vcs}_repo_path"))
         if vcs not in VCS_REGISTRY:
-            raise SkipTest("VCS {0} not available!".format(vcs))
+            raise SkipTest(f"VCS {vcs} not available!")
 
         if "new_lang" not in kwargs:
             kwargs["new_lang"] = "contact"
@@ -215,6 +211,9 @@ class RepoTestMixin:
         if "name" not in kwargs:
             kwargs["name"] = "Test"
         kwargs["slug"] = kwargs["name"].lower()
+
+        if "manage_units" not in kwargs and template:
+            kwargs["manage_units"] = True
 
         if branch is None:
             branch = VCS_REGISTRY[vcs].default_branch
@@ -229,7 +228,7 @@ class RepoTestMixin:
             repoweb=REPOWEB_URL,
             new_base=new_base,
             vcs=vcs,
-            **kwargs
+            **kwargs,
         )
 
     def create_component(self):
@@ -267,14 +266,16 @@ class RepoTestMixin:
     def create_po_link(self):
         return self._create_component("po", "po-link/*.po")
 
-    def create_po_mono(self):
-        return self._create_component("po-mono", "po-mono/*.po", "po-mono/en.po")
+    def create_po_mono(self, **kwargs):
+        return self._create_component(
+            "po-mono", "po-mono/*.po", "po-mono/en.po", **kwargs
+        )
 
     def create_srt(self):
         return self._create_component("srt", "srt/*.srt", "srt/en.srt")
 
     def create_ts(self, suffix="", **kwargs):
-        return self._create_component("ts", "ts{0}/*.ts".format(suffix), **kwargs)
+        return self._create_component("ts", f"ts{suffix}/*.ts", **kwargs)
 
     def create_ts_mono(self):
         return self._create_component("ts", "ts-mono/*.ts", "ts-mono/en.ts")
@@ -287,9 +288,9 @@ class RepoTestMixin:
     def create_android(self, suffix="", **kwargs):
         return self._create_component(
             "aresource",
-            "android{}/values-*/strings.xml".format(suffix),
-            "android{}/values/strings.xml".format(suffix),
-            **kwargs
+            f"android{suffix}/values-*/strings.xml",
+            f"android{suffix}/values/strings.xml",
+            **kwargs,
         )
 
     def create_json(self):
@@ -297,10 +298,7 @@ class RepoTestMixin:
 
     def create_json_mono(self, suffix="mono", **kwargs):
         return self._create_component(
-            "json",
-            "json-{}/*.json".format(suffix),
-            "json-{}/en.json".format(suffix),
-            **kwargs
+            "json", f"json-{suffix}/*.json", f"json-{suffix}/en.json", **kwargs
         )
 
     def create_json_webextension(self):
@@ -310,8 +308,29 @@ class RepoTestMixin:
             "webextension/_locales/en/messages.json",
         )
 
+    def create_json_intermediate(self, **kwargs):
+        return self._create_component(
+            "json",
+            "intermediate/*.json",
+            "intermediate/en.json",
+            intermediate="intermediate/dev.json",
+            **kwargs,
+        )
+
+    def create_json_intermediate_empty(self, **kwargs):
+        return self._create_component(
+            "json",
+            "intermediate/lang-*.json",
+            "intermediate/lang-en.json",
+            intermediate="intermediate/dev.json",
+            **kwargs,
+        )
+
     def create_joomla(self):
         return self._create_component("joomla", "joomla/*.ini", "joomla/en-GB.ini")
+
+    def create_ini(self):
+        return self._create_component("ini", "ini/*.ini", "ini/en.ini")
 
     def create_tsv(self):
         return self._create_component("csv", "tsv/*.txt")
@@ -333,7 +352,7 @@ class RepoTestMixin:
         )
 
     def create_xliff(self, name="default", **kwargs):
-        return self._create_component("xliff", "xliff/*/{0}.xlf".format(name), **kwargs)
+        return self._create_component("xliff", f"xliff/*/{name}.xlf", **kwargs)
 
     def create_xliff_mono(self):
         return self._create_component("xliff", "xliff-mono/*.xlf", "xliff-mono/en.xlf")
@@ -353,6 +372,21 @@ class RepoTestMixin:
     def create_appstore(self):
         return self._create_component("appstore", "metadata/*", "metadata/en-US")
 
+    def create_html(self):
+        return self._create_component("html", "html/*.html", "html/en.html")
+
+    def create_idml(self):
+        return self._create_component("idml", "idml/*.idml", "idml/en.idml")
+
+    def create_odt(self):
+        return self._create_component("odf", "odt/*.odt", "odt/en.odt")
+
+    def create_winrc(self):
+        return self._create_component("rc", "winrc/*.rc", "winrc/en-US.rc")
+
+    def create_tbx(self):
+        return self._create_component("tbx", "tbx/*.tbx")
+
     def create_link(self, **kwargs):
         parent = self.create_iphone(*kwargs)
         return Component.objects.create(
@@ -366,13 +400,16 @@ class RepoTestMixin:
         )
 
     def create_link_existing(self):
+        component = self.component
+        if "linked_childs" in component.__dict__:
+            del component.__dict__["linked_childs"]
         return Component.objects.create(
             name="Test2",
             slug="test2",
             project=self.project,
-            repo="weblate://test/test",
+            repo=component.get_repo_link_url(),
             file_format="po",
-            filemask="po-duplicates/*.po",
+            filemask="po-duplicates/*.dpo",
             new_lang="contact",
         )
 
@@ -385,22 +422,27 @@ class TempDirMixin:
 
     def remove_temp(self):
         if self.tempdir:
-            shutil.rmtree(self.tempdir, onerror=remove_readonly)
+            remove_tree(self.tempdir)
             self.tempdir = None
 
 
-def create_billing(user):
+def create_test_billing(user, invoice=True):
     from weblate.billing.models import Billing, Invoice, Plan
 
     plan = Plan.objects.create(
-        display_limit_projects=1, name="Basic plan", price=19, yearly_price=199
+        limit_projects=1,
+        display_limit_projects=1,
+        name="Basic plan",
+        price=19,
+        yearly_price=199,
     )
     billing = Billing.objects.create(plan=plan)
     billing.owners.add(user)
-    Invoice.objects.create(
-        billing=billing,
-        amount=19,
-        start=timezone.now() - timedelta(days=1),
-        end=timezone.now() + timedelta(days=1),
-    )
+    if invoice:
+        Invoice.objects.create(
+            billing=billing,
+            amount=19,
+            start=timezone.now() - timedelta(days=1),
+            end=timezone.now() + timedelta(days=1),
+        )
     return billing

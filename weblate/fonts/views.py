@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -72,7 +71,7 @@ class FontListView(ProjectViewMixin, ListView):
             except ValidationError:
                 messages.error(request, _("Entry by the same name already exists."))
         else:
-            messages.error(request, _("Creation failed, please the fix errors below."))
+            messages.error(request, _("Creation failed, please fix the errors below."))
         return self.get(request, **kwargs)
 
 

@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -49,16 +48,34 @@ class WeblateConf(AppConf):
     RATELIMIT_GLOSSARY_ATTEMPTS = 30
     RATELIMIT_GLOSSARY_WINDOW = 60
 
+    RATELIMIT_LANGUAGE_ATTEMPTS = 2
+    RATELIMIT_LANGUAGE_WINDOW = 300
+    RATELIMIT_LANGUAGE_LOCKOUT = 600
+
+    RATELIMIT_TRIAL_ATTEMPTS = 1
+    RATELIMIT_TRIAL_WINDOW = 60
+    RATELIMIT_TRIAL_LOCKOUT = 600
+
     SENTRY_DSN = None
+    SENTRY_SECURITY = None
+    SENTRY_ENVIRONMENT = "devel"
+    SENTRY_ORGANIZATION = "weblate"
+    SENTRY_TOKEN = None
+    SENTRY_PROJECTS = ["weblate"]
+    SENTRY_EXTRA_ARGS = {}
 
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_BROKER_URL = "memory://"
 
-    CELERY_IMPORTS = [
-        "weblate.trans.search",
-    ]
-
     DATABASE_BACKUP = "plain"
+
+    HIDE_VERSION = False
+
+    CSP_SCRIPT_SRC = []
+    CSP_IMG_SRC = []
+    CSP_CONNECT_SRC = []
+    CSP_STYLE_SRC = []
+    CSP_FONT_SRC = []
 
     class Meta:
         prefix = ""
@@ -74,7 +91,7 @@ def update_source(sender, instance, created, **kwargs):
     ):
         return
     cache.set(
-        "last-content-change-{}".format(instance.translation.pk),
+        f"last-content-change-{instance.translation.pk}",
         instance.pk,
         180 * 86400,
     )

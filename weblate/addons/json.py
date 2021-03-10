@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -29,12 +28,18 @@ class JSONCustomizeAddon(StoreBaseAddon):
     name = "weblate.json.customize"
     verbose = _("Customize JSON output")
     description = _(
-        "Allows to customize JSON output behavior, for example "
-        "indentation or sorting."
+        "Allows adjusting JSON output behavior, for example " "indentation or sorting."
     )
     settings_form = JSONCustomizeForm
     compat = {
-        "file_format": frozenset(("json", "json-nested", "webextension", "i18next"))
+        "file_format": {
+            "json",
+            "json-nested",
+            "webextension",
+            "i18next",
+            "arb",
+            "go-i18n-json",
+        }
     }
 
     def store_post_load(self, translation, store):

@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -44,7 +43,7 @@ def cleanup_social_auth():
             # Old entry without expiry set, or expired entry
             partial.delete()
 
-    age = now() + timedelta(seconds=settings.AUTH_TOKEN_VALID)
+    age = now() - timedelta(seconds=settings.AUTH_TOKEN_VALID)
     # Delete old not verified codes
     Code.objects.filter(verified=False, timestamp__lt=age).delete()
 
@@ -64,8 +63,8 @@ def cleanup_auditlog():
 
 @app.task(trail=False)
 def notify_change(change_id):
-    from weblate.trans.models import Change
     from weblate.accounts.notifications import NOTIFICATIONS_ACTIONS
+    from weblate.trans.models import Change
 
     change = Change.objects.get(pk=change_id)
     perm_cache = {}
@@ -120,7 +119,7 @@ def notify_auditlog(log_id, email):
             "address": audit.address,
             "user_agent": audit.user_agent,
         },
-        info="{0} from {1}".format(audit.activity, audit.address),
+        info=f"{audit.activity} from {audit.address}",
     )
 
 
@@ -132,15 +131,15 @@ def send_mails(mails):
         filename = os.path.join(settings.STATIC_ROOT, name)
         with open(filename, "rb") as handle:
             image = MIMEImage(handle.read())
-        image.add_header("Content-ID", "<{}@cid.weblate.org>".format(name))
+        image.add_header("Content-ID", f"<{name}@cid.weblate.org>")
         image.add_header("Content-Disposition", "inline", filename=name)
         images.append(image)
 
     connection = get_connection()
     try:
         connection.open()
-    except Exception as error:
-        report_error(error, prefix="Failed to send notifications")
+    except Exception:
+        report_error(cause="Failed to send notifications")
         connection.close()
         return
 
@@ -180,5 +179,7 @@ def setup_periodic_tasks(sender, **kwargs):
         name="notify-weekly",
     )
     sender.add_periodic_task(
-        crontab(hour=3, minute=0, day=1), notify_monthly.s(), name="notify-monthly"
+        crontab(hour=3, minute=0, day_of_month=1),
+        notify_monthly.s(),
+        name="notify-monthly",
     )

@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,13 +18,14 @@
 #
 """Version control system abstraction for Weblate needs."""
 
-
 import hashlib
 import logging
 import os
 import os.path
 import subprocess
+from datetime import datetime
 from distutils.version import LooseVersion
+from typing import List, Optional
 
 from dateutil import parser
 from django.conf import settings
@@ -35,12 +35,7 @@ from filelock import FileLock
 from pkg_resources import Requirement, resource_filename
 from sentry_sdk import add_breadcrumb
 
-from weblate.trans.util import (
-    add_configuration_error,
-    delete_configuration_error,
-    get_clean_env,
-    path_separator,
-)
+from weblate.trans.util import get_clean_env, path_separator
 from weblate.vcs.ssh import SSH_WRAPPER
 
 LOGGER = logging.getLogger("weblate.vcs")
@@ -55,7 +50,7 @@ class RepositoryException(Exception):
 
     def get_message(self):
         if self.retcode != 0:
-            return "{0} ({1})".format(self.args[0], self.retcode)
+            return "{} ({})".format(self.args[0], self.retcode)
         return self.args[0]
 
     def __str__(self):
@@ -66,21 +61,22 @@ class Repository:
     """Basic repository object."""
 
     _cmd = "false"
-    _cmd_last_revision = None
-    _cmd_last_remote_revision = None
+    _cmd_last_revision: Optional[List[str]] = None
+    _cmd_last_remote_revision: Optional[List[str]] = None
     _cmd_status = ["status"]
-    _cmd_list_changed_files = None
+    _cmd_list_changed_files: Optional[List[str]] = None
 
     name = None
-    req_version = None
+    identifier: Optional[str] = None
+    req_version: Optional[str] = None
     default_branch = ""
+    needs_push_url = True
 
-    _is_supported = None
     _version = None
 
     @classmethod
     def get_identifier(cls):
-        return cls.name.lower()
+        return cls.identifier or cls.name.lower()
 
     def __init__(self, path, branch=None, component=None, local=False):
         self.path = path
@@ -99,6 +95,10 @@ class Repository:
                 self.init()
 
     @classmethod
+    def get_remote_branch(cls, repo: str):
+        return cls.default_branch
+
+    @classmethod
     def add_breadcrumb(cls, message, **data):
         # Add breadcrumb only if settings are already loaded,
         # we do not want to force loading settings early
@@ -106,12 +106,12 @@ class Repository:
             add_breadcrumb(category="vcs", message=message, data=data, level="info")
 
     @classmethod
-    def log(cls, message):
-        return LOGGER.debug("%s: %s", cls._cmd, message)
+    def log(cls, message, level: int = logging.DEBUG):
+        return LOGGER.log(level, "%s: %s", cls._cmd, message)
 
     def ensure_config_updated(self):
         """Ensures the configuration is periodically checked."""
-        cache_key = "sp-config-check-{}".format(self.component.pk)
+        cache_key = f"sp-config-check-{self.component.pk}"
         if cache.get(cache_key) is None:
             self.check_config()
             cache.set(cache_key, True, 86400)
@@ -143,12 +143,23 @@ class Repository:
     def _getenv():
         """Generate environment for process execution."""
         return get_clean_env(
-            {"GIT_SSH": SSH_WRAPPER.filename, "GIT_TERMINAL_PROMPT": "0"}
+            {
+                "GIT_SSH": SSH_WRAPPER.filename,
+                "GIT_TERMINAL_PROMPT": "0",
+                "SVN_SSH": SSH_WRAPPER.filename,
+            }
         )
 
     @classmethod
     def _popen(
-        cls, args, cwd=None, merge_err=True, fullcmd=False, raw=False, local=False
+        cls,
+        args: List[str],
+        cwd: Optional[str] = None,
+        merge_err: bool = True,
+        fullcmd: bool = False,
+        raw: bool = False,
+        local: bool = False,
+        stdin: Optional[str] = None,
     ):
         """Execute the command using popen."""
         if args is None:
@@ -156,29 +167,44 @@ class Repository:
         if not fullcmd:
             args = [cls._cmd] + list(args)
         text_cmd = " ".join(args)
-        process = subprocess.Popen(
+        kwargs = {}
+        # These are mutually exclusive, on Python 3.7+ it is posible
+        # to pass stdin = None, but on 3.6 stdin has to be omitted
+        if stdin is not None:
+            kwargs["input"] = stdin
+        else:
+            kwargs["stdin"] = subprocess.PIPE
+        process = subprocess.run(
             args,
             cwd=cwd,
             env={} if local else cls._getenv(),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT if merge_err else subprocess.PIPE,
-            stdin=subprocess.PIPE,
+            universal_newlines=not raw,
+            check=False,
+            **kwargs,
         )
-        output, stderr = process.communicate()
-        if not raw:
-            output = output.decode()
-        retcode = process.poll()
         cls.add_breadcrumb(
-            text_cmd, retcode=retcode, output=output, stderr=stderr, cwd=cwd
+            text_cmd,
+            retcode=process.returncode,
+            output=process.stdout,
+            stderr=process.stderr,
+            cwd=cwd,
         )
-        cls.log("exec {0} [retcode={1}]".format(text_cmd, retcode))
-        if retcode:
-            if stderr:
-                output += stderr.decode()
-            raise RepositoryException(retcode, output)
-        return output
+        if process.returncode:
+            raise RepositoryException(
+                process.returncode, process.stdout + (process.stderr or "")
+            )
+        return process.stdout
 
-    def execute(self, args, needs_lock=True, fullcmd=False, merge_err=True):
+    def execute(
+        self,
+        args: List[str],
+        needs_lock: bool = True,
+        fullcmd: bool = False,
+        merge_err: bool = True,
+        stdin: Optional[str] = None,
+    ):
         """Execute command and caches its output."""
         self.log("Executing VCS command: {}".format(" ".join([self._cmd] + list(args))))
         if needs_lock:
@@ -189,7 +215,12 @@ class Repository:
         is_status = args[0] == self._cmd_status[0]
         try:
             self.last_output = self._popen(
-                args, self.path, fullcmd=fullcmd, local=self.local, merge_err=merge_err
+                args,
+                self.path,
+                fullcmd=fullcmd,
+                local=self.local,
+                merge_err=merge_err,
+                stdin=stdin,
             )
         except RepositoryException as error:
             if not is_status:
@@ -199,7 +230,7 @@ class Repository:
 
     def log_status(self, error):
         try:
-            self.log("failure {}".format(error))
+            self.log(f"failure {error}")
             self.log(self.status())
         except RepositoryException:
             pass
@@ -226,12 +257,12 @@ class Repository:
         )
 
     @classmethod
-    def _clone(cls, source, target, branch=None):
+    def _clone(cls, source: str, target: str, branch: str):
         """Clone repository."""
         raise NotImplementedError()
 
     @classmethod
-    def clone(cls, source, target, branch=None, component=None):
+    def clone(cls, source: str, target: str, branch: str, component=None):
         """Clone repository and return object for cloned repository."""
         SSH_WRAPPER.create()
         cls._clone(source, target, branch)
@@ -246,7 +277,7 @@ class Repository:
         with self.lock:
             return self.execute(self._cmd_status)
 
-    def push(self):
+    def push(self, branch):
         """Push given branch to remote repository."""
         raise NotImplementedError()
 
@@ -266,7 +297,7 @@ class Repository:
         """Rebase working copy on top of remote branch."""
         raise NotImplementedError()
 
-    def needs_commit(self, *filenames):
+    def needs_commit(self, filenames: Optional[List[str]] = None):
         """Check whether repository needs commit."""
         raise NotImplementedError()
 
@@ -304,7 +335,7 @@ class Repository:
 
     def get_revision_info(self, revision):
         """Return dictionary with detailed revision information."""
-        key = "rev-info-{}-{}".format(self.get_identifier(), revision)
+        key = f"rev-info-{self.get_identifier()}-{revision}"
         result = cache.get(key)
         if not result:
             result = self._get_revision_info(revision)
@@ -319,44 +350,31 @@ class Repository:
         return result
 
     @classmethod
+    def is_configured(cls):
+        return True
+
+    @classmethod
     def is_supported(cls):
         """Check whether this VCS backend is supported."""
-        if cls._is_supported is not None:
-            return cls._is_supported
         try:
             version = cls.get_version()
-        except (OSError, RepositoryException):
-            cls._is_supported = False
+        except Exception:
             return False
-        try:
-            if cls.req_version is None or LooseVersion(version) >= LooseVersion(
-                cls.req_version
-            ):
-                cls._is_supported = True
-                delete_configuration_error(cls.name.lower())
-                return True
-        except Exception as error:
-            add_configuration_error(
-                cls.name.lower(),
-                "{0} version check failed (version {1}, required {2}): {3}".format(
-                    cls.name, version, cls.req_version, error
-                ),
-            )
-        else:
-            add_configuration_error(
-                cls.name.lower(),
-                "{0} version is too old, please upgrade to {1}.".format(
-                    cls.name, cls.req_version
-                ),
-            )
-        cls._is_supported = False
-        return False
+        return cls.req_version is None or LooseVersion(version) >= LooseVersion(
+            cls.req_version
+        )
 
     @classmethod
     def get_version(cls):
         """Cached getting of version."""
         if cls._version is None:
-            cls._version = cls._get_version()
+            try:
+                cls._version = cls._get_version()
+            except Exception as error:
+                cls._version = error
+        if isinstance(cls._version, Exception):
+            # pylint: disable=raising-bad-type
+            raise cls._version
         return cls._version
 
     @classmethod
@@ -368,11 +386,17 @@ class Repository:
         """Configure commiter name."""
         raise NotImplementedError()
 
-    def commit(self, message, author=None, timestamp=None, files=None):
+    def commit(
+        self,
+        message: str,
+        author: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
+        files: Optional[List[str]] = None,
+    ):
         """Create new revision."""
         raise NotImplementedError()
 
-    def remove(self, files, message, author=None):
+    def remove(self, files: List[str], message: str, author: Optional[str] = None):
         """Remove files and creates new revision."""
         raise NotImplementedError()
 
@@ -382,7 +406,7 @@ class Repository:
             data = handle.read()
         if extra:
             objhash.update(extra.encode())
-        objhash.update("blob {0}\0".format(len(data)).encode("ascii"))
+        objhash.update("blob {}\0".format(len(data)).encode("ascii"))
         objhash.update(data)
 
     def get_object_hash(self, path):
@@ -393,7 +417,7 @@ class Repository:
         example permissions).
         """
         real_path = os.path.join(self.path, self.resolve_symlinks(path))
-        objhash = hashlib.sha1()
+        objhash = hashlib.sha1()  # nosec
 
         if os.path.isdir(real_path):
             files = []
@@ -408,7 +432,9 @@ class Repository:
 
         return objhash.hexdigest()
 
-    def configure_remote(self, pull_url, push_url, branch):
+    def configure_remote(
+        self, pull_url: str, push_url: str, branch: str, fast: bool = True
+    ):
         """Configure remote repository."""
         raise NotImplementedError()
 
@@ -481,7 +507,7 @@ class Repository:
         )
 
     def get_remote_branch_name(self):
-        return "origin/{0}".format(self.branch)
+        return f"origin/{self.branch}"
 
     def list_remote_branches(self):
         return []

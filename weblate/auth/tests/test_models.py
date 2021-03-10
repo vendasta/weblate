@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -53,6 +52,23 @@ class ModelTest(FixtureTestCase):
         self.assertTrue(self.user.can_access_project(self.project))
         self.assertTrue(self.user.has_perm("unit.edit", self.translation))
 
+    def test_component(self):
+        self.group.projects.remove(self.project)
+
+        # Add user to group of power users
+        self.user.groups.add(self.group)
+        self.group.roles.add(Role.objects.get(name="Power user"))
+
+        # No permissions as component list is empty
+        self.assertFalse(self.user.can_access_project(self.project))
+        self.assertFalse(self.user.has_perm("unit.edit", self.translation))
+
+        # Permissions should exist after adding to a component list
+        self.user.clear_cache()
+        self.group.components.add(self.component)
+        self.assertTrue(self.user.can_access_project(self.project))
+        self.assertTrue(self.user.has_perm("unit.edit", self.translation))
+
     def test_componentlist(self):
         # Add user to group of power users
         self.user.groups.add(self.group)
@@ -60,11 +76,10 @@ class ModelTest(FixtureTestCase):
 
         # Assign component list to a group
         clist = ComponentList.objects.create(name="Test", slug="test")
-        self.group.componentlist = clist
-        self.group.save()
+        self.group.componentlists.add(clist)
 
         # No permissions as component list is empty
-        self.assertTrue(self.user.can_access_project(self.project))
+        self.assertFalse(self.user.can_access_project(self.project))
         self.assertFalse(self.user.has_perm("unit.edit", self.translation))
 
         # Permissions should exist after adding to a component list
@@ -82,6 +97,7 @@ class ModelTest(FixtureTestCase):
         self.group.languages.set(Language.objects.filter(code="de"), clear=True)
 
         # Permissions should deny access
+        self.user.clear_cache()
         self.assertTrue(self.user.can_access_project(self.project))
         self.assertFalse(self.user.has_perm("unit.edit", self.translation))
 
@@ -111,6 +127,14 @@ class ModelTest(FixtureTestCase):
         # Remove Django group
         self.user.groups.remove(DjangoGroup.objects.get(name="Second"))
         self.assertEqual(self.user.groups.count(), 2)
+
+        # Set Weblate group
+        self.user.groups.set(Group.objects.filter(name="Test"))
+        self.assertEqual(self.user.groups.count(), 1)
+
+        # Set Django group
+        self.user.groups.set(DjangoGroup.objects.filter(name="Second"))
+        self.assertEqual(self.user.groups.count(), 1)
 
     def test_user(self):
         # Create user with Django User fields

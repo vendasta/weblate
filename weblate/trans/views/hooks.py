@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -25,7 +24,12 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 from django.db.models import Q
-from django.http import HttpResponseBadRequest, HttpResponseNotAllowed, JsonResponse
+from django.http import (
+    Http404,
+    HttpResponseBadRequest,
+    HttpResponseNotAllowed,
+    JsonResponse,
+)
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -67,12 +71,27 @@ PAGURE_REPOS = (
     "ssh://git@{server}/{project}.git",
 )
 
+AZURE_REPOS = (
+    "https://dev.azure.com/{organization}/{project}/_git/{repository}",
+    "https://dev.azure.com/{organization}/{projectId}/_git/{repositoryId}",
+    "git@ssh.dev.azure.com:v3/{organization}/{project}/{repository}",
+    "https://{organization}.visualstudio.com/{project}/_git/{repository}",
+    "{organization}@vs-ssh.visualstudio.com:v3/{organization}/{project}/{repository}",
+)
+
 HOOK_HANDLERS = {}
 
 
-def hook_response(response="Update triggered", message="success", status=200):
+def hook_response(
+    response: str = "Update triggered",
+    message: str = "success",
+    status: int = 200,
+    **kwargs,
+):
     """Generic okay hook response."""
-    return JsonResponse(data={"status": message, "message": response}, status=status)
+    data = {"status": message, "message": response}
+    data.update(kwargs)
+    return JsonResponse(data=data, status=status)
 
 
 def register_hook(handler):
@@ -128,6 +147,12 @@ def vcs_service_hook(request, service):
     if not settings.ENABLE_HOOKS:
         return HttpResponseNotAllowed(())
 
+    # Get service helper
+    try:
+        hook_helper = HOOK_HANDLERS[service]
+    except KeyError:
+        raise Http404(f"Hook {service} not supported")
+
     # Check if we got payload
     try:
         data = parse_hook_payload(request)
@@ -137,15 +162,12 @@ def vcs_service_hook(request, service):
     if not data:
         return HttpResponseBadRequest("Invalid data in json payload!")
 
-    # Get service helper
-    hook_helper = HOOK_HANDLERS[service]
-
     # Send the request data to the service handler.
     try:
         service_data = hook_helper(data, request)
-    except Exception as error:
+    except Exception:
         LOGGER.error("failed to parse service %s data", service)
-        report_error(error, request)
+        report_error()
         return HttpResponseBadRequest("Invalid data in json payload!")
 
     # This happens on ping request upon installation
@@ -160,41 +182,47 @@ def vcs_service_hook(request, service):
     full_name = service_data["full_name"]
 
     # Generate filter
-    spfilter = Q(repo__in=repos) | Q(repo__iendswith=full_name)
+    spfilter = (
+        Q(repo__in=repos)
+        | Q(repo__iendswith=full_name)
+        | Q(repo__iendswith=f"{full_name}.git")
+    )
 
-    # We need to match also URLs which include username and password
     for repo in repos:
+        # We need to match also URLs which include username and password
         if repo.startswith("http://"):
-            spfilter = spfilter | (
-                Q(repo__startswith="http://")
-                & Q(repo__endswith="@{0}".format(repo[7:]))
+            spfilter |= Q(repo__startswith="http://") & Q(
+                repo__endswith="@{}".format(repo[7:])
             )
         elif repo.startswith("https://"):
-            spfilter = spfilter | (
-                Q(repo__startswith="https://")
-                & Q(repo__endswith="@{0}".format(repo[8:]))
+            spfilter |= Q(repo__startswith="https://") & Q(
+                repo__endswith="@{}".format(repo[8:])
             )
+        # Include URLs with trailing slash
+        spfilter |= Q(repo=repo + "/")
 
-    all_components = Component.objects.filter(spfilter)
+    all_components = repo_components = Component.objects.filter(spfilter)
 
     if branch is not None:
-        all_components = all_components.filter(branch=branch)
+        all_components = repo_components.filter(branch=branch)
 
-    components = all_components.filter(project__enable_hooks=True)
+    enabled_components = all_components.filter(project__enable_hooks=True)
 
     LOGGER.info(
-        "received %s notification on repository %s, branch %s, "
-        "%d matching components, %d to process",
+        "received %s notification on repository %s, URL %s, branch %s, "
+        "%d matching components, %d to process, %d linked",
         service_long_name,
+        full_name,
         repo_url,
         branch,
         all_components.count(),
-        components.count(),
+        enabled_components.count(),
+        Component.objects.filter(linked_component__in=enabled_components).count(),
     )
 
     # Trigger updates
     updates = 0
-    for obj in components:
+    for obj in enabled_components:
         updates += 1
         LOGGER.info("%s notification will update %s", service_long_name, obj)
         Change.objects.create(
@@ -202,11 +230,26 @@ def vcs_service_hook(request, service):
         )
         perform_update.delay("Component", obj.pk)
 
+    match_status = {
+        "repository_matches": repo_components.count(),
+        "branch_matches": all_components.count(),
+        "enabled_hook_matches": len(enabled_components),
+    }
+
     if updates == 0:
-        return hook_response("No matching repositories found!", "failure", status=202)
+        return hook_response(
+            "No matching repositories found!",
+            "failure",
+            status=202,
+            match_status=match_status,
+        )
+
+    updated_components = [obj.full_slug for obj in enabled_components]
 
     return hook_response(
-        "Update triggered: {}".format(", ".join(obj.full_slug for obj in components))
+        "Update triggered: {}".format(", ".join(updated_components)),
+        match_status=match_status,
+        updated_components=updated_components,
     )
 
 
@@ -217,7 +260,7 @@ def bitbucket_extract_changes(data):
         return data["push"]["changes"]
     if "commits" in data:
         return data["commits"]
-    return {}
+    return []
 
 
 def bitbucket_extract_branch(data):
@@ -232,6 +275,9 @@ def bitbucket_extract_branch(data):
             return changes[-1]["old"]["name"]
         if "ref" in last:
             return last["ref"]["displayId"]
+    # Pullrequest merged action
+    if "pullrequest" in data:
+        return data["pullrequest"]["destination"]["branch"]["name"]
     return None
 
 
@@ -249,7 +295,7 @@ def bitbucket_extract_full_name(repository):
 
 def bitbucket_extract_repo_url(data, repository):
     if "links" in repository:
-        if "html" in data["repository"]["links"]:
+        if "html" in repository["links"]:
             return repository["links"]["html"]["href"]
         return repository["links"]["self"][0]["href"]
     if "canon_url" in data:
@@ -264,10 +310,16 @@ def bitbucket_hook_helper(data, request):
     if request and request.META.get("HTTP_X_EVENT_KEY") not in (
         "repo:push",
         "repo:refs_changed",
+        "pullrequest:fulfilled",
+        "pr:merged",
     ):
         return None
 
-    repository = data["repository"]
+    if "pullRequest" in data:
+        # The pr:merged event
+        repository = data["pullRequest"]["fromRef"]["repository"]
+    else:
+        repository = data["repository"]
     full_name = bitbucket_extract_full_name(repository)
     repo_url = bitbucket_extract_repo_url(data, repository)
 
@@ -286,10 +338,8 @@ def bitbucket_hook_helper(data, request):
         # Construct possible repository URLs
         for repo in templates:
             repos.extend(
-                (
-                    repo.format(full_name=full_name, server=server)
-                    for server in repo_servers
-                )
+                repo.format(full_name=full_name, server=server)
+                for server in repo_servers
             )
 
     if not repos:
@@ -301,7 +351,7 @@ def bitbucket_hook_helper(data, request):
         "repo_url": repo_url,
         "repos": repos,
         "branch": bitbucket_extract_branch(data),
-        "full_name": "{}.git".format(full_name),
+        "full_name": f"{full_name}.git",
     }
 
 
@@ -334,7 +384,7 @@ def github_hook_helper(data, request):
         "repo_url": data["repository"]["url"],
         "repos": repos,
         "branch": branch,
-        "full_name": "{}/{}.git".format(owner, slug),
+        "full_name": f"{owner}/{slug}.git",
     }
 
 
@@ -423,11 +473,51 @@ def pagure_hook_helper(data, request):
 def azure_hook_helper(data, request):
     if data.get("eventType") != "git.push":
         return None
+
     http_url = data["resource"]["repository"]["remoteUrl"]
+    branch = re.sub(r"^refs/heads/", "", data["resource"]["refUpdates"][0]["name"])
+    project = data["resource"]["repository"]["project"]["name"]
+    projectid = data["resource"]["repository"]["project"]["id"]
+    repository = data["resource"]["repository"]["name"]
+    repositoryid = data["resource"]["repository"]["id"]
+
+    match = re.match(
+        r"^https?:\/\/dev\.azure\.com\/"
+        r"(?P<organization>[a-zA-Z0-9]+[a-zA-Z0-9-]*[a-zA-Z0-9]*)",
+        http_url,
+    )
+
+    # Fallback to support old url structure {organization}.visualstudio.com
+    if match is None:
+        match = re.match(
+            r"^https?:\/\/"
+            r"(?P<organization>[a-zA-Z0-9]+[a-zA-Z0-9-]*[a-zA-Z0-9]*)"
+            r"\.visualstudio\.com",
+            http_url,
+        )
+    organization = None
+
+    if match is not None:
+        organization = match.group("organization")
+
+    if organization is not None:
+        repos = [
+            repo.format(
+                organization=organization,
+                project=project,
+                projectId=projectid,
+                repository=repository,
+                repositoryId=repositoryid,
+            )
+            for repo in AZURE_REPOS
+        ]
+    else:
+        repos = [http_url]
+
     return {
         "service_long_name": "Azure",
         "repo_url": http_url,
-        "repos": [http_url],
-        "branch": data["resource"]["refUpdates"][0]["name"].rsplit("/")[-1],
-        "full_name": data["resource"]["repository"]["name"],
+        "repos": repos,
+        "branch": branch,
+        "full_name": repository,
     }

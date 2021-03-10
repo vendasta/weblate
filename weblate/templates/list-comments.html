@@ -11,7 +11,7 @@
         <p class="text-muted">
         {% if comment.resolved %}
         {% trans "Resolved comment" %}
-        {% elif comment.unit.translation.is_source %}
+        {% elif comment.unit.is_source %}
         {% trans "Source string comment" %}
         {% else %}
         {% trans "Translation comment" %}
@@ -19,7 +19,7 @@
         </p>
     </div>
     <div class="col-xs-10 history-data">
-        {% perm 'comment.delete' comment object as user_can_delete_comment %}
+        {% perm 'comment.delete' comment as user_can_delete_comment %}
         {% if user_can_delete_comment %}
         <div class="btn-float pull-right flip">
             {% if not comment.resolved %}
@@ -32,11 +32,14 @@
             <form method="POST" action="{% url 'delete-comment' pk=comment.pk %}" class="auto-save-translation inlineform">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ next_url }}" />
+            {% if has_antispam and comment.user != user %}
+            <button type="submit" class="btn btn-link red" name="spam" value="{{ suggestion.id }}" title="{% trans "Mark as spam" %}">{% icon "spam.svg" %}</button>
+            {% endif %}
             <button class="btn btn-link red" title="{% trans "Delete" %}">{% icon "delete.svg" %}</button>
             </form>
         </div>
         {% endif %}
-        <div class="comment-content{% if comment.resolved %} comment-resolved{% elif comment.unit.translation.is_source %} comment-source{% endif %}">
+        <div class="comment-content{% if comment.resolved %} comment-resolved{% elif comment.unit.is_source %} comment-source{% endif %}">
             {{ comment.comment|markdown }}
             <span class="pull-right flip text-muted">{{ comment.timestamp|naturaltime }}</span>
             <div class="clearfix"></div>
