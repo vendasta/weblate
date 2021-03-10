@@ -227,11 +227,6 @@ class Billing(models.Model):
             update_fields=update_fields,
         )
 
-    def save(self, *args, **kwargs):
-        if not kwargs.pop("skip_limits", False) and self.pk:
-            self.check_limits(save=False)
-        super().save(*args, **kwargs)
-
     def get_absolute_url(self):
         return reverse("billing-detail", kwargs={"pk": self.pk})
 

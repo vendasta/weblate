@@ -59,6 +59,7 @@ from weblate.trans.util import (
     check_upload_method_permissions,
     is_repo_link,
     join_plural,
+    sort_choices,
 )
 from weblate.trans.validators import validate_check_flags
 from weblate.utils.antispam import is_spam

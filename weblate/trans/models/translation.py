@@ -155,9 +155,6 @@ class Translation(
     def __str__(self):
         return f"{self.component} — {self.language}"
 
-    def __str__(self):
-        return "{0} — {1}".format(self.component, self.language)
-
     def __init__(self, *args, **kwargs):
         """Constructor to initialize some cache properties."""
         super().__init__(*args, **kwargs)

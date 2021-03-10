@@ -11,5 +11,4 @@ def serve(ctx):
 
 @task()
 def lint(ctx):
-    run("black .")
     run("pre-commit run flake8 --all")

@@ -137,12 +137,6 @@ class Check(models.Model):
         unique_together = ("unit", "check")
 
     def __str__(self):
-        return str(self.get_name())
-
-    class Meta:
-        unique_together = ("unit", "check")
-
-    def __str__(self):
         return "{0}: {1}".format(self.unit, self.check)
 
     @cached_property

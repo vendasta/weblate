@@ -405,49 +405,6 @@ class Unit(FastDeleteModelMixin, models.Model, LoggerMixin):
         # Data for glossary integration
         self.glossary_terms = None
 
-    def save(
-        self,
-        same_content=False,
-        same_state=False,
-        force_insert=False,
-        force_update=False,
-        using=None,
-        update_fields=None,
-    ):
-        """Wrapper around save to run checks or update fulltext."""
-        # Store number of words
-        if not same_content or not self.num_words:
-            self.num_words = len(self.get_source_plurals()[0].split())
-            if update_fields and "num_words" not in update_fields:
-                update_fields.append("num_words")
-
-        # Actually save the unit
-        super().save(
-            force_insert=force_insert,
-            force_update=force_update,
-            using=using,
-            update_fields=update_fields,
-        )
-
-        # Update checks if content or fuzzy flag has changed
-        if not same_content or not same_state:
-            self.run_checks(same_state, same_content)
-
-        # Update fulltext index if content has changed or this is a new unit
-        if force_insert or not same_content:
-            Fulltext.update_index_unit(self)
-
-    def get_absolute_url(self):
-        return "{0}?checksum={1}".format(
-            self.translation.get_translate_url(), self.checksum
-        )
-
-    def __init__(self, *args, **kwargs):
-        """Constructor to initialize some cache properties."""
-        super().__init__(*args, **kwargs)
-        self.old_unit = copy(self)
-        self.is_batch_update = False
-
     @property
     def approved(self):
         return self.state == STATE_APPROVED

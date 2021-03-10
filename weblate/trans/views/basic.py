@@ -51,7 +51,7 @@ from weblate.trans.models import Change, ComponentList, Translation
 from weblate.trans.models.component import prefetch_tasks
 from weblate.trans.models.project import prefetch_project_flags
 from weblate.trans.models.translation import GhostTranslation
-from weblate.trans.util import render, sort_unicode
+from weblate.trans.util import render, sort_unicode, sort_objects
 from weblate.utils import messages
 from weblate.utils.ratelimit import session_ratelimit_post
 from weblate.utils.stats import GhostProjectLanguageStats, prefetch_stats
@@ -262,7 +262,7 @@ def show_component(request, project, component):
             "allow_index": True,
             "object": obj,
             "project": obj.project,
-            "translations": translations,
+            "translations": sort_objects(prefetch_stats(translations_query.prefetch())),
             "reports_form": ReportsForm(),
             "last_changes": last_changes,
             "last_changes_url": urlencode(
