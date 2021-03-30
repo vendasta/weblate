@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -24,15 +25,15 @@ from django.db import models
 
 class ContributorAgreementManager(models.Manager):
     def has_agreed(self, user, component):
-        cache_key = (user.pk, component.pk)
-        if cache_key not in user.cla_cache:
-            user.cla_cache[cache_key] = self.filter(
+        cache_key = ("cla", user.pk, component.pk)
+        if cache_key not in user.perm_cache:
+            user.perm_cache[cache_key] = self.filter(
                 component=component, user=user
             ).exists()
-        return user.cla_cache[cache_key]
+        return user.perm_cache[cache_key]
 
     def create(self, user, component, **kwargs):
-        user.cla_cache[(user.pk, component.pk)] = True
+        user.perm_cache[("cla", user.pk, component.pk)] = True
         return super().create(user=user, component=component, **kwargs)
 
     def order(self):
@@ -50,8 +51,6 @@ class ContributorAgreement(models.Model):
 
     class Meta:
         unique_together = [("user", "component")]
-        verbose_name = "contributor agreement"
-        verbose_name_plural = "contributor agreements"
 
     def __str__(self):
-        return f"{self.user.username}:{self.component}"
+        return "{0}:{1}".format(self.user.username, self.component)

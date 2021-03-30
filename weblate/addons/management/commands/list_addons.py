@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -29,7 +30,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """List installed addons."""
         for _unused, obj in sorted(ADDONS.items()):
-            self.stdout.write(f".. _addon-{obj.name}:")
+            self.stdout.write(".. _addon-{}:".format(obj.name))
             self.stdout.write("\n")
             self.stdout.write(obj.verbose)
             self.stdout.write("-" * len(obj.verbose))

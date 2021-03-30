@@ -9,9 +9,9 @@
 {% if project %}
 <li><a href="{{ project.get_absolute_url }}">{{ project }}</a></li>
 {% if component %}
-{% include "snippets/component-breadcrumb.html" with object=component %}
+<li><a href="{{ component.get_absolute_url }}">{{ component.name }}</a></li>
 {% if translation %}
-{% include "snippets/translation-breadcrumb.html" with object=translation %}
+<li><a href="{{ translation.get_absolute_url }}">{{ translation.language }}</a></li>
 {% endif %}
 {% endif %}
 {% elif changes_user %}
@@ -40,7 +40,9 @@
 
 {% include "paginator.html" %}
 
-{% include "last-changes-content.html" with last_changes=object_list %}
+{% with object_list as last_changes %}
+{% include "last-changes-content.html" %}
+{% endwith %}
 
 {% include "paginator.html" %}
 

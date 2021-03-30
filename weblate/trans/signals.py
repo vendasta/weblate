@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,15 +21,15 @@
 
 from django.dispatch import Signal
 
-vcs_pre_push = Signal()
-vcs_post_push = Signal()
-vcs_post_update = Signal()
-vcs_pre_update = Signal()
-vcs_pre_commit = Signal()
-vcs_post_commit = Signal()
-translation_post_add = Signal()
-component_post_update = Signal()
-unit_pre_create = Signal()
+vcs_pre_push = Signal(providing_args=["component"])
+vcs_post_push = Signal(providing_args=["component"])
+vcs_post_update = Signal(providing_args=["component", "previous_head", "child"])
+vcs_pre_update = Signal(providing_args=["component"])
+vcs_pre_commit = Signal(providing_args=["translation", "author"])
+vcs_post_commit = Signal(providing_args=["component", "translation"])
+translation_post_add = Signal(providing_args=["translation"])
+component_post_update = Signal(providing_args=["component"])
+unit_pre_create = Signal(providing_args=["unit"])
 user_pre_delete = Signal()
-store_post_load = Signal()
-update_remote_branch = Signal()
+store_post_load = Signal(providing_args=["store", "translation"])
+update_remote_branch = Signal(providing_args=["component"])

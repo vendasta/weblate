@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,14 +18,15 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+from django.utils.encoding import force_str
 from django.utils.functional import cached_property
-from weblate_language_data.countries import DEFAULT_LANGS
 from zeep import Client
 
+from weblate.langdata.countries import DEFAULT_LANGS
 from weblate.machinery.base import MachineTranslation
 
 MST_API_URL = "http://api.terminology.microsoft.com/Terminology.svc"
-MST_WSDL_URL = f"{MST_API_URL}?wsdl"
+MST_WSDL_URL = "{}?wsdl".format(MST_API_URL)
 
 
 class MicrosoftTerminologyService(MachineTranslation):
@@ -46,6 +48,8 @@ class MicrosoftTerminologyService(MachineTranslation):
         return MicrosoftTerminologyService.SERVICE
 
     def soap_req(self, name, **kwargs):
+        self.request_url = name
+        self.request_params = kwargs
         return getattr(self.soap.service, name)(**kwargs)
 
     def download_languages(self):
@@ -55,16 +59,7 @@ class MicrosoftTerminologyService(MachineTranslation):
             return []
         return [lang["Code"] for lang in languages]
 
-    def download_translations(
-        self,
-        source,
-        language,
-        text: str,
-        unit,
-        user,
-        search: bool,
-        threshold: int = 75,
-    ):
+    def download_translations(self, source, language, text, unit, user):
         """Download list of possible translations from the service."""
         args = {
             "text": text,
@@ -80,23 +75,22 @@ class MicrosoftTerminologyService(MachineTranslation):
             return
 
         for item in result:
-            target = item["Translations"]["Translation"][0]["TranslatedText"]
-            source = item["OriginalText"]
+            target = force_str(item["Translations"]["Translation"][0]["TranslatedText"])
             yield {
                 "text": target,
-                "quality": self.comparer.similarity(text, source),
+                "quality": self.comparer.similarity(text, target),
                 "service": self.name,
-                "source": source,
+                "source": item["OriginalText"],
             }
 
-    def map_language_code(self, code):
+    def convert_language(self, language):
         """Convert language to service specific code.
 
         Add country part of locale if missing.
         """
-        code = super().map_language_code(code).replace("_", "-").lower()
-        if "-" not in code:
+        language = language.replace("_", "-").lower()
+        if "-" not in language:
             for lang in DEFAULT_LANGS:
-                if lang.split("_")[0] == code:
+                if lang.split("_")[0] == language:
                     return lang.replace("_", "-").lower()
-        return code
+        return language

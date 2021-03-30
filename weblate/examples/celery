@@ -2,17 +2,13 @@
 
 # Simple wrapper to start/stop celery workers
 
-# Set the app using environment istead of commandline as that got broken
-# in the 4.4.7 release, see
-# https://github.com/celery/celery/issues/6285
-export CELERY_APP=weblate.utils
-
-python -m celery multi $1 \
-    notify memory celery backup translate \
-    --pidfile=$PWD/weblate-%n.pid \
-    --logfile=$PWD/weblate-%n%I.log --loglevel=DEBUG \
-    --beat:celery --queues:celery=celery --prefetch-multiplier:celery=4 \
-    --queues:notify=notify --prefetch-multiplier:notify=10 \
-    --queues:memory=memory --prefetch-multiplier:memory=10 \
-    --queues:translate=translate --prefetch-multiplier:translate=4 \
+python -m celery -A weblate.utils multi $1 \
+    search notify celery memory backup translate \
+    --pidfile=weblate-%n.pid \
+    --logfile=weblate-%n%I.log --loglevel=DEBUG \
+    --beat:celery --concurrency:celery=4 --queues:celery=celery --prefetch-multiplier:celery=4 \
+    --concurrency:notify=4 --queues:notify=notify --prefetch-multiplier:notify=10 \
+    --concurrency:search=1 --queues:search=search --prefetch-multiplier:search=2000 \
+    --concurrency:memory=1 --queues:memory=memory --prefetch-multiplier:memory=2000 \
+    --concurrency:translate=2 --queues:translate=translate --prefetch-multiplier:translate=4 \
     --concurrency:backup=1 --queues:backup=backup  --prefetch-multiplier:backup=2

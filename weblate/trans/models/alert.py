@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,15 +18,15 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-from collections import defaultdict
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.template.loader import render_to_string
+from django.utils.encoding import force_str
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
-from weblate_language_data.ambiguous import AMBIGUOUS
-from weblate_language_data.countries import DEFAULT_LANGS
 
+from weblate.langdata.countries import DEFAULT_LANGS
 from weblate.utils.fields import JSONField
 
 ALERTS = {}
@@ -43,18 +44,14 @@ def register(cls):
 class Alert(models.Model):
     component = models.ForeignKey("Component", on_delete=models.deletion.CASCADE)
     timestamp = models.DateTimeField(auto_now_add=True)
-    updated = models.DateTimeField(auto_now=True)
     name = models.CharField(max_length=150)
-    dismissed = models.BooleanField(default=False, db_index=True)
     details = JSONField(default={})
 
     class Meta:
         unique_together = ("component", "name")
-        verbose_name = "component alert"
-        verbose_name_plural = "component alerts"
 
     def __str__(self):
-        return str(self.obj.verbose)
+        return force_str(self.obj.verbose)
 
     def save(self, *args, **kwargs):
         is_new = not self.id
@@ -73,17 +70,14 @@ class Alert(models.Model):
     def obj(self):
         return ALERTS[self.name](self, **self.details)
 
-    def render(self, user):
-        return self.obj.render(user)
+    def render(self):
+        return self.obj.render()
 
 
 class BaseAlert:
     verbose = ""
     on_import = False
     link_wide = False
-    dismissable = False
-    doc_page = ""
-    doc_anchor = ""
 
     def __init__(self, instance):
         self.instance = instance
@@ -91,22 +85,21 @@ class BaseAlert:
     def get_analysis(self):
         return {}
 
-    def get_context(self, user):
+    def get_context(self):
         result = {
             "alert": self.instance,
             "component": self.instance.component,
             "timestamp": self.instance.timestamp,
             "details": self.instance.details,
             "analysis": self.get_analysis(),
-            "user": user,
         }
         result.update(self.instance.details)
         return result
 
-    def render(self, user):
+    def render(self):
         return render_to_string(
-            f"trans/alert/{self.__class__.__name__.lower()}.html",
-            self.get_context(user),
+            "trans/alert/{}.html".format(self.__class__.__name__.lower()),
+            self.get_context(),
         )
 
 
@@ -117,21 +110,13 @@ class ErrorAlert(BaseAlert):
 
 
 class MultiAlert(BaseAlert):
-    occurrences_limit = 100
-
     def __init__(self, instance, occurrences):
         super().__init__(instance)
-        self.occurrences = self.process_occurrences(
-            occurrences[: self.occurrences_limit]
-        )
-        self.total_occurrences = len(occurrences)
-        self.missed_occurrences = self.total_occurrences > self.occurrences_limit
+        self.occurrences = self.process_occurrences(occurrences)
 
-    def get_context(self, user):
-        result = super().get_context(user)
+    def get_context(self):
+        result = super().get_context()
         result["occurrences"] = self.occurrences
-        result["total_occurrences"] = self.total_occurrences
-        result["missed_occurrences"] = self.missed_occurrences
         return result
 
     def process_occurrences(self, occurrences):
@@ -139,26 +124,17 @@ class MultiAlert(BaseAlert):
         from weblate.trans.models import Unit
 
         processors = (
-            ("language_code", "language", Language.objects.all(), "code"),
-            ("unit_pk", "unit", Unit.objects.prefetch(), "pk"),
+            ("language_code", "language", Language, "code"),
+            ("unit_pk", "unit", Unit, "pk"),
         )
-        for key, target, base, lookup in processors:
-            # Extract list to fetch
-            updates = defaultdict(list)
-            for occurrence in occurrences:
+        for occurrence in occurrences:
+            for key, target, obj, lookup in processors:
                 if key not in occurrence:
                     continue
-
-                updates[occurrence[key]].append(occurrence)
-
-            if not updates:
-                continue
-
-            result = base.filter(**{f"{lookup}__in": updates.keys()})
-            for match in result:
-                for occurrence in updates[getattr(match, lookup)]:
-                    occurrence[target] = match
-
+                try:
+                    occurrence[target] = obj.objects.get(**{lookup: occurrence[key]})
+                except ObjectDoesNotExist:
+                    occurrence[target] = None
         return occurrences
 
 
@@ -176,9 +152,8 @@ class DuplicateLanguage(MultiAlert):
     on_import = True
 
     def get_analysis(self):
-        component = self.instance.component
-        result = {"monolingual": bool(component.template)}
-        source = component.source_language
+        result = {}
+        source = self.instance.component.project.source_language
         for occurrence in self.occurrences:
             if occurrence["language"] == source:
                 result["source_language"] = True
@@ -222,11 +197,6 @@ class PushFailure(ErrorAlert):
     verbose = _("Could not push the repository.")
     link_wide = True
 
-    def get_context(self, user):
-        result = super().get_context(user)
-        result["terminal"] = "terminal prompts disabled" in result["error"]
-        return result
-
 
 @register
 class ParseError(MultiAlert):
@@ -268,12 +238,6 @@ class AddonScriptError(MultiAlert):
 
 
 @register
-class CDNAddonError(MultiAlert):
-    # Translators: Name of an alert
-    verbose = _("Could not run addon.")
-
-
-@register
 class MsgmergeAddonError(MultiAlert):
     # Translators: Name of an alert
     verbose = _("Could not run addon.")
@@ -300,63 +264,17 @@ class UnsupportedConfiguration(BaseAlert):
 class BrokenBrowserURL(BaseAlert):
     # Translators: Name of an alert
     verbose = _("Broken repository browser URL")
-    dismissable = True
 
-    def __init__(self, instance, link, error):
+    def __init__(self, instance, links):
         super().__init__(instance)
-        self.link = link
-        self.error = error
+        self.links = links
 
 
 @register
 class BrokenProjectURL(BaseAlert):
     # Translators: Name of an alert
     verbose = _("Broken project website URL")
-    dismissable = True
 
     def __init__(self, instance, error=None):
         super().__init__(instance)
         self.error = error
-
-
-@register
-class UnusedScreenshot(BaseAlert):
-    # Translators: Name of an alert
-    verbose = _("Unused screenshot")
-
-
-@register
-class AmbiguousLanguage(BaseAlert):
-    # Translators: Name of an alert
-    verbose = _("Ambiguous language code.")
-    dismissable = True
-    doc_page = "admin/languages"
-    doc_anchor = "ambiguous-languages"
-
-    def get_context(self, user):
-        result = super().get_context(user)
-        ambgiuous = self.instance.component.get_ambiguous_translations().values_list(
-            "language__code", flat=True
-        )
-        result["ambiguous"] = {code: AMBIGUOUS[code] for code in ambgiuous}
-        return result
-
-
-@register
-class NoLibreConditions(BaseAlert):
-    # Translators: Name of an alert
-    verbose = _("Does not meet libre hosting conditions.")
-
-
-@register
-class UnusedEnforcedCheck(BaseAlert):
-    verbose = _("Unused enforced checks.")
-    doc_page = "admin/checks"
-    doc_anchor = "enforcing-checks"
-
-
-@register
-class NoMaskMatches(BaseAlert):
-    verbose = _("No mask matches.")
-    doc_page = "admin/projects"
-    doc_anchor = "component-filemask"

@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,27 +20,24 @@
 
 
 from collections import defaultdict
-
-from lxml.etree import HTMLParser
-
-IGNORE = {"body", "html"}
+from html.parser import HTMLParser
 
 
-class MarkupExtractor:
+class MarkupExtractor(HTMLParser):
     def __init__(self):
         self.found_tags = set()
         self.found_attributes = defaultdict(set)
+        super().__init__()
 
-    def start(self, tag, attrs):
-        if tag in IGNORE:
-            return
+    def handle_starttag(self, tag, attrs):
         self.found_tags.add(tag)
-        self.found_attributes[tag].update(attrs.keys())
+        found_attributes = self.found_attributes[tag]
+        for attr in attrs:
+            found_attributes.add(attr[0])
 
 
 def extract_bleach(text):
     """Exctract tags from text in a form suitable for bleach."""
     extractor = MarkupExtractor()
-    parser = HTMLParser(collect_ids=False, target=extractor)
-    parser.feed(text)
+    extractor.feed(text)
     return {"tags": extractor.found_tags, "attributes": extractor.found_attributes}

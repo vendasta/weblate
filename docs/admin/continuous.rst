@@ -7,11 +7,6 @@ There is infrastructure in place so that your translation closely follows
 development. This way translators can work on translations the entire time,
 instead of working through huge amount of new text just prior to release.
 
-.. seealso::
-
-   :doc:`/devel/integration` describes basic ways to integrate your development
-   with Weblate.
-
 This is the process:
 
 1. Developers make changes and push them to the VCS repository.
@@ -24,12 +19,12 @@ This is the process:
 .. graphviz::
 
     digraph translations {
-        graph [fontname = "sans-serif", fontsize=10];
-        node [fontname = "sans-serif", fontsize=10, margin=0.1, height=0];
-        edge [fontname = "sans-serif", fontsize=10];
+        graph [fontname = "sans-serif"];
+        node [fontname = "sans-serif"];
+        edge [fontname = "sans-serif"];
 
-        "Developers" [shape=box, fillcolor="#144d3f", fontcolor=white, style=filled];
-        "Translators" [shape=box, fillcolor="#144d3f", fontcolor=white, style=filled];
+        "Developers" [shape=box, fillcolor=seagreen, fontcolor=white, style=filled];
+        "Translators" [shape=box, fillcolor=seagreen, fontcolor=white, style=filled];
 
         "Developers" -> "VCS repository" [label=" 1. Push "];
 
@@ -57,7 +52,7 @@ source.
 * Enable :setting:`AUTO_UPDATE` to automatically update all components on your Weblate instance
 * Execute :djadmin:`updategit` (with selection of project or `--all` to update all)
 
-Whenever Weblate updates the repository, the post-update addons will be
+Whenever Weblate updates the repository, the post update addons will be
 triggered, see :ref:`addons`.
 
 .. _avoid-merge-conflicts:
@@ -211,7 +206,7 @@ settings`.
 
 .. seealso::
 
-   `Web hooks in Azure DevOps manual <https://docs.microsoft.com/en-us/azure/devops/service-hooks/services/webhooks?view=azure-devops>`_,
+   `Web hooks in Azure DevOps manual <https://docs.microsoft.com/azure/devops/service-hooks/services/webhooks>`_,
    :http:post:`/hooks/azure/`, :ref:`hosted-push`
 
 .. _gitea-setup:
@@ -257,67 +252,58 @@ nightly merges as well, by enabling :setting:`AUTO_UPDATE`.
 
 .. _push-changes:
 
-Pushing changes from Weblate
-----------------------------
+Pushing changes
+---------------
 
-Each translation component can have a push URL set up (see
-:ref:`component-push`), and in that case Weblate will be able to push change to
-the remote repository.  Weblate can be also be configured to automatically push
-changes on every commit (this is default, see :ref:`component-push_on_commit`).
-If you do not want changes to be pushed automatically, you can do that manually
-under :guilabel:`Repository maintenance` or using API via :option:`wlc push`.
+Each translation component can have a push URL set up (see :ref:`component`),
+and in that case Weblate will be able to push change to the remote repository.
+Weblate can be also be configured to automatically push changes on every commit
+(this is default, see :ref:`component`).  If you do not want changes to be
+pushed automatically, you can do that manually under :guilabel:`Repository
+maintenance` or using API via :option:`wlc push`.
+
+If you are using SSH to push, you will need to have a key without a passphrase
+(or use ssh-agent for Django), and the remote server needs to be verified by you
+via the admin interface first, otherwise pushing will fail.
 
 The push options differ based on the :ref:`vcs` used, more details are found in that chapter.
 
-In case you do not want direct pushes by Weblate, there is support for
-:ref:`vcs-github`, :ref:`vcs-gitlab`, :ref:`vcs-pagure` pull requests or
-:ref:`vcs-gerrit` reviews, you can activate these by choosing
-:guilabel:`GitHub`, :guilabel:`GitLab`, :guilabel:`Gerrit` or
-:guilabel:`Pagure` as :ref:`component-vcs` in :ref:`component`.
-
-Overall, following options are available with Git, GitHub and GitLab:
-
-+-----------------------------------+-------------------------------+-------------------------------+-------------------------------+
-| Desired setup                     | :ref:`component-vcs`          | :ref:`component-push`         | :ref:`component-push_branch`  |
-+===================================+===============================+===============================+===============================+
-| No push                           | :ref:`vcs-git`                | `empty`                       | `empty`                       |
-+-----------------------------------+-------------------------------+-------------------------------+-------------------------------+
-| Push directly                     | :ref:`vcs-git`                | SSH URL                       | `empty`                       |
-+-----------------------------------+-------------------------------+-------------------------------+-------------------------------+
-| Push to separate branch           | :ref:`vcs-git`                | SSH URL                       | Branch name                   |
-+-----------------------------------+-------------------------------+-------------------------------+-------------------------------+
-| GitHub pull request from fork     | :ref:`vcs-github`             | `empty`                       | `empty`                       |
-+-----------------------------------+-------------------------------+-------------------------------+-------------------------------+
-| GitHub pull request from branch   | :ref:`vcs-github`             | SSH URL [#empty]_             | Branch name                   |
-+-----------------------------------+-------------------------------+-------------------------------+-------------------------------+
-| GitLab merge request from fork    | :ref:`vcs-gitlab`             | `empty`                       | `empty`                       |
-+-----------------------------------+-------------------------------+-------------------------------+-------------------------------+
-| GitLab merge request from branch  | :ref:`vcs-gitlab`             | SSH URL [#empty]_             | Branch name                   |
-+-----------------------------------+-------------------------------+-------------------------------+-------------------------------+
-| Pagure merge request from fork    | :ref:`vcs-pagure`             | `empty`                       | `empty`                       |
-+-----------------------------------+-------------------------------+-------------------------------+-------------------------------+
-| Pagure merge request from branch  | :ref:`vcs-pagure`             | SSH URL [#empty]_             | Branch name                   |
-+-----------------------------------+-------------------------------+-------------------------------+-------------------------------+
-
-.. [#empty] Can be empty in case :ref:`component-repo` supports pushing.
-
-
 .. note::
 
-   You can also enable automatic pushing of changes after Weblate commits, this can be done in
-   :ref:`component-push_on_commit`.
+   You can also enable automatic pushing of changes on commits, this can be done in
+   :ref:`component`.
 
 .. seealso::
 
     See :ref:`vcs-repos` for setting up SSH keys, and :ref:`lazy-commit` for
     info about when Weblate decides to commit changes.
 
+.. _hosted-push:
+
+Pushing changes from Hosted Weblate
++++++++++++++++++++++++++++++++++++
+
+For Hosted Weblate there is a dedicated push user registered on GitHub, Bitbucket
+and GitLab (with username :guilabel:`weblate` named
+:guilabel:`Weblate push user`). You need to add this user as a collaborator and
+give it permission to push to your repository.
+
+The user is added to the repository (in some cases this happens immediately, on
+GitHub it typically happens after accepting invitations what happens
+automatically every hour), you can configure your component push URL to a ssh
+URL of your repository (see :ref:`component`) and enjoy Weblate automatically
+pushing changes to your repository.
+
+In case you do not want direct pushes by Weblate, there is support for GitHub,
+GitLab pull requests or Gerrit reviews, you can activate these by choosing
+`GitHub`, `GitLab` or `Gerrit` as VCS in :ref:`component`.
+
 Protected branches
 ++++++++++++++++++
 
 If you are using Weblate on protected branch, you can configure it to use pull
 requests and perform actual review on the translations (what might be
-problematic for languages you do not know). An alternative approach is to waive
+problematic for languages you do not know). Alternative approach is to to waive
 this limitation for the Weblate push user.
 
 For example on GitHub this can be done in the repository configuration:
@@ -332,7 +318,7 @@ Merge or rebase
 By default, Weblate merges the upstream repository into its own. This is the safest way
 in case you also access the underlying repository by other means. In case you don't
 need this, you can enable rebasing of changes on upstream, which will produce
-a history with fewer merge commits.
+history with fewer merge commits.
 
 .. note::
 
@@ -356,7 +342,7 @@ Lazy commits
 The behaviour of Weblate is to group commits from the same author into one
 commit if possible. This greatly reduces the number of commits, however you
 might need to explicitly tell it to do the commits in case you want to get the
-VCS repository in sync, e.g. for merge (this is by default allowed for the :guilabel:`Managers`
+VCS repository in sync, e.g. for merge (this is by default allowed for the Managers
 group, see :ref:`privileges`).
 
 The changes in this mode are committed once any of the following conditions are
@@ -365,7 +351,7 @@ fulfilled:
 * Somebody else changes an already changed string.
 * A merge from upstream occurs.
 * An explicit commit is requested.
-* Change is older than period defined as :ref:`component-commit_pending_age` on :ref:`component`.
+* Change is older than period defined as :guilabel:`Age of changes to commit` on :ref:`component`.
 
 .. hint::
 
@@ -378,6 +364,7 @@ can schedule a regular task to perform a commit:
 
 .. literalinclude:: ../../weblate/examples/beat-settings.py
     :language: python
+    :encoding: utf-8
 
 .. _processing:
 

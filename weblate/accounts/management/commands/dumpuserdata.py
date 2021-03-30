@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -41,7 +42,7 @@ class Command(BaseCommand):
             "watched", "languages", "secondary_languages"
         )
 
-        for profile in profiles:
+        for profile in profiles.iterator():
             if not profile.user.is_active:
                 continue
             data.append(profile.dump_data())

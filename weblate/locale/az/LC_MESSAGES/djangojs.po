@@ -3,15 +3,13 @@
 # This file is distributed under the same license as the PACKAGE package.
 # Automatically generated, 2014.
 #
-# Meki <mekismith77@gmail.com>, 2020.
-# Anonymous <noreply@weblate.org>, 2020.
 msgid ""
 msgstr ""
-"Project-Id-Version: Weblate 4.5\n"
-"Report-Msgid-Bugs-To: https://github.com/WeblateOrg/weblate/issues\n"
-"POT-Creation-Date: 2021-02-17 14:01+0000\n"
-"PO-Revision-Date: 2020-08-17 13:35+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"Project-Id-Version: Weblate 4.0\n"
+"Report-Msgid-Bugs-To: weblate@lists.cihar.com\n"
+"POT-Creation-Date: 2020-03-01 11:51+0000\n"
+"PO-Revision-Date: 2016-11-04 21:42+0000\n"
+"Last-Translator: Sevdimali İsa <sevdimaliisayev@mail.ru>\n"
 "Language-Team: Azerbaijani <https://hosted.weblate.org/projects/weblate/"
 "javascript/az/>\n"
 "Language: az\n"
@@ -19,365 +17,293 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 4.2-dev\n"
+"X-Generator: Weblate 2.9\n"
 
-#: weblate/static/editor/base.js:147
-#, javascript-format
-msgid "Cmd+%s"
+#: weblate/static/loader-bootstrap.js:180
+msgid "Add to screenshot"
 msgstr ""
 
-#: weblate/static/editor/base.js:149
+#: weblate/static/loader-bootstrap.js:195
+msgid "Error loading search results!"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:197
+msgid "No new matching source strings found."
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:326
+msgid "Copy"
+msgstr "Kopyala"
+
+#: weblate/static/loader-bootstrap.js:332
+msgid "Copy and save"
+msgstr "Kopyala və Yaddaşa Ver"
+
+#: weblate/static/loader-bootstrap.js:385
 #, fuzzy, javascript-format
-#| msgid "Ctrl+M then %s"
-msgid "Ctrl+%s"
-msgstr "Ctrl + M sonra %s"
+#| msgid "Alt+M then %s"
+msgid "Ctrl+M then %s"
+msgstr "Alt+M sonra %s"
 
-#: weblate/static/editor/full.js:222
-msgid "The request for machine translation has failed:"
-msgstr "Maşın tərcüməsi üçün istək uğursuz oldu:"
-
-#: weblate/static/editor/full.js:235
+#: weblate/static/loader-bootstrap.js:404
 #, javascript-format
 msgid "The request for machine translation using %s has failed:"
 msgstr "%s istifadə edərək maşın tərcüməsi istəyi uğursuz oldu:"
 
-#: weblate/static/editor/full.js:269
-#, fuzzy, javascript-format
-#| msgid "Ctrl+M then %s"
-msgid "Cmd+M then %s"
-msgstr "Ctrl + M sonra %s"
+#: weblate/static/loader-bootstrap.js:415
+msgid "The request for machine translation has failed:"
+msgstr "Maşın tərcüməsi üçün istək uğursuz oldu:"
 
-#: weblate/static/editor/full.js:271
-#, javascript-format
-msgid "Ctrl+M then %s"
-msgstr "Ctrl + M sonra %s"
-
-#: weblate/static/editor/full.js:359
-#, fuzzy, javascript-format
-#| msgid "Press Ctrl+I then %s to dismiss this."
-msgid "Press Cmd+I then %s to dismiss this."
-msgstr "Bunu rədd etmək üçün Ctrl + I sonra %s basın."
-
-#: weblate/static/editor/full.js:364
-#, javascript-format
-msgid "Press Ctrl+I then %s to dismiss this."
-msgstr "Bunu rədd etmək üçün Ctrl + I sonra %s basın."
-
-#: weblate/static/editor/full.js:495
-msgid "Copy"
-msgstr "Kopyala"
-
-#: weblate/static/editor/full.js:501
-msgid "Copy and save"
-msgstr "Kopyala və Yaddaşa Ver"
-
-#: weblate/static/editor/zen.js:101
-msgid "There are some unsaved changes, are you sure you want to leave?"
-msgstr "Yaddaşa verilməmiş dəyişikliklər var, Çıxmaq istədiyinizə əminsinizmi?"
-
-#: weblate/static/loader-bootstrap.js:160
-msgid "Add to screenshot"
-msgstr "Ekran görüntüsünə əlavə edin"
-
-#: weblate/static/loader-bootstrap.js:177
-msgid "Error loading search results!"
-msgstr "Axtarış nəticələrini yükləmə zamanı səhv!"
-
-#: weblate/static/loader-bootstrap.js:181
-msgid "No new matching source strings found."
-msgstr "Yeni uyğun mənbəli sətir tapılmadı."
-
-#: weblate/static/loader-bootstrap.js:247
+#: weblate/static/loader-bootstrap.js:492
 msgid "Sort this column"
 msgstr "Bu sütunu sırala"
 
-#: weblate/static/loader-bootstrap.js:460
+#: weblate/static/loader-bootstrap.js:676
 msgid "Error while loading page:"
 msgstr "Səhifə yüklənirkən xəta baş verdi:"
 
-#: weblate/static/loader-bootstrap.js:621
-#: weblate/static/loader-bootstrap.js:628
+#: weblate/static/loader-bootstrap.js:993
+#, javascript-format
+msgid "Ctrl/Command+%s"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1118
+msgid "There are some unsaved changes, are you sure you want to leave?"
+msgstr "Yaddaşa verilməmiş dəyişikliklər var, Çıxmaq istədiyinizə əminsinizmi?"
+
+#: weblate/static/loader-bootstrap.js:1144
+#: weblate/static/loader-bootstrap.js:1146
 msgid "Sunday"
 msgstr "Bazar"
 
-#: weblate/static/loader-bootstrap.js:622
+#: weblate/static/loader-bootstrap.js:1144
 msgid "Monday"
 msgstr "Bazarertəsi"
 
-#: weblate/static/loader-bootstrap.js:623
+#: weblate/static/loader-bootstrap.js:1144
 msgid "Tuesday"
 msgstr "Çərşənbə axşamı"
 
-#: weblate/static/loader-bootstrap.js:624
+#: weblate/static/loader-bootstrap.js:1145
 msgid "Wednesday"
 msgstr "Çərşənbə"
 
-#: weblate/static/loader-bootstrap.js:625
+#: weblate/static/loader-bootstrap.js:1145
 msgid "Thursday"
 msgstr "Cümə axşamı"
 
-#: weblate/static/loader-bootstrap.js:626
+#: weblate/static/loader-bootstrap.js:1145
 msgid "Friday"
 msgstr "Cümə"
 
-#: weblate/static/loader-bootstrap.js:627
+#: weblate/static/loader-bootstrap.js:1146
 msgid "Saturday"
 msgstr "Şənbə"
 
-#: weblate/static/loader-bootstrap.js:631
-#: weblate/static/loader-bootstrap.js:638
+#: weblate/static/loader-bootstrap.js:1149
+#: weblate/static/loader-bootstrap.js:1156
 msgctxt "Short (for example three letter) name of day in week"
 msgid "Sun"
 msgstr "Baz"
 
-#: weblate/static/loader-bootstrap.js:632
+#: weblate/static/loader-bootstrap.js:1150
 msgctxt "Short (for example three letter) name of day in week"
 msgid "Mon"
 msgstr "BE"
 
-#: weblate/static/loader-bootstrap.js:633
+#: weblate/static/loader-bootstrap.js:1151
 msgctxt "Short (for example three letter) name of day in week"
 msgid "Tue"
 msgstr "ÇA"
 
-#: weblate/static/loader-bootstrap.js:634
+#: weblate/static/loader-bootstrap.js:1152
 msgctxt "Short (for example three letter) name of day in week"
 msgid "Wed"
 msgstr "Ç"
 
-#: weblate/static/loader-bootstrap.js:635
+#: weblate/static/loader-bootstrap.js:1153
 msgctxt "Short (for example three letter) name of day in week"
 msgid "Thu"
 msgstr "CA"
 
-#: weblate/static/loader-bootstrap.js:636
+#: weblate/static/loader-bootstrap.js:1154
 msgctxt "Short (for example three letter) name of day in week"
 msgid "Fri"
 msgstr "C"
 
-#: weblate/static/loader-bootstrap.js:637
+#: weblate/static/loader-bootstrap.js:1155
 msgctxt "Short (for example three letter) name of day in week"
 msgid "Sat"
 msgstr "Ş"
 
-#: weblate/static/loader-bootstrap.js:641
-#: weblate/static/loader-bootstrap.js:648
+#: weblate/static/loader-bootstrap.js:1159
+#: weblate/static/loader-bootstrap.js:1166
 msgctxt "Minimal (for example two letter) name of day in week"
 msgid "Su"
 msgstr "Ba"
 
-#: weblate/static/loader-bootstrap.js:642
+#: weblate/static/loader-bootstrap.js:1160
 msgctxt "Minimal (for example two letter) name of day in week"
 msgid "Mo"
 msgstr "Be"
 
-#: weblate/static/loader-bootstrap.js:643
+#: weblate/static/loader-bootstrap.js:1161
 msgctxt "Minimal (for example two letter) name of day in week"
 msgid "Tu"
 msgstr "Ça"
 
-#: weblate/static/loader-bootstrap.js:644
+#: weblate/static/loader-bootstrap.js:1162
 msgctxt "Minimal (for example two letter) name of day in week"
 msgid "We"
 msgstr "Ç"
 
-#: weblate/static/loader-bootstrap.js:645
+#: weblate/static/loader-bootstrap.js:1163
 msgctxt "Minimal (for example two letter) name of day in week"
 msgid "Th"
 msgstr "Ca"
 
-#: weblate/static/loader-bootstrap.js:646
+#: weblate/static/loader-bootstrap.js:1164
 msgctxt "Minimal (for example two letter) name of day in week"
 msgid "Fr"
 msgstr "C"
 
-#: weblate/static/loader-bootstrap.js:647
+#: weblate/static/loader-bootstrap.js:1165
 msgctxt "Minimal (for example two letter) name of day in week"
 msgid "Sa"
 msgstr "Ş"
 
-#: weblate/static/loader-bootstrap.js:651
+#: weblate/static/loader-bootstrap.js:1169
 msgid "January"
 msgstr "Yanvar"
 
-#: weblate/static/loader-bootstrap.js:652
+#: weblate/static/loader-bootstrap.js:1169
 msgid "February"
 msgstr "Fevral"
 
-#: weblate/static/loader-bootstrap.js:653
+#: weblate/static/loader-bootstrap.js:1169
 msgid "March"
 msgstr "Mart"
 
-#: weblate/static/loader-bootstrap.js:654
+#: weblate/static/loader-bootstrap.js:1170
 msgid "April"
 msgstr "Aprel"
 
-#: weblate/static/loader-bootstrap.js:655
+#: weblate/static/loader-bootstrap.js:1170
 msgid "May"
 msgstr "May"
 
-#: weblate/static/loader-bootstrap.js:656
+#: weblate/static/loader-bootstrap.js:1170
 msgid "June"
 msgstr "İyun"
 
-#: weblate/static/loader-bootstrap.js:657
+#: weblate/static/loader-bootstrap.js:1170
 msgid "July"
 msgstr "İyul"
 
-#: weblate/static/loader-bootstrap.js:658
+#: weblate/static/loader-bootstrap.js:1171
 msgid "August"
 msgstr "Avqust"
 
-#: weblate/static/loader-bootstrap.js:659
+#: weblate/static/loader-bootstrap.js:1171
 msgid "September"
 msgstr "Sentyabr"
 
-#: weblate/static/loader-bootstrap.js:660
+#: weblate/static/loader-bootstrap.js:1171
 msgid "October"
 msgstr "Oktyabr"
 
-#: weblate/static/loader-bootstrap.js:661
+#: weblate/static/loader-bootstrap.js:1172
 msgid "November"
 msgstr "Noyabr"
 
-#: weblate/static/loader-bootstrap.js:662
+#: weblate/static/loader-bootstrap.js:1172
 msgid "December"
 msgstr "Dekabr"
 
-#: weblate/static/loader-bootstrap.js:665
+#: weblate/static/loader-bootstrap.js:1175
 msgctxt "Short name of month"
 msgid "Jan"
 msgstr "Yan"
 
-#: weblate/static/loader-bootstrap.js:666
+#: weblate/static/loader-bootstrap.js:1176
 msgctxt "Short name of month"
 msgid "Feb"
 msgstr "Fev"
 
-#: weblate/static/loader-bootstrap.js:667
+#: weblate/static/loader-bootstrap.js:1177
 msgctxt "Short name of month"
 msgid "Mar"
 msgstr "Mar"
 
-#: weblate/static/loader-bootstrap.js:668
+#: weblate/static/loader-bootstrap.js:1178
 msgctxt "Short name of month"
 msgid "Apr"
 msgstr "Apr"
 
-#: weblate/static/loader-bootstrap.js:669
+#: weblate/static/loader-bootstrap.js:1179
 msgctxt "Short name of month"
 msgid "May"
 msgstr "May"
 
-#: weblate/static/loader-bootstrap.js:670
+#: weblate/static/loader-bootstrap.js:1180
 msgctxt "Short name of month"
 msgid "Jun"
 msgstr "İyn"
 
-#: weblate/static/loader-bootstrap.js:671
+#: weblate/static/loader-bootstrap.js:1181
 msgctxt "Short name of month"
 msgid "Jul"
 msgstr "İyl"
 
-#: weblate/static/loader-bootstrap.js:672
+#: weblate/static/loader-bootstrap.js:1182
 msgctxt "Short name of month"
 msgid "Aug"
 msgstr "Avq"
 
-#: weblate/static/loader-bootstrap.js:673
+#: weblate/static/loader-bootstrap.js:1183
 msgctxt "Short name of month"
 msgid "Sep"
 msgstr "Sen"
 
-#: weblate/static/loader-bootstrap.js:674
+#: weblate/static/loader-bootstrap.js:1184
 msgctxt "Short name of month"
 msgid "Oct"
 msgstr "Okt"
 
-#: weblate/static/loader-bootstrap.js:675
+#: weblate/static/loader-bootstrap.js:1185
 msgctxt "Short name of month"
 msgid "Nov"
 msgstr "Noy"
 
-#: weblate/static/loader-bootstrap.js:676
+#: weblate/static/loader-bootstrap.js:1186
 msgctxt "Short name of month"
 msgid "Dec"
 msgstr "Dek"
 
-#: weblate/static/loader-bootstrap.js:678
+#: weblate/static/loader-bootstrap.js:1188
 msgid "Today"
 msgstr "Bügun"
 
-#: weblate/static/loader-bootstrap.js:679
+#: weblate/static/loader-bootstrap.js:1189
 msgid "Clear"
 msgstr "Təmizlə"
 
-#: weblate/static/loader-bootstrap.js:839
-msgid "Text copied to clipboard."
+#: weblate/static/loader-bootstrap.js:1213
+#, javascript-format
+msgid "Press Ctrl+I then %s to dismiss this."
 msgstr ""
 
-#: weblate/static/loader-bootstrap.js:842
-msgid "Please press Ctrl+C to copy."
-msgstr ""
-
-#: weblate/static/loader-bootstrap.js:866
+#: weblate/static/loader-bootstrap.js:1441
 msgid "Search…"
-msgstr "Axtarış …"
+msgstr ""
 
-#: weblate/static/loader-bootstrap.js:867
+#: weblate/static/loader-bootstrap.js:1442
 msgid "Available:"
 msgstr "İstifadə olunabilər:"
 
-#: weblate/static/loader-bootstrap.js:868
+#: weblate/static/loader-bootstrap.js:1443
 msgid "Chosen:"
-msgstr "Seçilmiş:"
-
-#: weblate/static/loader-bootstrap.js:1127
-msgid "Weblate is now scanning the repository, please be patient."
 msgstr ""
-
-#: weblate/static/zammad.js:3
-msgid "Weblate feedback"
-msgstr ""
-
-#: weblate/static/zammad.js:4
-msgid "Get help"
-msgstr ""
-
-#: weblate/static/zammad.js:6
-#, javascript-format
-msgid ""
-"Thank you for your inquiry (#%s)! We'll contact you as soon as possible."
-msgstr ""
-
-#: weblate/static/zammad.js:13
-msgid "Subject"
-msgstr "Mövzu"
-
-#: weblate/static/zammad.js:21
-msgid "Your name"
-msgstr "Adınız"
-
-#: weblate/static/zammad.js:29
-msgid "Your e-mail"
-msgstr "E-mail adresiniz"
-
-#: weblate/static/zammad.js:37
-msgid "Message"
-msgstr "Mesaj"
-
-#: weblate/static/zammad.js:41
-msgid ""
-"Please contact us in English, otherwise we might be unable to process your "
-"request."
-msgstr ""
-
-#: weblate/static/zammad.js:47
-msgid "Attachments"
-msgstr ""
-
-#~ msgid "Ctrl/Command+%s"
-#~ msgstr "Ctrl/Command+%s"
 
 #, fuzzy
 #~| msgid "Alt+I then %s"

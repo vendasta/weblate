@@ -6,9 +6,9 @@
 {% block breadcrumbs %}
 <li><a href="{{ project.get_absolute_url }}">{{ project.name }}</a></li>
 {% if component %}
-{% include "snippets/component-breadcrumb.html" with object=component %}
+<li><a href="{{ component.get_absolute_url }}">{{ component.name }}</a></li>
 {% if translation %}
-{% include "snippets/translation-breadcrumb.html" with object=translation %}
+<li><a href="{{ translation.get_absolute_url }}">{{ translation.language }}</a></li>
 {% endif %}
 {% endif %}
 <li>{% trans "Search and replace" %}</li>

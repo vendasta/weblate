@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -57,13 +58,7 @@ class Font(models.Model, UserDisplayMixin):
         unique_together = [("family", "style", "project")]
 
     def __str__(self):
-        return f"{self.family} {self.style}"
-
-    def save(
-        self, force_insert=False, force_update=False, using=None, update_fields=None
-    ):
-        self.clean()
-        super().save(force_insert, force_update, using, update_fields)
+        return "{} {}".format(self.family, self.style)
 
     def save(
         self, force_insert=False, force_update=False, using=None, update_fields=None
@@ -147,4 +142,4 @@ class FontOverride(models.Model):
         unique_together = [("group", "language")]
 
     def __str__(self):
-        return f"{self.group}:{self.font}:{self.language}"
+        return "{}:{}:{}".format(self.group, self.font, self.language)

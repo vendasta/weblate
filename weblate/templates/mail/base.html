@@ -258,7 +258,7 @@ img {
             {% trans "Translation Info" %}
         </h2>
         <table>
-            {% include "mail/snippets/stats.html" with stats=translation.stats url=translation.get_translate_url %}
+            {% include "mail/snippets/stats.html" with stats=translation.stats %}
         </table>
         <div class="buttons">
             <a class="button" href="{{ translation_url }}">{% trans "View" %}</a>
@@ -270,8 +270,7 @@ img {
         <table>
             <tr>
                 <td>{% trans "Languages" %}</td>
-                <td><a href="{{ component.get_absolute_url }}">{{ component.stats.languages|intcomma }}</a></td>
-                <td></td>
+                <td>{{ component.stats.languages|intcomma }}</td>
             </tr>
             {% include "mail/snippets/stats.html" with stats=component.stats %}
         </table>
@@ -285,13 +284,11 @@ img {
         <table>
             <tr>
                 <td>{% trans "Components" %}</td>
-                <td><a href="{{ project.get_absolute_url }}">{{ project.component_set.count|intcomma }}</a></td>
-                <td></td>
+                <td>{{ project.component_set.count|intcomma }}</td>
             </tr>
             <tr>
                 <td>{% trans "Languages" %}</td>
-                <td><a href="{{ project.get_absolute_url }}#languages">{{ project.stats.languages|intcomma }}</td>
-                <td></td>
+                <td>{{ project.stats.languages|intcomma }}</td>
             </tr>
             {% include "mail/snippets/stats.html" with stats=project.stats %}
         </table>
@@ -310,10 +307,6 @@ img {
             </p>
             <p>
                 ▸ <a href="{% url 'unsubscribe' %}?i={{ unsubscribe_nonce }}">{% trans "Turn off this notification" %}</a>
-            </p>
-            {% elif unsubscribe_note %}
-            <p>
-                ▸ {{ unsubscribe_note }}
             </p>
             {% endif %}
         </div>

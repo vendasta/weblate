@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #
 # Copyright ©  2018 Manuel Laggner <manuel.laggner@egger.com>
 #
@@ -55,16 +56,7 @@ class SAPTranslationHub(MachineTranslation):
 
         return [d["id"] for d in payload["languages"]]
 
-    def download_translations(
-        self,
-        source,
-        language,
-        text: str,
-        unit,
-        user,
-        search: bool,
-        threshold: int = 75,
-    ):
+    def download_translations(self, source, language, text, unit, user):
         """Download list of possible translations from a service."""
         # should the machine translation service be used?
         # (rather than only the term database)

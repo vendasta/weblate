@@ -2,374 +2,300 @@
 # Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the PACKAGE package.
 # Weblate <noreply@weblate.org>, 2019.
-# Слободан Симић(Slobodan Simić) <slsimic@gmail.com>, 2021.
 msgid ""
 msgstr ""
-"Project-Id-Version: Weblate 4.5\n"
-"Report-Msgid-Bugs-To: https://github.com/WeblateOrg/weblate/issues\n"
-"POT-Creation-Date: 2021-02-17 14:01+0000\n"
-"PO-Revision-Date: 2021-02-05 11:37+0000\n"
-"Last-Translator: Слободан Симић(Slobodan Simić) <slsimic@gmail.com>\n"
-"Language-Team: Serbian (latin) <https://hosted.weblate.org/projects/weblate/"
-"javascript/sr_Latn/>\n"
+"Project-Id-Version: Weblate 4.0\n"
+"Report-Msgid-Bugs-To: weblate@lists.cihar.com\n"
+"POT-Creation-Date: 2020-03-01 11:51+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: Automatically generated\n"
+"Language-Team: none\n"
 "Language: sr_Latn\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && n"
-"%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
-"X-Generator: Weblate 4.5-dev\n"
 
-#: weblate/static/editor/base.js:147
-#, javascript-format
-msgid "Cmd+%s"
-msgstr "Cmd+%s"
+#: weblate/static/loader-bootstrap.js:180
+msgid "Add to screenshot"
+msgstr ""
 
-#: weblate/static/editor/base.js:149
-#, javascript-format
-msgid "Ctrl+%s"
-msgstr "Ctrl+%s"
+#: weblate/static/loader-bootstrap.js:195
+msgid "Error loading search results!"
+msgstr ""
 
-#: weblate/static/editor/full.js:222
-msgid "The request for machine translation has failed:"
-msgstr "Zahtev za mašinskim prevodom nije uspeo:"
+#: weblate/static/loader-bootstrap.js:197
+msgid "No new matching source strings found."
+msgstr ""
 
-#: weblate/static/editor/full.js:235
-#, javascript-format
-msgid "The request for machine translation using %s has failed:"
-msgstr "Zahtev za %s mašinskim prevodom nije uspeo:"
+#: weblate/static/loader-bootstrap.js:326
+msgid "Copy"
+msgstr ""
 
-#: weblate/static/editor/full.js:269
-#, javascript-format
-msgid "Cmd+M then %s"
-msgstr "Cmd+M zatim %s"
+#: weblate/static/loader-bootstrap.js:332
+msgid "Copy and save"
+msgstr ""
 
-#: weblate/static/editor/full.js:271
+#: weblate/static/loader-bootstrap.js:385
 #, javascript-format
 msgid "Ctrl+M then %s"
-msgstr "Ctrl+M zatim %s"
+msgstr ""
 
-#: weblate/static/editor/full.js:359
+#: weblate/static/loader-bootstrap.js:404
 #, javascript-format
-msgid "Press Cmd+I then %s to dismiss this."
-msgstr "Pritisnite Cmd+I zatim %s da zatvorite ovo."
+msgid "The request for machine translation using %s has failed:"
+msgstr ""
 
-#: weblate/static/editor/full.js:364
-#, javascript-format
-msgid "Press Ctrl+I then %s to dismiss this."
-msgstr "Pritisnite Ctrl+I zatim %s da zatvorite ovo."
+#: weblate/static/loader-bootstrap.js:415
+msgid "The request for machine translation has failed:"
+msgstr ""
 
-#: weblate/static/editor/full.js:495
-msgid "Copy"
-msgstr "Kopiraj"
-
-#: weblate/static/editor/full.js:501
-msgid "Copy and save"
-msgstr "Kopiraj i sačuvaj"
-
-#: weblate/static/editor/zen.js:101
-msgid "There are some unsaved changes, are you sure you want to leave?"
-msgstr "Postoje nesačuvane izmene. Zaista želite da izađete?"
-
-#: weblate/static/loader-bootstrap.js:160
-msgid "Add to screenshot"
-msgstr "Pridodaj snimku ekrana"
-
-#: weblate/static/loader-bootstrap.js:177
-msgid "Error loading search results!"
-msgstr "Greška pri učitavanju rezultata pretrage!"
-
-#: weblate/static/loader-bootstrap.js:181
-msgid "No new matching source strings found."
-msgstr "Nema novih odgovarajućih izvornih niski."
-
-#: weblate/static/loader-bootstrap.js:247
+#: weblate/static/loader-bootstrap.js:492
 msgid "Sort this column"
-msgstr "Sortirati po ovoj koloni"
-
-#: weblate/static/loader-bootstrap.js:460
-msgid "Error while loading page:"
-msgstr "Greška pri učitavanju stranice:"
-
-#: weblate/static/loader-bootstrap.js:621
-#: weblate/static/loader-bootstrap.js:628
-msgid "Sunday"
-msgstr "nedelja"
-
-#: weblate/static/loader-bootstrap.js:622
-msgid "Monday"
-msgstr "ponedeljak"
-
-#: weblate/static/loader-bootstrap.js:623
-msgid "Tuesday"
-msgstr "utorak"
-
-#: weblate/static/loader-bootstrap.js:624
-msgid "Wednesday"
-msgstr "sreda"
-
-#: weblate/static/loader-bootstrap.js:625
-msgid "Thursday"
-msgstr "četvrtak"
-
-#: weblate/static/loader-bootstrap.js:626
-msgid "Friday"
-msgstr "petak"
-
-#: weblate/static/loader-bootstrap.js:627
-msgid "Saturday"
-msgstr "subota"
-
-#: weblate/static/loader-bootstrap.js:631
-#: weblate/static/loader-bootstrap.js:638
-msgctxt "Short (for example three letter) name of day in week"
-msgid "Sun"
-msgstr "ned"
-
-#: weblate/static/loader-bootstrap.js:632
-msgctxt "Short (for example three letter) name of day in week"
-msgid "Mon"
-msgstr "pon"
-
-#: weblate/static/loader-bootstrap.js:633
-msgctxt "Short (for example three letter) name of day in week"
-msgid "Tue"
-msgstr "uto"
-
-#: weblate/static/loader-bootstrap.js:634
-msgctxt "Short (for example three letter) name of day in week"
-msgid "Wed"
-msgstr "sre"
-
-#: weblate/static/loader-bootstrap.js:635
-msgctxt "Short (for example three letter) name of day in week"
-msgid "Thu"
-msgstr "čet"
-
-#: weblate/static/loader-bootstrap.js:636
-msgctxt "Short (for example three letter) name of day in week"
-msgid "Fri"
-msgstr "pet"
-
-#: weblate/static/loader-bootstrap.js:637
-msgctxt "Short (for example three letter) name of day in week"
-msgid "Sat"
-msgstr "sub"
-
-#: weblate/static/loader-bootstrap.js:641
-#: weblate/static/loader-bootstrap.js:648
-msgctxt "Minimal (for example two letter) name of day in week"
-msgid "Su"
-msgstr "ne"
-
-#: weblate/static/loader-bootstrap.js:642
-msgctxt "Minimal (for example two letter) name of day in week"
-msgid "Mo"
-msgstr "po"
-
-#: weblate/static/loader-bootstrap.js:643
-msgctxt "Minimal (for example two letter) name of day in week"
-msgid "Tu"
-msgstr "ut"
-
-#: weblate/static/loader-bootstrap.js:644
-msgctxt "Minimal (for example two letter) name of day in week"
-msgid "We"
-msgstr "sr"
-
-#: weblate/static/loader-bootstrap.js:645
-msgctxt "Minimal (for example two letter) name of day in week"
-msgid "Th"
-msgstr "če"
-
-#: weblate/static/loader-bootstrap.js:646
-msgctxt "Minimal (for example two letter) name of day in week"
-msgid "Fr"
-msgstr "pe"
-
-#: weblate/static/loader-bootstrap.js:647
-msgctxt "Minimal (for example two letter) name of day in week"
-msgid "Sa"
-msgstr "su"
-
-#: weblate/static/loader-bootstrap.js:651
-msgid "January"
-msgstr "januar"
-
-#: weblate/static/loader-bootstrap.js:652
-msgid "February"
-msgstr "februar"
-
-#: weblate/static/loader-bootstrap.js:653
-msgid "March"
-msgstr "mart"
-
-#: weblate/static/loader-bootstrap.js:654
-msgid "April"
-msgstr "april"
-
-#: weblate/static/loader-bootstrap.js:655
-msgid "May"
-msgstr "maj"
-
-#: weblate/static/loader-bootstrap.js:656
-msgid "June"
-msgstr "jun"
-
-#: weblate/static/loader-bootstrap.js:657
-msgid "July"
-msgstr "jul"
-
-#: weblate/static/loader-bootstrap.js:658
-msgid "August"
-msgstr "avgust"
-
-#: weblate/static/loader-bootstrap.js:659
-msgid "September"
-msgstr "septembar"
-
-#: weblate/static/loader-bootstrap.js:660
-msgid "October"
-msgstr "oktobar"
-
-#: weblate/static/loader-bootstrap.js:661
-msgid "November"
-msgstr "novembar"
-
-#: weblate/static/loader-bootstrap.js:662
-msgid "December"
-msgstr "decembar"
-
-#: weblate/static/loader-bootstrap.js:665
-msgctxt "Short name of month"
-msgid "Jan"
-msgstr "jan"
-
-#: weblate/static/loader-bootstrap.js:666
-msgctxt "Short name of month"
-msgid "Feb"
-msgstr "feb"
-
-#: weblate/static/loader-bootstrap.js:667
-msgctxt "Short name of month"
-msgid "Mar"
-msgstr "mar"
-
-#: weblate/static/loader-bootstrap.js:668
-msgctxt "Short name of month"
-msgid "Apr"
-msgstr "apr"
-
-#: weblate/static/loader-bootstrap.js:669
-msgctxt "Short name of month"
-msgid "May"
-msgstr "maj"
-
-#: weblate/static/loader-bootstrap.js:670
-msgctxt "Short name of month"
-msgid "Jun"
-msgstr "jun"
-
-#: weblate/static/loader-bootstrap.js:671
-msgctxt "Short name of month"
-msgid "Jul"
-msgstr "jul"
-
-#: weblate/static/loader-bootstrap.js:672
-msgctxt "Short name of month"
-msgid "Aug"
-msgstr "avg"
-
-#: weblate/static/loader-bootstrap.js:673
-msgctxt "Short name of month"
-msgid "Sep"
-msgstr "sep"
-
-#: weblate/static/loader-bootstrap.js:674
-msgctxt "Short name of month"
-msgid "Oct"
-msgstr "okt"
-
-#: weblate/static/loader-bootstrap.js:675
-msgctxt "Short name of month"
-msgid "Nov"
-msgstr "nov"
+msgstr ""
 
 #: weblate/static/loader-bootstrap.js:676
+msgid "Error while loading page:"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:993
+#, javascript-format
+msgid "Ctrl/Command+%s"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1118
+msgid "There are some unsaved changes, are you sure you want to leave?"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1144
+#: weblate/static/loader-bootstrap.js:1146
+msgid "Sunday"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1144
+msgid "Monday"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1144
+msgid "Tuesday"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1145
+msgid "Wednesday"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1145
+msgid "Thursday"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1145
+msgid "Friday"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1146
+msgid "Saturday"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1149
+#: weblate/static/loader-bootstrap.js:1156
+msgctxt "Short (for example three letter) name of day in week"
+msgid "Sun"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1150
+msgctxt "Short (for example three letter) name of day in week"
+msgid "Mon"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1151
+msgctxt "Short (for example three letter) name of day in week"
+msgid "Tue"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1152
+msgctxt "Short (for example three letter) name of day in week"
+msgid "Wed"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1153
+msgctxt "Short (for example three letter) name of day in week"
+msgid "Thu"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1154
+msgctxt "Short (for example three letter) name of day in week"
+msgid "Fri"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1155
+msgctxt "Short (for example three letter) name of day in week"
+msgid "Sat"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1159
+#: weblate/static/loader-bootstrap.js:1166
+msgctxt "Minimal (for example two letter) name of day in week"
+msgid "Su"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1160
+msgctxt "Minimal (for example two letter) name of day in week"
+msgid "Mo"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1161
+msgctxt "Minimal (for example two letter) name of day in week"
+msgid "Tu"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1162
+msgctxt "Minimal (for example two letter) name of day in week"
+msgid "We"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1163
+msgctxt "Minimal (for example two letter) name of day in week"
+msgid "Th"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1164
+msgctxt "Minimal (for example two letter) name of day in week"
+msgid "Fr"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1165
+msgctxt "Minimal (for example two letter) name of day in week"
+msgid "Sa"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1169
+msgid "January"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1169
+msgid "February"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1169
+msgid "March"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1170
+msgid "April"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1170
+msgid "May"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1170
+msgid "June"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1170
+msgid "July"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1171
+msgid "August"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1171
+msgid "September"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1171
+msgid "October"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1172
+msgid "November"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1172
+msgid "December"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1175
+msgctxt "Short name of month"
+msgid "Jan"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1176
+msgctxt "Short name of month"
+msgid "Feb"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1177
+msgctxt "Short name of month"
+msgid "Mar"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1178
+msgctxt "Short name of month"
+msgid "Apr"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1179
+msgctxt "Short name of month"
+msgid "May"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1180
+msgctxt "Short name of month"
+msgid "Jun"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1181
+msgctxt "Short name of month"
+msgid "Jul"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1182
+msgctxt "Short name of month"
+msgid "Aug"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1183
+msgctxt "Short name of month"
+msgid "Sep"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1184
+msgctxt "Short name of month"
+msgid "Oct"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1185
+msgctxt "Short name of month"
+msgid "Nov"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1186
 msgctxt "Short name of month"
 msgid "Dec"
-msgstr "dec"
-
-#: weblate/static/loader-bootstrap.js:678
-msgid "Today"
-msgstr "danas"
-
-#: weblate/static/loader-bootstrap.js:679
-msgid "Clear"
-msgstr "Očisti"
-
-#: weblate/static/loader-bootstrap.js:839
-msgid "Text copied to clipboard."
-msgstr "Tekst kopiran u klipbord."
-
-#: weblate/static/loader-bootstrap.js:842
-msgid "Please press Ctrl+C to copy."
-msgstr "Pritisnite Ctrl+C za kopiranje."
-
-#: weblate/static/loader-bootstrap.js:866
-msgid "Search…"
-msgstr "Traži…"
-
-#: weblate/static/loader-bootstrap.js:867
-msgid "Available:"
-msgstr "Dostupno:"
-
-#: weblate/static/loader-bootstrap.js:868
-msgid "Chosen:"
-msgstr "Izabrano:"
-
-#: weblate/static/loader-bootstrap.js:1127
-msgid "Weblate is now scanning the repository, please be patient."
-msgstr "Veblejt sada pretražuje riznicu. Budite strpljivi."
-
-#: weblate/static/zammad.js:3
-msgid "Weblate feedback"
-msgstr "Vaš stav o Veblejtu"
-
-#: weblate/static/zammad.js:4
-msgid "Get help"
-msgstr "Tražite pomoć"
-
-#: weblate/static/zammad.js:6
-#, javascript-format
-msgid ""
-"Thank you for your inquiry (#%s)! We'll contact you as soon as possible."
-msgstr "Hvala vam na upitu (#%s)! Kontaktiraćemo vas u najkraćem roku."
-
-#: weblate/static/zammad.js:13
-msgid "Subject"
-msgstr "Tema"
-
-#: weblate/static/zammad.js:21
-msgid "Your name"
-msgstr "Vaše ime"
-
-#: weblate/static/zammad.js:29
-msgid "Your e-mail"
-msgstr "Vaša e-pošta"
-
-#: weblate/static/zammad.js:37
-msgid "Message"
-msgstr "Poruka"
-
-#: weblate/static/zammad.js:41
-msgid ""
-"Please contact us in English, otherwise we might be unable to process your "
-"request."
 msgstr ""
-"Kontaktirajte nas na engleskom, u suprotnom možda nećemo moći da obradimo "
-"vaš zahtev."
 
-#: weblate/static/zammad.js:47
-msgid "Attachments"
-msgstr "Prilozi"
+#: weblate/static/loader-bootstrap.js:1188
+msgid "Today"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1189
+msgid "Clear"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1213
+#, javascript-format
+msgid "Press Ctrl+I then %s to dismiss this."
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1441
+msgid "Search…"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1442
+msgid "Available:"
+msgstr ""
+
+#: weblate/static/loader-bootstrap.js:1443
+msgid "Chosen:"
+msgstr ""

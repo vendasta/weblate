@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,7 +20,6 @@
 
 
 import django.views.defaults
-import rest_framework.exceptions
 from django.conf import settings
 from django.middleware.csrf import REASON_NO_CSRF_COOKIE, REASON_NO_REFERER
 from django.utils.translation import gettext as _
@@ -31,10 +31,8 @@ from weblate.utils.errors import report_error
 
 def bad_request(request, exception=None):
     """Error handler for bad request."""
-    if "text/html" not in request.META.get("HTTP_ACCEPT", ""):
-        return rest_framework.exceptions.bad_request(request, exception)
     if exception:
-        report_error(cause="Bad request")
+        report_error(exception)
     return render(request, "400.html", {"title": _("Bad Request")}, status=400)
 
 
@@ -48,7 +46,7 @@ def denied(request, exception=None):
 
 
 def csrf_failure(request, reason=""):
-    response = render(
+    return render(
         request,
         "403_csrf.html",
         {
@@ -58,18 +56,10 @@ def csrf_failure(request, reason=""):
         },
         status=403,
     )
-    # Avoid setting CSRF cookie on CSRF failure page, otherwise we end up creating
-    # new session even when user might already have one (because browser did not
-    # send the cookies with the CSRF request and Django doesn't see the session
-    # cookie).
-    response.csrf_cookie_set = True
-    return response
 
 
 def server_error(request):
     """Error handler for server errors."""
-    if "text/html" not in request.META.get("HTTP_ACCEPT", ""):
-        return rest_framework.exceptions.server_error(request)
     try:
         return render(
             request,

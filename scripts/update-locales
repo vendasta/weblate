@@ -5,45 +5,41 @@
 # Exit on failure
 set -e
 
-
-. scripts/test-database
-
-version=$(python -c 'import weblate.utils.version; print(weblate.utils.version.VERSION_BASE)')
-
-COMPONENTS="weblate/application weblate/javascript weblate/documentation"
-
-do_wlc() {
-    for component in $COMPONENTS ; do
-        wlc $1 $component
-    done
-}
+version=`DJANGO_SETTINGS_MODULE=weblate.settings_example python -c 'import weblate; print(weblate.VERSION_BASE)'`
 
 # Lock Weblate
-do_wlc lock
+wlc lock weblate/master
+wlc lock weblate/javascript
+wlc lock weblate/languages
 
 # Push changes from Weblate to GitHub
-do_wlc push
-
-# Update Weblate remote
-git remote update weblate
+wlc push weblate
 
 # Pull changes from GitHub
-git rebase --onto weblate/master
-
-# Cleanup locale dirs
-find weblate/locale -name '*.mo' -o -name '*~' -delete
-find weblate/locale -type d -empty -delete
+git pull --rebase
 
 # Update po files itself
+export DJANGO_SETTINGS_MODULE=weblate.settings_test
 ./manage.py makemessages --keep-pot -a -i 'data/*' -i 'docs/*' -i 'examples/*' -i 'build/*'
 ./manage.py makemessages --keep-pot -a -i 'data/*' -i 'docs/*' -i 'examples/*' -i 'build/*' -d djangojs
 
 # Fix Report-Msgid-Bugs-To as it gets removed
 sed \
     -i \
-    -e 's@"Report-Msgid-Bugs-To:.*@"Report-Msgid-Bugs-To: https://github.com/WeblateOrg/weblate/issues\\n"@' \
+    -e 's/"Report-Msgid-Bugs-To:.*/"Report-Msgid-Bugs-To: weblate@lists.cihar.com\\n"/' \
     -e 's/"Project-Id-Version:.*/"Project-Id-Version: Weblate '$version'\\n"/' \
-    weblate/locale/*/*/*.po weblate/locale/*.pot
+    weblate/locale/*/*/*.po weblate/locale/*.pot \
+    weblate/langdata/locale/*/*/*.po weblate/langdata/locale/*.pot
+
+# Include language names from CLDR
+for locale in weblate/langdata/locale/*/LC_MESSAGES/django.po ; do
+    code=${locale#weblate/langdata/locale/}
+    code=${code%/LC_MESSAGES/django.po}
+    file=scripts/language-data/languages-po/$code.po
+    if [ -f $file ] ; then
+        msgmerge --previous -C $file -U $locale weblate/langdata/locale/django.pot
+    fi
+done
 
 # Include translations from Django
 for locale in weblate/locale/*/LC_MESSAGES/django.po ; do
@@ -55,16 +51,20 @@ for locale in weblate/locale/*/LC_MESSAGES/django.po ; do
     fi
 done
 
-# Update PO files for documentation
-make -C docs update-po
-
 # Commit changes
-git add $(find weblate/locale/ docs/locales/ -name '*.po' -o -name '*.pot')
+git add weblate/locale/*/*/*.po
+git add weblate/locale/*.pot
+git add weblate/langdata/locale/*/*/*.po
+git add weblate/langdata/locale/*.pot
 
-git commit -n -m "i18n: Update PO files"
+git commit -m "Update po files
+
+[CI skip]"
 
 # Push changes
 git push
 
 # Unlock Weblate
-do_wlc unlock
+wlc unlock weblate/master
+wlc unlock weblate/javascript
+wlc unlock weblate/languages

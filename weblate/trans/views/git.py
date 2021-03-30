@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -36,12 +37,12 @@ def execute_locked(request, obj, message, call, *args, **kwargs):
         # With False the call is supposed to show errors on its own
         if result is None or result:
             messages.success(request, message)
-    except Timeout:
+    except Timeout as error:
         messages.error(
             request,
             _("Failed to lock the repository, another operation is in progress."),
         )
-        report_error()
+        report_error(error, request)
 
     return redirect_param(obj, "#repository")
 

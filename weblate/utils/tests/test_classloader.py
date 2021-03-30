@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,9 +21,8 @@
 from unittest import TestCase
 
 from django.core.exceptions import ImproperlyConfigured
-from django.test.utils import override_settings
 
-from weblate.utils.classloader import ClassLoader, load_class
+from weblate.utils.classloader import load_class
 
 
 class LoadClassTest(TestCase):
@@ -31,38 +31,28 @@ class LoadClassTest(TestCase):
         self.assertEqual(cls, TestCase)
 
     def test_invalid_name(self):
-        with self.assertRaisesRegex(
+        self.assertRaisesRegex(
             ImproperlyConfigured,
             'Error importing class unittest in TEST: .*"' "(not enough|need more than)",
-        ):
-            load_class("unittest", "TEST")
+            load_class,
+            "unittest",
+            "TEST",
+        )
 
     def test_invalid_module(self):
-        with self.assertRaisesRegex(
+        self.assertRaisesRegex(
             ImproperlyConfigured,
             'weblate.trans.tests.missing in TEST: "' "No module named .*missing[\"']",
-        ):
-            load_class("weblate.trans.tests.missing.Foo", "TEST")
+            load_class,
+            "weblate.trans.tests.missing.Foo",
+            "TEST",
+        )
 
     def test_invalid_class(self):
-        with self.assertRaisesRegex(
+        self.assertRaisesRegex(
             ImproperlyConfigured,
             '"weblate.utils.tests.test_classloader"' ' does not define a "Foo" class',
-        ):
-            load_class("weblate.utils.tests.test_classloader.Foo", "TEST")
-
-
-class ClassLoaderTestCase(TestCase):
-    @override_settings(TEST_SERVICES=("weblate.addons.cleanup.CleanupAddon",))
-    def test_load(self):
-        loader = ClassLoader("TEST_SERVICES", construct=False)
-        loader.load_data()
-        self.assertEqual(len(list(loader.keys())), 1)
-
-    @override_settings(TEST_SERVICES=("weblate.addons.cleanup.CleanupAddon"))
-    def test_invalid(self):
-        loader = ClassLoader("TEST_SERVICES", construct=False)
-        with self.assertRaisesRegex(
-            ImproperlyConfigured, "Setting TEST_SERVICES must be list or tuple!"
-        ):
-            loader.load_data()
+            load_class,
+            "weblate.utils.tests.test_classloader.Foo",
+            "TEST",
+        )

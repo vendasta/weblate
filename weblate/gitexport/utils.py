@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -29,18 +30,12 @@ GIT_PATHS = [
 
 
 def find_git_http_backend():
-    """Find Git HTTP back-end."""
+    """Find git http backend."""
     if hasattr(find_git_http_backend, "result"):
         return find_git_http_backend.result
 
     try:
-        path = subprocess.run(
-            ["git", "--exec-path"],
-            universal_newlines=True,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        ).stdout.strip()
+        path = subprocess.check_output(["git", "--exec-path"]).decode().strip()
         if path:
             GIT_PATHS.insert(0, path)
     except OSError:

@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -28,7 +29,6 @@ from weblate.trans.tasks import (
     cleanup_old_comments,
     cleanup_old_suggestions,
     cleanup_suggestions,
-    daily_update_checks,
 )
 from weblate.trans.tests.test_views import ViewTestCase
 from weblate.utils.state import STATE_TRANSLATED
@@ -40,10 +40,10 @@ class CleanupTest(ViewTestCase):
         unit = self.get_unit()
 
         # Add two suggestions
-        Suggestion.objects.add(unit, "Zkouška\n", request)
-        Suggestion.objects.add(unit, "zkouška\n", request)
+        Suggestion.objects.add(unit, "Zkouška", request)
+        Suggestion.objects.add(unit, "zkouška", request)
         # This should be ignored
-        Suggestion.objects.add(unit, "zkouška\n", request)
+        Suggestion.objects.add(unit, "zkouška", request)
         self.assertEqual(len(self.get_unit().suggestions), 2)
 
         # Perform cleanup, no suggestions should be deleted
@@ -51,7 +51,7 @@ class CleanupTest(ViewTestCase):
         self.assertEqual(len(self.get_unit().suggestions), 2)
 
         # Translate string to one of suggestions
-        unit.translate(self.user, "zkouška\n", STATE_TRANSLATED)
+        unit.translate(self.user, "zkouška", STATE_TRANSLATED)
 
         # The cleanup should remove one
         cleanup_suggestions()
@@ -91,19 +91,13 @@ class CleanupTest(ViewTestCase):
         self.test_cleanup_old_suggestions(1)
 
     def test_cleanup_old_comments(self, expected=2):
-        request = self.get_request()
         unit = self.get_unit()
-        Comment.objects.add(unit.source_unit, request, "Zkouška")
+        Comment.objects.add(unit.source_info, self.user, "Zkouška")
         Comment.objects.all().update(timestamp=timezone.now() - timedelta(days=30))
-        Comment.objects.add(unit.source_unit, request, "Zkouška 2")
+        Comment.objects.add(unit.source_info, self.user, "Zkouška 2")
         cleanup_old_comments()
         self.assertEqual(Comment.objects.count(), expected)
 
     @override_settings(COMMENT_CLEANUP_DAYS=15)
     def test_cleanup_old_comments_enabled(self):
         self.test_cleanup_old_comments(1)
-
-
-class TasksTest(ViewTestCase):
-    def test_daily_update_checks(self):
-        daily_update_checks()

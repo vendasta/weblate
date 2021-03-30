@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -16,31 +17,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
+
 """Test for search views."""
 
+
 import re
+import shutil
+from unittest import TestCase
 
 from django.http import QueryDict
 from django.test.utils import override_settings
 from django.urls import reverse
+from whoosh.filedb.filestore import FileStorage
 
-from weblate.trans.models import Component
+from weblate.trans.search import Fulltext
 from weblate.trans.tests.test_views import ViewTestCase
-from weblate.utils.db import using_postgresql
+from weblate.trans.tests.utils import TempDirMixin
 from weblate.utils.ratelimit import reset_rate_limit
-from weblate.utils.state import STATE_FUZZY, STATE_READONLY, STATE_TRANSLATED
+from weblate.utils.state import STATE_FUZZY, STATE_TRANSLATED
 
 
 class SearchViewTest(ViewTestCase):
-    @classmethod
-    def _databases_support_transactions(cls):
-        # This is workaroud for MySQL as FULL TEXT index does not work
-        # well inside a transaction, so we avoid using transactions for
-        # tests. Otherwise we end up with no matches for the query.
-        # See https://dev.mysql.com/doc/refman/5.6/en/innodb-fulltext-index.html
-        if not using_postgresql():
-            return False
-        return super()._databases_support_transactions()
+    fake_search = False
 
     def setUp(self):
         super().setUp()
@@ -131,7 +129,7 @@ class SearchViewTest(ViewTestCase):
         self.do_search({"q": "changed:>2010-01-10 AND changed_by:testuser"}, None)
         self.do_search({"q": "changed_by:testuser"}, None)
         # Review, partial date
-        self.do_search({"q": "changed:>=2010-01-"}, "Unknown string format: 2010-01-")
+        self.do_search({"q": "changed:>=2010-01-"}, None)
 
     def extract_params(self, response):
         search_url = re.findall(r'data-params="([^"]*)"', response.content.decode())[0]
@@ -165,13 +163,16 @@ class SearchViewTest(ViewTestCase):
         unit = self.translation.unit_set.get(
             source="Try Weblate at <https://demo.weblate.org/>!\n"
         )
-        self.do_search({"checksum": unit.checksum}, "3 / 4")
-
-    def test_search_offset(self):
-        """Test offset navigation."""
-        self.do_search({"offset": 1}, "1 / 4")
-        self.do_search({"offset": 4}, "4 / 4")
-        self.do_search({"offset": 5}, None)
+        response = self.do_search({"checksum": unit.checksum}, "3 / 4")
+        # Extract search ID
+        params = self.extract_params(response)
+        # Navigation
+        params["offset"] = 1
+        response = self.do_search(params, "1 / 4")
+        params["offset"] = 4
+        response = self.do_search(params, "4 / 4")
+        params["offset"] = 5
+        response = self.do_search(params, None)
 
     def test_search_type(self):
         self.do_search({"q": "state:<translated"}, "Strings needing action")
@@ -192,8 +193,63 @@ class SearchViewTest(ViewTestCase):
         self.do_search({"checksum": "invalid"}, "Invalid checksum specified!")
 
 
+class SearchBackendTest(ViewTestCase):
+    fake_search = False
+
+    def setUp(self):
+        super().setUp()
+        self.update_fulltext_index()
+
+    def test_add(self):
+        self.edit_unit("Hello, world!\n", "Nazdar svete!\n")
+        unit = self.get_translation().unit_set.get(source="Hello, world!\n")
+        Fulltext.update_index_unit(unit)
+        Fulltext.update_index_unit(unit)
+
+
+class SearchMigrationTest(TestCase, TempDirMixin):
+    """Search index migration testing."""
+
+    def setUp(self):
+        self.create_temp()
+        self.storage = FileStorage(self.tempdir)
+        self.storage.create()
+
+    def tearDown(self):
+        self.remove_temp()
+
+    def do_test(self):
+        fulltext = Fulltext()
+        fulltext.storage = self.storage
+
+        sindex = fulltext.get_source_index()
+        self.assertIsNotNone(sindex)
+        tindex = fulltext.get_target_index("cs")
+        self.assertIsNotNone(tindex)
+        writer = sindex.writer()
+        writer.update_document(
+            pk=1, source="source", context="context", location="location"
+        )
+        writer.commit()
+        writer = tindex.writer()
+        writer.update_document(pk=1, target="target", comment="comment")
+        writer.commit()
+        for item in ("source", "context", "location", "target"):
+            self.assertEqual(fulltext.search(item, ["cs"], {item: True}), {1})
+
+    def test_nonexisting(self):
+        self.do_test()
+
+    def test_nonexisting_dir(self):
+        shutil.rmtree(self.tempdir)
+        self.tempdir = None
+        self.do_test()
+
+
 class ReplaceTest(ViewTestCase):
     """Test for search and replace functionality."""
+
+    fake_search = False
 
     def setUp(self):
         super().setUp()
@@ -245,8 +301,8 @@ class ReplaceTest(ViewTestCase):
         self.do_replace_test(reverse("replace", kwargs=self.kw_component))
 
 
-class BulkEditTest(ViewTestCase):
-    """Test for buld edit functionality."""
+class BulkStateTest(ViewTestCase):
+    """Test for mass state change functionality."""
 
     def setUp(self):
         super().setUp()
@@ -254,7 +310,7 @@ class BulkEditTest(ViewTestCase):
         self.unit = self.get_unit()
         self.make_manager()
 
-    def do_bulk_edit_test(self, url):
+    def do_mass_state_test(self, url, confirm=True):
         response = self.client.post(
             url, {"q": "state:needs-editing", "state": STATE_TRANSLATED}, follow=True
         )
@@ -271,14 +327,14 @@ class BulkEditTest(ViewTestCase):
         unit = self.get_unit()
         self.assertEqual(unit.state, STATE_FUZZY)
 
-    def test_bulk_edit(self):
-        self.do_bulk_edit_test(reverse("bulk-edit", kwargs=self.kw_translation))
+    def test_mass_state(self):
+        self.do_mass_state_test(reverse("bulk-edit", kwargs=self.kw_translation))
 
-    def test_bulk_edit_project(self):
-        self.do_bulk_edit_test(reverse("bulk-edit", kwargs=self.kw_project))
+    def test_mass_state_project(self):
+        self.do_mass_state_test(reverse("bulk-edit", kwargs=self.kw_project))
 
-    def test_bulk_edit_component(self):
-        self.do_bulk_edit_test(reverse("bulk-edit", kwargs=self.kw_component))
+    def test_mass_state_component(self):
+        self.do_mass_state_test(reverse("bulk-edit", kwargs=self.kw_component))
 
     def test_bulk_flags(self):
         response = self.client.post(
@@ -298,24 +354,6 @@ class BulkEditTest(ViewTestCase):
         unit = self.get_unit()
         self.assertFalse("python-format" in unit.all_flags)
 
-    def test_bulk_read_only(self):
-        response = self.client.post(
-            reverse("bulk-edit", kwargs=self.kw_project),
-            {"q": "language:en", "state": -1, "add_flags": "read-only"},
-            follow=True,
-        )
-        self.assertContains(response, "Bulk edit completed, 4 strings were updated.")
-        unit = self.get_unit()
-        self.assertTrue("read-only" in unit.all_flags)
-        response = self.client.post(
-            reverse("bulk-edit", kwargs=self.kw_project),
-            {"q": "language:en", "state": -1, "remove_flags": "read-only"},
-            follow=True,
-        )
-        self.assertContains(response, "Bulk edit completed, 4 strings were updated.")
-        unit = self.get_unit()
-        self.assertFalse("read-only" in unit.all_flags)
-
     def test_bulk_labels(self):
         label = self.project.label_set.create(name="Test label", color="black")
         response = self.client.post(
@@ -325,14 +363,7 @@ class BulkEditTest(ViewTestCase):
         )
         self.assertContains(response, "Bulk edit completed, 1 string was updated.")
         unit = self.get_unit()
-        self.assertTrue(label in unit.all_labels)
-        self.assertEqual(getattr(unit.translation.stats, f"label:{label.name}"), 1)
-        # Clear local outdated cache
-        unit.source_unit.translation.stats.clear()
-        self.assertEqual(
-            getattr(unit.source_unit.translation.stats, f"label:{label.name}"),
-            1,
-        )
+        self.assertTrue(label in unit.labels.all())
         response = self.client.post(
             reverse("bulk-edit", kwargs=self.kw_project),
             {"q": "state:needs-editing", "state": -1, "remove_labels": label.pk},
@@ -341,50 +372,3 @@ class BulkEditTest(ViewTestCase):
         self.assertContains(response, "Bulk edit completed, 1 string was updated.")
         unit = self.get_unit()
         self.assertFalse(label in unit.labels.all())
-        self.assertEqual(getattr(unit.translation.stats, f"label:{label.name}"), 0)
-        # Clear local outdated cache
-        unit.source_unit.translation.stats.clear()
-        self.assertEqual(
-            getattr(unit.source_unit.translation.stats, f"label:{label.name}"),
-            0,
-        )
-
-    def test_source_state(self):
-        mono = Component.objects.create(
-            name="Test2",
-            slug="test2",
-            project=self.project,
-            repo="weblate://test/test",
-            file_format="json",
-            filemask="json-mono/*.json",
-            template="json-mono/en.json",
-        )
-        # Translate single unit
-        translation = mono.translation_set.get(language_code="cs")
-        translation.unit_set.get(context="hello").translate(
-            self.user, "Ahoj světe", STATE_TRANSLATED
-        )
-        self.assertEqual(translation.unit_set.filter(state=STATE_READONLY).count(), 0)
-        self.assertEqual(translation.unit_set.filter(state=STATE_TRANSLATED).count(), 1)
-
-        url = reverse(
-            "bulk-edit", kwargs={"project": self.project.slug, "component": mono.slug}
-        )
-
-        # Mark all source strings as needing edit and that should turn all
-        # translated strings read-only
-        response = self.client.post(
-            url, {"q": "language:en", "state": STATE_FUZZY}, follow=True
-        )
-        self.assertContains(response, "Bulk edit completed, 4 strings were updated.")
-        self.assertEqual(translation.unit_set.filter(state=STATE_READONLY).count(), 4)
-        self.assertEqual(translation.unit_set.filter(state=STATE_TRANSLATED).count(), 0)
-
-        # Mark all source strings as needing edit and that should turn all
-        # translated strings back to translated
-        response = self.client.post(
-            url, {"q": "language:en", "state": STATE_TRANSLATED}, follow=True
-        )
-        self.assertContains(response, "Bulk edit completed, 4 strings were updated.")
-        self.assertEqual(translation.unit_set.filter(state=STATE_READONLY).count(), 0)
-        self.assertEqual(translation.unit_set.filter(state=STATE_TRANSLATED).count(), 1)

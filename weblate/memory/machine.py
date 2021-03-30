@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,8 +18,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-from weblate.machinery.base import MachineTranslation, get_machinery_language
-from weblate.memory.models import Memory
+
+from weblate.lang.models import Language
+from weblate.machinery.base import MachineTranslation
+from weblate.memory.storage import TranslationMemory, get_category_name
 
 
 class WeblateMemory(MachineTranslation):
@@ -27,46 +30,31 @@ class WeblateMemory(MachineTranslation):
     name = "Weblate Translation Memory"
     rank_boost = 2
     cache_translations = False
-    same_languages = True
 
     def convert_language(self, language):
-        """No conversion of language object."""
-        return get_machinery_language(language)
+        return Language.objects.get(code=language)
 
     def is_supported(self, source, language):
         """Any language is supported."""
         return True
 
-    def is_rate_limited(self):
-        """This service has no rate limiting."""
-        return False
-
-    def download_translations(
-        self,
-        source,
-        language,
-        text: str,
-        unit,
-        user,
-        search: bool,
-        threshold: int = 75,
-    ):
+    def download_translations(self, source, language, text, unit, user):
         """Download list of possible translations from a service."""
-        for result in Memory.objects.lookup(
-            source,
-            language,
+        memory = TranslationMemory.get_thread_instance()
+        memory.refresh()
+        results = memory.lookup(
+            source.code,
+            language.code,
             text,
             user,
             unit.translation.component.project,
             unit.translation.component.project.use_shared_tm,
-        ).iterator():
-            quality = self.comparer.similarity(text, result.source)
-            if quality < 10 or (quality < threshold and not search):
-                continue
+        )
+        for text, target, similarity, category, origin in results:
             yield {
-                "text": result.target,
-                "quality": quality,
+                "text": target,
+                "quality": similarity,
                 "service": self.name,
-                "origin": result.get_origin_display(),
-                "source": result.source,
+                "origin": get_category_name(category, origin),
+                "source": text,
             }

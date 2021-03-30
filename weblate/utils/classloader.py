@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -30,19 +31,21 @@ def load_class(name, setting):
         module, attr = name.rsplit(".", 1)
     except ValueError as error:
         raise ImproperlyConfigured(
-            f'Error importing class {name} in {setting}: "{error}"'
+            'Error importing class {0} in {1}: "{2}"'.format(name, setting, error)
         )
     try:
         mod = import_module(module)
     except ImportError as error:
         raise ImproperlyConfigured(
-            f'Error importing module {module} in {setting}: "{error}"'
+            'Error importing module {0} in {1}: "{2}"'.format(module, setting, error)
         )
     try:
         return getattr(mod, attr)
     except AttributeError:
         raise ImproperlyConfigured(
-            f'Module "{module}" does not define a "{attr}" class in {setting}'
+            'Module "{0}" does not define a "{1}" class in {2}'.format(
+                module, attr, setting
+            )
         )
 
 
@@ -57,10 +60,6 @@ class ClassLoader:
         result = {}
         value = getattr(settings, self.name)
         if value:
-            if not isinstance(value, (list, tuple)):
-                raise ImproperlyConfigured(
-                    f"Setting {self.name} must be list or tuple!"
-                )
             for path in value:
                 obj = load_class(path, self.name)
                 if self.construct:

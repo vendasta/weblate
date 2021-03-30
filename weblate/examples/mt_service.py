@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,7 +20,6 @@
 """Machine translation example."""
 
 import dictionary
-
 from weblate.machinery.base import MachineTranslation
 
 
@@ -32,16 +32,7 @@ class SampleTranslation(MachineTranslation):
         """Return list of languages your machine translation supports."""
         return {"cs"}
 
-    def download_translations(
-        self,
-        source,
-        language,
-        text: str,
-        unit,
-        user,
-        search: bool,
-        threshold: int = 75,
-    ):
+    def download_translations(self, source, language, text, unit, user):
         """Return tuple with translations."""
         for t in dictionary.translate(text):
             yield {"text": t, "quality": 100, "service": self.name, "source": text}

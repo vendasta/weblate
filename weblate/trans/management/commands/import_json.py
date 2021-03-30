@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -113,7 +114,7 @@ class Command(BaseCommand):
 
             try:
                 component = Component.objects.get(slug=item["slug"], project=project)
-                self.stderr.write(f"Component {component} already exists")
+                self.stderr.write("Component {0} already exists".format(component))
                 if options["ignore"]:
                     continue
                 if options["update"]:
@@ -140,7 +141,7 @@ class Command(BaseCommand):
                     raise CommandError("Component failed validation!")
                 component.save(force_insert=True)
                 self.stdout.write(
-                    "Imported {} with {} translations".format(
+                    "Imported {0} with {1} translations".format(
                         component, component.translation_set.count()
                     )
                 )

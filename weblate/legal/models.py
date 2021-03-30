@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -40,7 +41,7 @@ class Agreement(models.Model):
     timestamp = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.user.username}:{self.tos}"
+        return "{0}:{1}".format(self.user.username, self.tos)
 
     def is_current(self):
         return self.tos == TOS_DATE

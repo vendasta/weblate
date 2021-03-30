@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,19 +19,20 @@
 #
 
 from django.conf import settings
+from django.contrib.sites.models import Site
 
 # List of default domain names on which warn user
-DEFAULT_DOMAINS = ("", "*")
+DEFAULT_DOMAINS = ("example.net", "example.com")
 
 
 def get_site_domain():
     """Return current site domain."""
-    return settings.SITE_DOMAIN
+    return Site.objects.get_current().domain
 
 
 def get_site_url(url=""):
     """Return root url of current site with domain."""
-    return "{}://{}{}".format(
+    return "{0}://{1}{2}".format(
         "https" if settings.ENABLE_HTTPS else "http", get_site_domain(), url
     )
 

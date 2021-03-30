@@ -1,7 +1,9 @@
+.. _quick-source:
+
 Installing from sources
 =======================
 
-#. Please follow the installation instructions for your system first:
+#. Please follow the installatin instructions for your system first:
 
    * :doc:`venv-debian`
    * :doc:`venv-suse`
@@ -37,10 +39,9 @@ Installing from sources
 
    .. code-block:: sh
 
-        weblate migrate
-        weblate collectstatic
-        weblate compress
-        weblate compilemessages
+        ./manage.py migrate
+        ./manage.py collectstatic
+        ./scripts/generate-locales
 
    .. note::
 
