@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -23,59 +24,15 @@ from appconf import AppConf
 from weblate.utils.classloader import ClassLoader
 
 
-class VCSConf(AppConf):
-    VCS_BACKENDS = (
-        "weblate.vcs.git.GitRepository",
-        "weblate.vcs.git.GitWithGerritRepository",
-        "weblate.vcs.git.SubversionRepository",
-        "weblate.vcs.git.GithubRepository",
-        "weblate.vcs.git.GitLabRepository",
-        "weblate.vcs.git.PagureRepository",
-        "weblate.vcs.git.LocalRepository",
-        "weblate.vcs.git.GitForcePushRepository",
-        "weblate.vcs.mercurial.HgRepository",
-    )
-    VCS_CLONE_DEPTH = 1
-
-    # GitHub username for sending pull requests
-    GITHUB_USERNAME = None
-    GITHUB_TOKEN = None
-    GITHUB_CREDENTIALS = {}
-
-    # GitLab username for sending merge requests
-    GITLAB_USERNAME = None
-    GITLAB_TOKEN = None
-    GITLAB_CREDENTIALS = {}
-
-    # GitLab username for sending merge requests
-    PAGURE_USERNAME = None
-    PAGURE_TOKEN = None
-    PAGURE_CREDENTIALS = {}
-
-    class Meta:
-        prefix = ""
-
-
 class VcsClassLoader(ClassLoader):
     def __init__(self):
         super().__init__("VCS_BACKENDS", False)
-        self.errors = {}
 
     def load_data(self):
         result = super().load_data()
 
         for key, vcs in list(result.items()):
-            try:
-                version = vcs.get_version()
-            except Exception as error:
-                supported = False
-                self.errors[vcs.name] = str(error)
-            else:
-                supported = vcs.is_supported()
-                if not supported:
-                    self.errors[vcs.name] = f"Outdated version: {version}"
-
-            if not supported or not vcs.is_configured():
+            if not vcs.is_supported():
                 result.pop(key)
 
         return result
@@ -83,3 +40,20 @@ class VcsClassLoader(ClassLoader):
 
 # Initialize VCS list
 VCS_REGISTRY = VcsClassLoader()
+
+
+class VCSConf(AppConf):
+    BACKENDS = (
+        "weblate.vcs.git.GitRepository",
+        "weblate.vcs.git.GitWithGerritRepository",
+        "weblate.vcs.git.SubversionRepository",
+        "weblate.vcs.git.GithubRepository",
+        "weblate.vcs.git.GitLabRepository",
+        "weblate.vcs.git.LocalRepository",
+        "weblate.vcs.git.GitForcePushRepository",
+        "weblate.vcs.mercurial.HgRepository",
+    )
+    CLONE_DEPTH = 1
+
+    class Meta:
+        prefix = "VCS"

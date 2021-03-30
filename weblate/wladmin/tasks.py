@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,18 +20,32 @@
 
 
 from celery.schedules import crontab
+from django.core.cache import cache
 from django.core.checks import run_checks
+from django.utils.timezone import now
 
 from weblate.utils.celery import app
 from weblate.wladmin.models import BackupService, ConfigurationError, SupportStatus
 
 
 @app.task(trail=False)
-def configuration_health_check(checks=None):
-    # Run deployment checks if needed
-    if checks is None:
-        checks = run_checks(include_deployment_checks=True)
-    checks_dict = {check.id: check for check in checks}
+def configuration_health_check(include_deployment_checks=True):
+    # Fetch errors from cache, these are created from
+    # code executed without apps ready
+    for error in cache.get("configuration-errors", []):
+        if "delete" in error:
+            ConfigurationError.objects.remove(error["name"])
+        else:
+            ConfigurationError.objects.add(
+                error["name"],
+                error["message"],
+                error["timestamp"] if "timestamp" in error else now(),
+            )
+
+    # Run deployment checks
+    if not include_deployment_checks:
+        return
+    checks = {check.id: check for check in run_checks(include_deployment_checks=True)}
     criticals = {
         "weblate.E002",
         "weblate.E003",
@@ -43,33 +58,15 @@ def configuration_health_check(checks=None):
         "weblate.E017",
         "weblate.E018",
         "weblate.E019",
-        "weblate.C023",
         "weblate.C029",
         "weblate.C030",
         "weblate.C031",
-        "weblate.C032",
-        "weblate.E034",
-        "weblate.C035",
-        "weblate.C036",
     }
-    removals = []
-    existing = {error.name: error for error in ConfigurationError.objects.all()}
-
     for check_id in criticals:
-        if check_id in checks_dict:
-            check = checks_dict[check_id]
-            if check_id in existing:
-                error = existing[check_id]
-                if error.message != check.msg:
-                    error.message = check.msg
-                    error.save(update_fields=["message"])
-            else:
-                ConfigurationError.objects.create(name=check_id, message=check.msg)
-        elif check_id in existing:
-            removals.append(check_id)
-
-    if removals:
-        ConfigurationError.objects.filter(name__in=removals).delete()
+        if check_id in checks:
+            ConfigurationError.objects.add(check_id, checks[check_id].msg)
+        else:
+            ConfigurationError.objects.remove(check_id)
 
 
 @app.task(trail=False)

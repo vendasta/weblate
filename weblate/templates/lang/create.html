@@ -11,8 +11,8 @@
 
 <form method="post">
 {% csrf_token %}
-{% crispy form.0 %}
-{% crispy form.1 %}
+{{ form.0|crispy }}
+{{ form.1|crispy }}
 <input type="submit" value="{% trans "Add" %}" class="btn btn-primary" />
 </form>
 

@@ -125,7 +125,6 @@
 <th>{% trans "Action" %}</th>
 </tr>
 <tbody>
-{% if request.user.has_usable_password or has_email_auth %}
 <tr>
 <th>{% auth_name 'password' ' ' %}</th>
 <td>{{ request.user.username }}</td>
@@ -133,7 +132,6 @@
 <a href="{% url 'password' %}" class="btn btn-primary">{% if request.user.has_usable_password %}{% trans "Change password" %}{% else %}{% trans "Set password" %}{% endif %}</a>
 </td>
 </tr>
-{% endif %}
 {% for assoc in associated %}
 <tr>
 <th>{% auth_name assoc.provider ' ' %}</th>
@@ -187,23 +185,28 @@
 
 <div class="tab-pane" id="profile">
 <div class="panel panel-default">
-  <div class="panel-heading"><h4 class="panel-title">{% documentation_icon 'user/profile' 'public-profile' right=True %}{% trans "Public profile" %}</h4></div>
-  <div class="panel-body">
-    {% crispy profileform %}
-    <p class="help-block">
-      {% blocktrans %}All of the fields on this page are optional and can be deleted at any time, and by filling them out, you're giving us consent to share this data wherever your user profile appears.{% endblocktrans %}
-    </p>
-  </div>
-  <div class="panel-footer">
-    <input type="submit" value="{% trans "Save" %}" class="btn btn-primary" />
-  </div>
+  <div class="panel-heading"><h4 class="panel-title">{% trans "Your summary" %}</h4></div>
+<table class="table">
+{% with request.user as user %}
+{% include 'user-activity.html' %}
+{% endwith %}
+<tr>
+{% url 'user_page' user=request.user.username as user_page%}
+<th>{% trans "Your public profile" %}</th>
+<td><a href="{{ user_page }}">{{ user_page }}</a></td>
+</tr>
+</table>
+<div class="panel-footer">
+    <p class="help-block">{% trans "Your public appearance on this site." %}</p>
 </div>
+</div>
+
 {% if enable_avatars %}
 <div class="panel panel-default">
   <div class="panel-heading"><h4 class="panel-title">{% documentation_icon 'user/profile' 'avatar' right=True %}{% trans "Your avatar" %}</h4></div>
   <div class="panel-body">
-<p class="border"><img class="avatar w128" alt="{% trans "User avatar" %}" src="{% url 'user_avatar' user=request.user.username size=128 %}" /></p>
-<p><a href="{{ avatar_url_prefix }}">{% blocktrans %}Avatars are provided using {{ avatar_url_prefix }}.{% endblocktrans %}</a></p>
+<p class="border"><img src="{% url 'user_avatar' user=request.user.username size=128 %}" /></p>
+<p><a href="https://www.gravatar.com/">{% trans "Avatars are provided using Gravatar." %}</a></p>
 </div>
 </div>
 {% endif %}
@@ -261,6 +264,10 @@
 <td>
     {{ user.auth_token.key }}
     <button type="button" class="btn btn-link btn-xs" data-clipboard-text="{{ user.auth_token.key }}" title="{% trans "Copy to clipboard" %}">{% icon "copy.svg" %}</button>
+</td>
+</tr>
+<tr>
+<td colspan="2">
     <a class="pull-right flip btn btn-primary link-post" href="{% url 'reset-api-key' %}">{% trans "Regenerate API key" %}</a>
 </td>
 </tr>
@@ -269,7 +276,7 @@
 <td><a href="{{ site_url }}{% url 'api:api-root' %}">{{ site_url }}{% url 'api:api-root' %}</a></td>
 </tr>
 <tr>
-<th colspan="2">{% documentation_icon 'api' right=True %}{% trans "API usage example:" %}</th>
+<th colspan="2">{% trans "API usage example:" %}</th>
 </tr>
 <tr>
 <td colspan="2">
@@ -281,7 +288,7 @@ curl \
 </td>
 </tr>
 <tr>
-<th colspan="2">{% documentation_icon 'wlc' right=True %}{% trans "CLI usage example:" %}</th>
+<th colspan="2">{% trans "CLI usage example:" %}</th>
 </tr>
 <tr>
 <td colspan="2">

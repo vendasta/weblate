@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -32,8 +33,8 @@ class DiscoveryAddon(BaseAddon):
     name = "weblate.discovery.discovery"
     verbose = _("Component discovery")
     description = _(
-        "Automatically adds or removes project components based on file changes "
-        "in the version control system."
+        "This addon automatically adds or removes components to the "
+        "project based on file changes in the version control system."
     )
     settings_form = DiscoveryForm
     multiple = True
@@ -41,17 +42,17 @@ class DiscoveryAddon(BaseAddon):
     repo_scope = True
     trigger_update = True
 
-    def post_update(self, component, previous_head: str, skip_push: bool):
+    def post_update(self, component, previous_head):
         self.discovery.perform(
             remove=self.instance.configuration["remove"], background=True
         )
 
-    def get_settings_form(self, user, **kwargs):
-        """Return configuration form for this addon."""
+    def get_settings_form(self, **kwargs):
+        """Return configuration for for this addon."""
         if "data" not in kwargs:
             kwargs["data"] = self.instance.configuration
             kwargs["data"]["confirm"] = False
-        return super().get_settings_form(user, **kwargs)
+        return super().get_settings_form(**kwargs)
 
     @cached_property
     def discovery(self):

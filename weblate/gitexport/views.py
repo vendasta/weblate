@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -27,6 +28,7 @@ from django.http import Http404
 from django.http.response import HttpResponse, HttpResponseServerError
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils.encoding import force_str
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 
@@ -46,6 +48,7 @@ def response_authenticate():
 
 def authenticate(request, auth):
     """Perform authentication with HTTP Basic auth."""
+    auth = force_str(auth, encoding="iso-8859-1")
     try:
         method, data = auth.split(None, 1)
         if method.lower() == "basic":
@@ -144,13 +147,14 @@ def run_git_http(request, obj, path):
 
     # Log error
     if output_err:
-        output_err = output_err.decode()
         try:
             raise Exception(
-                "Git http backend error: {}".format(output_err.splitlines()[0])
+                "Git http backend error: {}".format(
+                    force_str(output_err).splitlines()[0]
+                )
             )
-        except Exception:
-            report_error(cause="Git backend failure")
+        except Exception as error:
+            report_error(error, request, prefix="Git backend failure")
 
     # Handle failure
     if retcode:

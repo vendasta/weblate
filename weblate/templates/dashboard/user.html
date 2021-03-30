@@ -7,7 +7,7 @@
 
 {% block content %}
 
-{% announcements %}
+{% whiteboard_messages %}
 
 <div class="btn-group pull-right flip btn-group-settings" role="group">
 <a href="{% url 'profile' %}#preferences" class="btn btn-link" title="{% trans "Configure dashboard" %}">{% icon "settings.svg" %}</a>
@@ -33,14 +33,24 @@
     <ul class="dropdown-menu">
     <li><a href="{% url 'changes' %}">{% trans "History" %}</a></li>
     <li><a href="{% url 'changes' %}?action=51&amp;action=50">{% trans "Recent additions" %}</a></li>
-    <li><a href="#activity" data-toggle="tab">{% trans "Activity" %}</a></li>
+    <li><a href="#activity" data-toggle="tab" data-load="activity" data-yearly="{% url 'yearly_activity' %}" data-monthly="{% url 'monthly_activity' %}">{% trans "Activity" %}</a></li>
     <li><a href="{% url 'stats' %}">{% trans "Statistics" %}</a></li>
     {% if user.is_authenticated %}
     <li><a href="#reports" data-toggle="tab">{% trans "Translation reports" %}</a></li>
       {% endif %}
   </ul>
 </li>
-<li><a href="#search" data-toggle="tab">{% trans "Search" %}</a></li>
+<li class="dropdown">
+  <a class="dropdown-toggle" data-toggle="dropdown" href="#">
+    {% trans "Tools" %} <span class="caret"></span>
+  </a>
+  <ul class="dropdown-menu">
+    <li><a href="#search" data-toggle="tab">{% trans "Search" %}</a></li>
+    <li><a href="{% url 'languages' %}">{% trans "All languages" %}</a></li>
+    <li><a href="{% url 'projects' %}">{% trans "All projects" %}</a></li>
+    <li><a href="{% url 'checks' %}">{% trans "Checks overview" %}</a></li>
+  </ul>
+</li>
 </ul>
 
 <div class="tab-content">
@@ -50,7 +60,7 @@
     {% if usersubscriptions %}
         {% include "snippets/list-objects.html" with objects=usersubscriptions label=_("Component") hide_completed=user.profile.hide_completed name_source="translation" %}
 
-        {% include "paginator.html" with page_obj=usersubscriptions %}
+        {% include "paginator.html" with page_obj=usersubscriptions anchor='your-subscriptions' %}
     {% else %}
         {% include "list-projects.html" with projects=watched_projects %}
     {% endif %}
@@ -90,8 +100,6 @@
 
 </div>
 
-{% url 'yearly_activity' as yearly_activity %}
-{% url 'monthly_activity' as monthly_activity %}
 {% include "activity-tab.html" %}
 
 {% if user.is_authenticated %}

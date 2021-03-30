@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,6 +18,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import Http404, HttpResponse
@@ -25,7 +27,6 @@ from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
 from weblate.checks.base import TargetCheckParametrized
-from weblate.checks.parser import multi_value_flag
 from weblate.fonts.utils import check_render_size
 
 FONT_PARAMS = (
@@ -38,27 +39,29 @@ FONT_PARAMS = (
 IMAGE = '<a href="{0}" class="thumbnail"><img class="img-responsive" src="{0}" /></a>'
 
 
+@staticmethod
+def parse_size(val):
+    if ":" in val:
+        width, lines = val.split(":")
+        return int(width), int(lines)
+    return int(val)
+
+
 class MaxSizeCheck(TargetCheckParametrized):
     """Check for maximum size of rendered text."""
 
     check_id = "max-size"
     name = _("Maximum size of translation")
     description = _("Translation rendered text should not exceed given size")
+    severity = "danger"
     default_disabled = True
+    param_type = parse_size
     last_font = None
-    always_display = True
-
-    @property
-    def param_type(self):
-        return multi_value_flag(int, 1, 2)
 
     def get_params(self, unit):
         for name, default in FONT_PARAMS:
             if unit.all_flags.has_value(name):
-                try:
-                    yield unit.all_flags.get_value(name)
-                except KeyError:
-                    yield default
+                yield unit.all_flags.get_value(name)
             else:
                 yield default
 
@@ -69,21 +72,20 @@ class MaxSizeCheck(TargetCheckParametrized):
             return "sans"
         try:
             override = group.fontoverride_set.get(language=language)
-            return f"{override.font.family} {override.font.style}"
+            return "{} {}".format(override.font.family, override.font.style)
         except ObjectDoesNotExist:
-            return f"{group.font.family} {group.font.style}"
+            return "{} {}".format(group.font.family, group.font.style)
 
     def check_target_params(self, sources, targets, unit, value):
-        if len(value) == 2:
+        if isinstance(value, tuple):
             width, lines = value
         else:
-            width = value[0]
+            width = value
             lines = 1
         font_group, weight, size, spacing = self.get_params(unit)
         font = self.last_font = self.load_font(
             unit.translation.component.project, unit.translation.language, font_group
         )
-        replace = self.get_replacement_function(unit)
         return any(
             (
                 not check_render_size(
@@ -91,23 +93,20 @@ class MaxSizeCheck(TargetCheckParametrized):
                     weight,
                     size,
                     spacing,
-                    replace(target),
+                    target,
                     width,
                     lines,
-                    self.get_cache_key(unit, i),
+                    "check:render:{}:{}".format(unit.pk, i),
                 )
                 for i, target in enumerate(targets)
             )
         )
 
     def get_description(self, check_obj):
-        url = reverse(
-            "render-check",
-            kwargs={"check_id": self.check_id, "unit_id": check_obj.unit_id},
-        )
+        url = reverse("render-check", kwargs={"check_id": check_obj.pk})
         return mark_safe(
             "\n".join(
-                IMAGE.format(f"{url}?pos={i}")
+                IMAGE.format("{}?pos={}".format(url, i))
                 for i in range(len(check_obj.unit.get_target_plurals()))
             )
         )
@@ -117,10 +116,10 @@ class MaxSizeCheck(TargetCheckParametrized):
             pos = int(request.GET.get("pos", "0"))
         except ValueError:
             pos = 0
-        key = self.get_cache_key(unit, pos)
+        key = "check:render:{}:{}".format(unit.pk, pos)
         result = cache.get(key)
         if result is None:
-            self.check_target_unit(
+            self.check_target(
                 unit.get_source_plurals(), unit.get_target_plurals(), unit
             )
             result = cache.get(key)

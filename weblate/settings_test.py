@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -35,7 +36,7 @@ if CI_DATABASE in ("mysql", "mariadb"):
     default_user = "root"
     DATABASES["default"]["OPTIONS"] = {
         "init_command": (
-            "SET NAMES utf8mb4, "
+            "SET NAMES utf8, "
             "wait_timeout=28800, "
             "default_storage_engine=INNODB, "
             'sql_mode="STRICT_TRANS_TABLES"'
@@ -47,7 +48,7 @@ elif CI_DATABASE == "postgresql":
     DATABASES["default"]["ENGINE"] = "django.db.backends.postgresql"
     default_user = "postgres"
 else:
-    raise ValueError(f"Not supported database: {CI_DATABASE}")
+    raise ValueError("Not supported database: {}".format(CI_DATABASE))
 
 DATABASES["default"]["HOST"] = os.environ.get("CI_DB_HOST", "")
 DATABASES["default"]["NAME"] = os.environ.get("CI_DB_NAME", default_name)
@@ -58,11 +59,6 @@ DATABASES["default"]["PORT"] = os.environ.get("CI_DB_PORT", "")
 # Configure admins
 ADMINS = (("Weblate test", "noreply@weblate.org"),)
 
-# The secret key is needed for tests
-SECRET_KEY = "secret key used for tests only"
-
-SITE_DOMAIN = "example.com"
-
 # Different root for test repos
 DATA_DIR = os.path.join(BASE_DIR, "data-test")
 MEDIA_ROOT = os.path.join(DATA_DIR, "media")
@@ -72,14 +68,6 @@ CELERY_TASK_ALWAYS_EAGER = True
 CELERY_BROKER_URL = "memory://"
 CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_RESULT_BACKEND = None
-
-# Localize CDN addon
-LOCALIZE_CDN_URL = "https://cdn.example.com/"
-LOCALIZE_CDN_PATH = os.path.join(DATA_DIR, "l10n-cdn")
-
-# Needed for makemessages, otherwise it does not discover all available locales
-# and the -a parameter does not work
-LOCALE_PATHS = [os.path.join(os.path.dirname(__file__), "locale")]
 
 # Silent logging setup
 LOGGING = {
@@ -113,14 +101,6 @@ LOGGING = {
 # Reset caches
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 
-if "CI_REDIS_HOST" in os.environ:
-    CACHES["avatar"] = {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://{}:{}/0".format(
-            os.environ["CI_REDIS_HOST"], os.environ.get("CI_REDIS_PORT", "6379")
-        ),
-    }
-
 # Selenium can not clear HttpOnly cookies in MSIE
 SESSION_COOKIE_HTTPONLY = False
 
@@ -140,6 +120,8 @@ AUTHENTICATION_BACKENDS = (
     "social_core.backends.github.GithubOAuth2",
     "weblate.accounts.auth.WeblateUserBackend",
 )
+
+AUTH_VALIDATE_PERMS = True
 
 warnings.filterwarnings(
     "error",

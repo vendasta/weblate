@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,21 +18,16 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-import logging
-import sys
-from typing import Dict, Optional
-
 import sentry_sdk
 from django.conf import settings
+from django.utils.encoding import force_str
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.logging import ignore_logger
 from sentry_sdk.integrations.redis import RedisIntegration
 
-import weblate.utils.version
-
-ERROR_LOGGER = "weblate.errors"
-LOGGER = logging.getLogger(ERROR_LOGGER)
+import weblate
+from weblate.logger import LOGGER
 
 try:
     import rollbar
@@ -42,38 +38,41 @@ except ImportError:
 
 
 def report_error(
-    extra_data: Optional[Dict] = None,
-    level: str = "warning",
-    cause: str = "Handled exception",
-    skip_sentry: bool = False,
-    print_tb: bool = False,
+    error,
+    request=None,
+    extra_data=None,
+    level="warning",
+    prefix="Handled exception",
+    skip_sentry=False,
+    print_tb=False,
+    logger=None,
 ):
     """Wrapper for error reporting.
 
     This can be used for store exceptions in error reporting solutions as rollbar while
     handling error gracefully and giving user cleaner message.
     """
+    if logger is None:
+        logger = LOGGER
     if HAS_ROLLBAR and hasattr(settings, "ROLLBAR"):
-        rollbar.report_exc_info(extra_data=extra_data, level=level)
+        rollbar.report_exc_info(request=request, extra_data=extra_data, level=level)
 
     if not skip_sentry and settings.SENTRY_DSN:
         with sentry_sdk.push_scope() as scope:
             if extra_data:
                 for key, value in extra_data.items():
                     scope.set_extra(key, value)
-            scope.set_extra("error_cause", cause)
+            scope.set_extra("error_cause", prefix)
             scope.level = level
             sentry_sdk.capture_exception()
 
-    log = getattr(LOGGER, level)
-
-    error = sys.exc_info()[1]
-
-    log("%s: %s: %s", cause, error.__class__.__name__, str(error))
+    logger.error("%s: %s: %s", prefix, error.__class__.__name__, force_str(error))
     if extra_data:
-        log("%s: %s: %s", cause, error.__class__.__name__, str(extra_data))
+        logger.error(
+            "%s: %s: %s", prefix, error.__class__.__name__, force_str(extra_data)
+        )
     if print_tb:
-        LOGGER.exception(cause)
+        logger.exception(prefix)
 
 
 def celery_base_data_hook(request, data):
@@ -86,18 +85,10 @@ def init_error_collection(celery=False):
             dsn=settings.SENTRY_DSN,
             integrations=[CeleryIntegration(), DjangoIntegration(), RedisIntegration()],
             send_default_pii=True,
-            release=weblate.utils.version.GIT_REVISION
-            or weblate.utils.version.TAG_NAME,
-            environment=settings.SENTRY_ENVIRONMENT,
-            **settings.SENTRY_EXTRA_ARGS,
+            release=weblate.GIT_REVISION or weblate.VERSION,
         )
-        # Ignore Weblate logging, those are reported using capture_exception
-        ignore_logger(ERROR_LOGGER)
-        LOGGER.info(
-            "configured Sentry error collection, extras: %s", settings.SENTRY_EXTRA_ARGS
-        )
+        ignore_logger("weblate.celery")
 
     if celery and HAS_ROLLBAR and hasattr(settings, "ROLLBAR"):
         rollbar.init(**settings.ROLLBAR)
         rollbar.BASE_DATA_HOOK = celery_base_data_hook
-        LOGGER.info("configured Rollbar error collection")

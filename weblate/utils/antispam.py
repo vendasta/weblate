@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,7 +21,7 @@
 from django.conf import settings
 
 from weblate.utils.errors import report_error
-from weblate.utils.request import get_ip_address, get_user_agent_raw
+from weblate.utils.request import get_ip_address
 from weblate.utils.site import get_site_url
 
 
@@ -33,12 +34,12 @@ def is_spam(text, request):
         try:
             return akismet.comment_check(
                 get_ip_address(request),
-                get_user_agent_raw(request),
+                request.META.get("HTTP_USER_AGENT", ""),
                 comment_content=text,
                 comment_type="comment",
             )
-        except OSError:
-            report_error()
+        except OSError as error:
+            report_error(error)
             return True
     return False
 
@@ -53,5 +54,5 @@ def report_spam(text, user_ip, user_agent):
         akismet.submit_spam(
             user_ip, user_agent, comment_content=text, comment_type="comment"
         )
-    except (ProtocolError, OSError):
-        report_error()
+    except (ProtocolError, OSError) as error:
+        report_error(error)

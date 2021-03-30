@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -25,7 +26,6 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.test.utils import override_settings
 
-import weblate.vcs.gpg
 from weblate.utils.checks import check_data_writable
 from weblate.utils.unittest import tempdir_setting
 from weblate.vcs.gpg import (
@@ -44,14 +44,10 @@ class GPGTest(TestCase):
         """Check whether we can use gpg."""
         super().setUpClass()
         try:
-            result = subprocess.run(
-                ["gpg", "--version"],
-                check=True,
-                universal_newlines=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            version = result.stdout.splitlines()[0].strip().rsplit(None, 1)[-1]
+            output = subprocess.check_output(
+                ["gpg", "--version"], stderr=subprocess.STDOUT
+            ).decode()
+            version = output.splitlines()[0].strip().rsplit(None, 1)[-1]
             if LooseVersion(version) < LooseVersion("2.1"):
                 cls.gpg_error = "gpg too old"
         except (subprocess.CalledProcessError, OSError):
@@ -61,18 +57,14 @@ class GPGTest(TestCase):
         if self.gpg_error:
             raise SkipTest(self.gpg_error)
 
-    def check_errors(self):
-        self.assertEqual(weblate.vcs.gpg.GPG_ERRORS, {})
-
     @tempdir_setting("DATA_DIR")
     @override_settings(
         WEBLATE_GPG_IDENTITY="Weblate <weblate@example.com>", WEBLATE_GPG_ALGO="rsa512"
     )
     def test_generate(self):
         self.assertEqual(check_data_writable(), [])
-        self.assertIsNone(get_gpg_key(silent=True))
+        self.assertIsNone(get_gpg_key())
         key = generate_gpg_key()
-        self.check_errors()
         self.assertIsNotNone(key)
         self.assertEqual(key, get_gpg_key())
 
@@ -84,7 +76,6 @@ class GPGTest(TestCase):
         self.assertEqual(check_data_writable(), [])
         # This will generate new key
         key = get_gpg_sign_key()
-        self.check_errors()
         self.assertIsNotNone(key)
         # Check cache access
         self.assertEqual(key, get_gpg_sign_key())
@@ -100,7 +91,6 @@ class GPGTest(TestCase):
         self.assertEqual(check_data_writable(), [])
         # This will generate new key
         key = get_gpg_public_key()
-        self.check_errors()
         self.assertIsNotNone(key)
         # Check cache access
         self.assertEqual(key, get_gpg_public_key())

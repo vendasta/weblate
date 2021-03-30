@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -23,8 +24,7 @@ from django.conf import settings
 from django.core import mail
 from django.urls import reverse
 
-from weblate.auth.models import Group, User, get_anonymous
-from weblate.lang.models import Language
+from weblate.auth.models import Group, User
 from weblate.trans.models import Project
 from weblate.trans.tests.test_views import FixtureTestCase
 
@@ -49,7 +49,6 @@ class ACLTest(FixtureTestCase):
         """No access to the project without ACL."""
         response = self.client.get(self.access_url)
         self.assertEqual(response.status_code, 404)
-        self.assertFalse(get_anonymous().can_access_project(self.project))
 
     def test_acl_disable(self):
         """Test disabling ACL."""
@@ -57,7 +56,6 @@ class ACLTest(FixtureTestCase):
         self.assertEqual(response.status_code, 404)
         self.project.access_control = Project.ACCESS_PUBLIC
         self.project.save()
-        self.assertTrue(get_anonymous().can_access_project(self.project))
         response = self.client.get(self.access_url)
         self.assertEqual(response.status_code, 403)
         response = self.client.get(self.translate_url)
@@ -69,7 +67,6 @@ class ACLTest(FixtureTestCase):
         self.assertEqual(response.status_code, 404)
         self.project.access_control = Project.ACCESS_PROTECTED
         self.project.save()
-        self.assertTrue(get_anonymous().can_access_project(self.project))
         response = self.client.get(self.access_url)
         self.assertEqual(response.status_code, 403)
         response = self.client.get(self.translate_url)
@@ -118,7 +115,7 @@ class ACLTest(FixtureTestCase):
         self.project.add_user(self.user, "@Administration")
         response = self.client.post(
             reverse("invite-user", kwargs=self.kw_project),
-            {"email": "invalid", "username": "valid", "full_name": "name"},
+            {"email": "invalid", "full_name": "name"},
             follow=True,
         )
         # This error comes from Django validation
@@ -129,11 +126,7 @@ class ACLTest(FixtureTestCase):
         self.project.add_user(self.user, "@Administration")
         response = self.client.post(
             reverse("invite-user", kwargs=self.kw_project),
-            {
-                "email": self.user.email,
-                "username": self.user.username,
-                "full_name": "name",
-            },
+            {"email": self.user.email, "full_name": "name"},
             follow=True,
         )
         self.assertContains(response, "User with this E-mail already exists")
@@ -143,7 +136,7 @@ class ACLTest(FixtureTestCase):
         self.project.add_user(self.user, "@Administration")
         response = self.client.post(
             reverse("invite-user", kwargs=self.kw_project),
-            {"email": "user@example.com", "username": "username", "full_name": "name"},
+            {"email": "user@example.com", "full_name": "name"},
             follow=True,
         )
         # Ensure user is now listed
@@ -278,19 +271,19 @@ class ACLTest(FixtureTestCase):
             billing_group = 1
         else:
             billing_group = 0
-        match = f"{self.project.name}@"
+        match = "{}@".format(self.project.name)
         self.project.access_control = Project.ACCESS_PUBLIC
-        self.project.translation_review = False
+        self.project.enable_review = False
         self.project.save()
         self.assertEqual(1, Group.objects.filter(name__startswith=match).count())
         self.project.access_control = Project.ACCESS_PROTECTED
-        self.project.translation_review = True
+        self.project.enable_review = True
         self.project.save()
         self.assertEqual(
             9 + billing_group, Group.objects.filter(name__startswith=match).count()
         )
         self.project.access_control = Project.ACCESS_PRIVATE
-        self.project.translation_review = True
+        self.project.enable_review = True
         self.project.save()
         self.assertEqual(
             9 + billing_group, Group.objects.filter(name__startswith=match).count()
@@ -308,24 +301,3 @@ class ACLTest(FixtureTestCase):
         )
         self.project.delete()
         self.assertEqual(0, Group.objects.filter(name__startswith=match).count())
-
-    def test_restricted_component(self):
-        # Make the project public
-        self.project.access_control = Project.ACCESS_PUBLIC
-        self.project.save()
-        # Add user language to ensure the suggestions are shown
-        self.user.profile.languages.add(Language.objects.get(code="cs"))
-
-        url = self.component.get_absolute_url()
-
-        # It is shown on the dashboard and accessible
-        self.assertEqual(self.client.get(url).status_code, 200)
-        self.assertContains(self.client.get(reverse("home")), url)
-
-        # Make it restricted
-        self.component.restricted = True
-        self.component.save(update_fields=["restricted"])
-
-        # It is no longer shown on the dashboard and not accessible
-        self.assertEqual(self.client.get(url).status_code, 404)
-        self.assertNotContains(self.client.get(reverse("home")), url)

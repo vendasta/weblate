@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,7 +18,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-from functools import reduce
 
 from django.conf import settings
 
@@ -105,19 +105,20 @@ class ApertiumAPYTranslation(MachineTranslation):
     @property
     def all_langs(self):
         """Return all language codes known to service."""
-        return reduce(lambda acc, x: acc.union(x), self.supported_languages, set())
+        langs = self.supported_languages
+        return set([l[0] for l in langs] + [l[1] for l in langs])
 
-    def map_language_code(self, code):
+    def convert_language(self, language):
         """Convert language to service specific code."""
-        code = super().map_language_code(code).replace("-", "_")
         # Force download of supported languages
-        if code not in self.all_langs and code in LANGUAGE_MAP:
-            return LANGUAGE_MAP[code]
-        return code
+        language = language.replace("-", "_")
+        if language not in self.all_langs and language in LANGUAGE_MAP:
+            return LANGUAGE_MAP[language]
+        return language
 
     def download_languages(self):
         """Download list of supported languages from a service."""
-        data = self.request_status("get", f"{self.url}/listPairs")
+        data = self.request_status("get", "{0}/listPairs".format(self.url))
         return [
             (item["sourceLanguage"], item["targetLanguage"])
             for item in data["responseData"]
@@ -127,23 +128,12 @@ class ApertiumAPYTranslation(MachineTranslation):
         """Check whether given language combination is supported."""
         return (source, language) in self.supported_languages
 
-    def download_translations(
-        self,
-        source,
-        language,
-        text: str,
-        unit,
-        user,
-        search: bool,
-        threshold: int = 75,
-    ):
+    def download_translations(self, source, language, text, unit, user):
         """Download list of possible translations from Apertium."""
-        args = {
-            "langpair": f"{source}|{language}",
-            "q": text,
-            "markUnknown": "no",
-        }
-        response = self.request_status("get", f"{self.url}/translate", params=args)
+        args = {"langpair": "{0}|{1}".format(source, language), "q": text}
+        response = self.request_status(
+            "get", "{0}/translate".format(self.url), params=args
+        )
 
         yield {
             "text": response["responseData"]["translatedText"],

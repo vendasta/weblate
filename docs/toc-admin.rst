@@ -2,6 +2,7 @@
     :caption: Administrator docs
     :maxdepth: 1
 
+    admin/quick
     admin/install
     admin/deployments
     admin/upgrade
@@ -20,10 +21,9 @@
     admin/config
     admin/sample
     admin/management
-    admin/announcements
+    admin/whiteboard
     admin/componentlists
     admin/optionals
     admin/customize
     admin/admin
     admin/support
-    legal

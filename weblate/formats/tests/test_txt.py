@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -34,7 +35,7 @@ class AppStoreFormatTest(AutoFormatTest):
     EXT = "txt"
     COUNT = 1
     MASK = "market/*"
-    EXPECTED_PATH = "market/cs-CZ"
+    EXPECTED_PATH = "market/cs_CZ"
     FIND = "Hello world"
     FIND_CONTEXT = "short_description.txt:1"
     FIND_MATCH = "Hello world"

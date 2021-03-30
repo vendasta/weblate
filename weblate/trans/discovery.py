@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -39,7 +40,6 @@ COPY_ATTRIBUTES = (
     "vcs",
     "license",
     "agreement",
-    "source_language",
     "report_source_bugs",
     "allow_translation_propagation",
     "enable_suggestions",
@@ -52,13 +52,12 @@ COPY_ATTRIBUTES = (
     "add_message",
     "delete_message",
     "merge_message",
-    "addon_message",
     "committer_name",
     "committer_email",
     "push_on_commit",
     "commit_pending_age",
     "edit_template",
-    "variant_regex",
+    "shaping_regex",
 )
 
 
@@ -135,10 +134,7 @@ class ComponentDiscovery:
                     continue
 
                 # Check language regexp
-                language_part = matches.group("language")
-                if language_part is None or not self.language_match.match(
-                    language_part
-                ):
+                if not self.language_match.match(matches.group("language")):
                     continue
 
                 # Calculate file mask for match
@@ -217,17 +213,15 @@ class ComponentDiscovery:
 
         # Deal with duplicate name or slug
         components = Component.objects.filter(project=kwargs["project"])
-        if components.filter(Q(slug__iexact=slug) | Q(name__iexact=name)).exists():
+        if components.filter(Q(slug=slug) | Q(name=name)).exists():
             base_name = get_val("name", 4)
             base_slug = get_val("slug", 4)
 
             for i in range(1, 1000):
-                name = f"{base_name} {i}"
-                slug = f"{base_slug}-{i}"
+                name = "{} {}".format(base_name, i)
+                slug = "{}-{}".format(base_slug, i)
 
-                if components.filter(
-                    Q(slug__iexact=slug) | Q(name__iexact=name)
-                ).exists():
+                if components.filter(Q(slug=slug) | Q(name=name)).exists():
                     continue
                 break
 
@@ -248,9 +242,8 @@ class ComponentDiscovery:
         self.log("Creating component %s", name)
         # Can't pass objects, pass only IDs
         kwargs["project"] = kwargs["project"].pk
-        kwargs["source_language"] = kwargs["source_language"].pk
         if background:
-            create_component.delay(**kwargs, in_task=True)
+            create_component.delay(**kwargs)
             return None
         return create_component(**kwargs)
 

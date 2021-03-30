@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,14 +18,39 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
+import os
+
+from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+from translate.storage.lisa import LISAfile
 
 from weblate.addons.base import UpdateBaseAddon
-from weblate.addons.events import EVENT_POST_COMMIT, EVENT_POST_UPDATE, EVENT_PRE_COMMIT
-from weblate.trans.exceptions import FileParseError
+from weblate.formats.txt import AppStoreParser
 
 
 class BaseCleanupAddon(UpdateBaseAddon):
+    @cached_property
+    def template_store(self):
+        return self.instance.component.template_store.store
+
+    @staticmethod
+    def build_index(storage):
+        index = {}
+
+        for unit in storage.units:
+            index[unit.getid()] = unit
+
+        return index
+
+    @staticmethod
+    def iterate_translations(component):
+        yield from (
+            translation
+            for translation in component.translation_set.iterator()
+            if not translation.is_source
+        )
+
     @classmethod
     def can_install(cls, component, user):
         if not component.has_template():
@@ -41,34 +67,56 @@ class CleanupAddon(BaseCleanupAddon):
         "no longer present in the base file."
     )
     icon = "eraser.svg"
-    events = (EVENT_PRE_COMMIT, EVENT_POST_UPDATE)
+
+    def update_appstore(self, index, translation, storage):
+        """Filter obsolete units in storage.
+
+        This does simple filtering of units list.
+        """
+        for unit in storage.store.units:
+            if unit.getid() not in index:
+                filename = storage.store.get_filename(unit.filename)
+                self.extra_files.append(filename)
+                os.unlink(filename)
+
+    def update_units(self, index, translation, storage):
+        """Filter obsolete units in storage.
+
+        This does simple filtering of units list.
+        """
+        startlen = len(storage.store.units)
+
+        # Remove extra units
+        storage.store.units = [u for u in storage.store.units if u.getid() in index]
+
+        if startlen != len(storage.store.units):
+            storage.save()
+
+    def update_lisa(self, index, translation, storage):
+        """Filter obsolete units in LISA based storage.
+
+        This removes the corresponding XML element.
+        """
+        changed = False
+
+        # Remove extra units
+        for unit in storage.store.units:
+            if unit.getid() not in index:
+                storage.store.body.remove(unit.xmlelement)
+                changed = True
+
+        if changed:
+            storage.save()
 
     def update_translations(self, component, previous_head):
-        for translation in self.iterate_translations(component):
-            filenames = translation.store.cleanup_unused()
-            self.extra_files.extend(filenames)
+        index = self.build_index(self.template_store)
 
-    def pre_commit(self, translation, author):
-        if translation.is_source and not translation.component.intermediate:
-            return
-        try:
-            filenames = translation.store.cleanup_unused()
-        except FileParseError:
-            return
-        self.extra_files.extend(filenames)
-
-
-class RemoveBlankAddon(BaseCleanupAddon):
-    name = "weblate.cleanup.blank"
-    verbose = _("Remove blank strings")
-    description = _("Removes strings without a translation from translation files.")
-    events = (EVENT_POST_COMMIT, EVENT_POST_UPDATE)
-    icon = "eraser.svg"
-
-    def update_translations(self, component, previous_head):
-        for translation in self.iterate_translations(component):
-            filenames = translation.store.cleanup_blank()
-            self.extra_files.extend(filenames)
-
-    def post_commit(self, component):
-        self.post_update(component, None, skip_push=True)
+        if isinstance(self.template_store, AppStoreParser):
+            for translation in self.iterate_translations(component):
+                self.update_appstore(index, translation, translation.store)
+        elif isinstance(self.template_store, LISAfile):
+            for translation in self.iterate_translations(component):
+                self.update_lisa(index, translation, translation.store)
+        else:
+            for translation in self.iterate_translations(component):
+                self.update_units(index, translation, translation.store)

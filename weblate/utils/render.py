@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,9 +18,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 from django.core.exceptions import ValidationError
 from django.template import Context, Engine, Template, TemplateSyntaxError
-from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.utils.translation import override
 
@@ -28,15 +29,9 @@ from weblate.utils.site import get_site_url
 # List of schemes not allowed in editor URL
 # This list is not intededed to be complete, just block
 # the possibly dangerous ones.
-FORBIDDEN_URL_SCHEMES = {
-    "javascript",
-    "data",
-    "vbscript",
-    "mailto",
-    "ftp",
-    "sms",
-    "tel",
-}
+FORBIDDEN_URL_SCHEMES = frozenset(
+    ("javascript", "data", "vbscript", "mailto", "ftp", "sms", "tel")
+)
 
 
 class InvalidString(str):
@@ -58,20 +53,16 @@ class RestrictedEngine(Engine):
 
 def render_template(template, **kwargs):
     """Helper class to render string template with context."""
-    from weblate.trans.models import Component, Project, Translation
+    from weblate.trans.models import Project, Component, Translation
 
     translation = kwargs.get("translation")
     component = kwargs.get("component")
     project = kwargs.get("project")
 
-    # Comppatibility with older templates
-    if "addon_name" in kwargs:
-        kwargs["hook_name"] = kwargs["addon_name"]
-
     if isinstance(translation, Translation):
         translation.stats.ensure_basic()
         kwargs["language_code"] = translation.language_code
-        kwargs["language_name"] = translation.language.get_name()
+        kwargs["language_name"] = translation.language.name
         kwargs["stats"] = translation.stats.get_data()
         kwargs["url"] = get_site_url(translation.get_absolute_url())
         kwargs["filename"] = translation.filename
@@ -86,18 +77,6 @@ def render_template(template, **kwargs):
         ] = component.repository.get_remote_branch_name()
         if "url" not in kwargs:
             kwargs["url"] = get_site_url(component.get_absolute_url())
-        kwargs["widget_url"] = get_site_url(
-            reverse(
-                "widget-image",
-                kwargs={
-                    "project": component.project.slug,
-                    "component": component.slug,
-                    "widget": "horizontal",
-                    "color": "auto",
-                    "extension": "svg",
-                },
-            )
-        )
         project = component.project
         kwargs.pop("component", None)
 
@@ -123,8 +102,8 @@ def validate_render(value, **kwargs):
 
 
 def validate_render_component(value, translation=None, **kwargs):
+    from weblate.trans.models import Project, Component, Translation
     from weblate.lang.models import Language
-    from weblate.trans.models import Component, Project, Translation
 
     component = Component(
         project=Project(name="project", slug="project", id=-1),

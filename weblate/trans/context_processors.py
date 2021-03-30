@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -22,18 +23,17 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 from django.utils.html import escape
-from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.http import is_safe_url
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext as _
 
+import weblate
 import weblate.screenshots.views
-import weblate.utils.version
-from weblate.configuration.views import CustomCSSView
 from weblate.utils.site import get_site_domain, get_site_url
 from weblate.wladmin.models import ConfigurationError
 
-WEBLATE_URL = "https://weblate.org/"
-DONATE_URL = "https://weblate.org/donate/"
+URL_BASE = "https://weblate.org/?utm_source=weblate&utm_term=%s"
+URL_DONATE = "https://weblate.org/donate/?utm_source=weblate&utm_term=%s"
 
 CONTEXT_SETTINGS = [
     "SITE_TITLE",
@@ -48,8 +48,6 @@ CONTEXT_SETTINGS = [
     "STATUS_URL",
     "LEGAL_URL",
     "FONTS_CDN_URL",
-    "AVATAR_URL_PREFIX",
-    "HIDE_VERSION",
     # Hosted Weblate integration
     "PAYMENT_ENABLED",
 ]
@@ -82,8 +80,8 @@ def add_settings_context(context):
 
 def add_optional_context(context):
     for name in CONTEXT_APPS:
-        appname = f"weblate.{name}"
-        context[f"has_{name}"] = appname in settings.INSTALLED_APPS
+        appname = "weblate.{}".format(name)
+        context["has_{}".format(name)] = appname in settings.INSTALLED_APPS
 
 
 def get_preconnect_list():
@@ -109,19 +107,12 @@ def get_bread_image(path):
         return "wrench.svg"
     if first in ("about", "stats", "keys", "legal"):
         return "weblate.svg"
-    if first in (
-        "glossaries",
-        "upload-glossaries",
-        "delete-glossaries",
-        "edit-glossaries",
-    ):
-        return "glossary.svg"
     return "project.svg"
 
 
 def weblate_context(request):
     """Context processor to inject various useful variables into context."""
-    if url_has_allowed_host_and_scheme(request.GET.get("next", ""), allowed_hosts=None):
+    if is_safe_url(request.GET.get("next", ""), allowed_hosts=None):
         login_redirect_url = request.GET["next"]
     else:
         login_redirect_url = request.get_full_path()
@@ -138,26 +129,23 @@ def weblate_context(request):
             "This site runs Weblate for localizing various software projects."
         )
 
+    weblate_url = URL_BASE % weblate.VERSION
+
     context = {
-        "cache_param": f"?v={weblate.utils.version.GIT_VERSION}"
-        if not settings.COMPRESS_ENABLED
-        else "",
-        "version": weblate.utils.version.VERSION,
+        "cache_param": "?v={}".format(weblate.GIT_VERSION),
+        "version": weblate.VERSION,
         "bread_image": get_bread_image(request.path),
         "description": description,
         "weblate_link": mark_safe(
-            '<a href="{}">weblate.org</a>'.format(escape(WEBLATE_URL))
+            '<a href="{}">weblate.org</a>'.format(escape(weblate_url))
         ),
         "weblate_name_link": mark_safe(
-            '<a href="{}">Weblate</a>'.format(escape(WEBLATE_URL))
+            '<a href="{}">Weblate</a>'.format(escape(weblate_url))
         ),
         "weblate_version_link": mark_safe(
-            '<a href="{}">Weblate {}</a>'.format(
-                escape(WEBLATE_URL),
-                "" if settings.HIDE_VERSION else weblate.utils.version.VERSION,
-            )
+            '<a href="{}">Weblate {}</a>'.format(escape(weblate_url), weblate.VERSION)
         ),
-        "donate_url": DONATE_URL,
+        "donate_url": URL_DONATE % weblate.VERSION,
         "site_url": get_site_url(),
         "site_domain": get_site_domain(),
         "current_date": datetime.utcnow().strftime("%Y-%m-%d"),
@@ -166,14 +154,12 @@ def weblate_context(request):
         "login_redirect_url": login_redirect_url,
         "has_ocr": weblate.screenshots.views.HAS_OCR,
         "has_antispam": bool(settings.AKISMET_API_KEY),
-        "has_sentry": bool(settings.SENTRY_DSN),
         "watched_projects": watched_projects,
         "allow_index": False,
         "configuration_errors": ConfigurationError.objects.filter(
             ignored=False
         ).order_by("-timestamp"),
         "preconnect_list": get_preconnect_list(),
-        "custom_css_hash": CustomCSSView.get_hash(request),
     }
 
     add_error_logging_context(context)

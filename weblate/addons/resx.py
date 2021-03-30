@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,7 +18,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-from django.utils.functional import cached_property
+
 from django.utils.translation import gettext_lazy as _
 from translate.storage.resx import RESXFile
 
@@ -29,40 +30,11 @@ class ResxUpdateAddon(BaseCleanupAddon):
     verbose = _("Update RESX files")
     description = _(
         "Update all translation files to match the monolingual upstream base file. "
-        "Unused strings are removed, and new ones added as copies of the source "
-        "string."
+        "Unused strings are removed, and new ones are added as "
+        "copies of the source string."
     )
     icon = "refresh.svg"
     compat = {"file_format": {"resx"}}
-
-    @cached_property
-    def template_store(self):
-        return self.instance.component.template_store.store
-
-    @staticmethod
-    def build_index(storage):
-        index = {}
-
-        for unit in storage.units:
-            index[unit.getid()] = unit
-
-        return index
-
-    def build_indexes(self):
-        index = self.build_index(self.template_store)
-        if self.instance.component.intermediate:
-            intermediate = self.build_index(
-                self.instance.component.intermediate_store.store
-            )
-        else:
-            intermediate = {}
-        return index, intermediate
-
-    @staticmethod
-    def get_index(index, intermediate, translation):
-        if intermediate and translation.is_source:
-            return intermediate
-        return index
 
     def update_resx(self, index, translation, storage, changes):
         """Filter obsolete units in RESX storage.
@@ -107,8 +79,7 @@ class ResxUpdateAddon(BaseCleanupAddon):
         return result
 
     def update_translations(self, component, previous_head):
-        index, intermediate = self.build_indexes()
-
+        index = self.build_index(self.template_store)
         if previous_head:
             content = component.repository.get_file(component.template, previous_head)
             changes = self.find_changes(index, RESXFile.parsestring(content))
@@ -116,9 +87,4 @@ class ResxUpdateAddon(BaseCleanupAddon):
             # No previous revision, probably first commit
             changes = set()
         for translation in self.iterate_translations(component):
-            self.update_resx(
-                self.get_index(index, intermediate, translation),
-                translation,
-                translation.store,
-                changes,
-            )
+            self.update_resx(index, translation, translation.store, changes)

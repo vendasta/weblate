@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -23,7 +24,6 @@
 from weblate.checks.render import MaxSizeCheck
 from weblate.fonts.models import FontGroup, FontOverride
 from weblate.fonts.tests.utils import FontTestCase
-from weblate.utils.state import STATE_TRANSLATED
 
 
 class MaxSizeCheckTest(FontTestCase):
@@ -35,7 +35,6 @@ class MaxSizeCheckTest(FontTestCase):
         unit = self.get_unit()
         unit.flags = flags
         unit.target = target
-        unit.state = STATE_TRANSLATED
         return self.check.check_target(["source"], [target], unit)
 
     def test_good(self):

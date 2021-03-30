@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,10 +20,10 @@
 
 
 from django.apps import AppConfig
-from django.core.checks import register
+from django.core.checks import Critical, register
 
 from weblate.gitexport.utils import find_git_http_backend
-from weblate.utils.checks import weblate_check
+from weblate.utils.docs import get_doc_url
 
 
 class GitExportConfig(AppConfig):
@@ -38,9 +39,10 @@ class GitExportConfig(AppConfig):
 def check_git_backend(app_configs, **kwargs):
     if find_git_http_backend() is None:
         return [
-            weblate_check(
-                "weblate.E022",
+            Critical(
                 "Failed to find git-http-backend, " "the git exporter will not work.",
+                hint=get_doc_url("admin/optionals", "git-exporter"),
+                id="weblate.E022",
             )
         ]
     return []

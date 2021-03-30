@@ -1,4 +1,5 @@
-"""Sphinx plugins for Weblate documentation."""
+# -*- coding: utf-8 -*-
+"""Sphinx plugins for Django documentation."""
 import re
 
 from sphinx import addnodes
@@ -15,7 +16,7 @@ def setup(app):
     app.add_object_type(
         directivename="django-admin",
         rolename="djadmin",
-        indextemplate="pair: %s; weblate admin command",
+        indextemplate="pair: %s; django-admin command",
         parse_node=parse_django_admin_node,
     )
     app.add_directive("django-admin-option", Cmdoption)
@@ -24,6 +25,6 @@ def setup(app):
 def parse_django_admin_node(env, sig, signode):
     command = sig.split(" ")[0]
     env.ref_context["std:program"] = command
-    title = f"weblate {sig}"
+    title = "manage.py {0}".format(sig)
     signode += addnodes.desc_name(title, title)
     return command

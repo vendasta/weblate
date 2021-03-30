@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,10 +21,9 @@
 
 from django.utils.functional import cached_property
 from django.utils.text import format_lazy
-from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
-from weblate.checks.models import CHECKS
+from weblate.checks import CHECKS
 
 
 class FilterRegistry:
@@ -31,15 +31,13 @@ class FilterRegistry:
     def full_list(self):
         result = [
             ("all", _("All strings"), ""),
-            ("readonly", _("Read only strings"), "state:read-only"),
             ("nottranslated", _("Not translated strings"), "state:empty"),
             ("todo", _("Strings needing action"), "state:<translated"),
             ("translated", _("Translated strings"), "state:>=translated"),
             ("fuzzy", _("Strings marked for edit"), "state:needs-editing"),
             ("suggestions", _("Strings with suggestions"), "has:suggestion"),
-            ("variants", _("Strings with variants"), "has:variant"),
+            ("shapings", _("Strings with shapings"), "has:shaping"),
             ("labels", _("Strings with labels"), "has:label"),
-            ("context", _("Strings with context"), "has:context"),
             (
                 "nosuggestions",
                 _("Strings needing action without suggestions"),
@@ -47,16 +45,6 @@ class FilterRegistry:
             ),
             ("comments", _("Strings with comments"), "has:comment"),
             ("allchecks", _("Strings with any failing checks"), "has:check"),
-            (
-                "translated_checks",
-                _("Translated strings with any failing checks"),
-                "has:check AND state:>=translated",
-            ),
-            (
-                "dismissed_checks",
-                _("Translated strings with dismissed checks"),
-                "has:dismissed-check",
-            ),
             ("approved", _("Approved strings"), "state:approved"),
             (
                 "approved_suggestions",
@@ -64,14 +52,12 @@ class FilterRegistry:
                 "state:approved AND has:suggestion",
             ),
             ("unapproved", _("Strings waiting for review"), "state:translated"),
-            ("unlabeled", _("Strings without a label"), "NOT has:label"),
-            ("pluralized", _("Pluralized string"), "has:plural"),
         ]
         result.extend(
             (
                 CHECKS[check].url_id,
                 format_lazy(_("Failed check: {}"), CHECKS[check].name),
-                f"check:{check}",
+                "check:{}".format(check),
             )
             for check in CHECKS
         )
@@ -83,7 +69,7 @@ class FilterRegistry:
 
     def get_search_name(self, query):
         try:
-            return self.search_name[query.strip()]
+            return self.search_name[query]
         except KeyError:
             return query
 
@@ -96,7 +82,7 @@ class FilterRegistry:
             return self.id_name[name]
         except KeyError:
             if name.startswith("label:"):
-                return _("Labeled: {}").format(gettext(name[6:]))
+                return _("Labeled: {}").format(name[6:])
             raise
 
     @cached_property
@@ -137,7 +123,7 @@ def get_filter_choice(project=None):
     )
     if project is not None:
         result.extend(
-            (f"label:{label}", format_lazy(_("Labeled: {}"), label))
-            for label in project.label_set.values_list("name", flat=True)
+            ("label:{}".format(label.name), format_lazy(_("Labeled: {}"), label.name))
+            for label in project.label_set.all()
         )
     return result

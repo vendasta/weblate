@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,17 +19,18 @@
 #
 
 
-from weblate.accounts.notifications import FREQ_INSTANT, SCOPE_ADMIN, SCOPE_WATCHED
+from weblate.accounts.notifications import FREQ_INSTANT, SCOPE_ADMIN, SCOPE_DEFAULT
 
 DEFAULT_NOTIFICATIONS = [
-    (SCOPE_WATCHED, FREQ_INSTANT, "LastAuthorCommentNotificaton"),
-    (SCOPE_WATCHED, FREQ_INSTANT, "MentionCommentNotificaton"),
-    (SCOPE_WATCHED, FREQ_INSTANT, "NewAnnouncementNotificaton"),
+    (SCOPE_DEFAULT, FREQ_INSTANT, "LastAuthorCommentNotificaton"),
+    (SCOPE_DEFAULT, FREQ_INSTANT, "MentionCommentNotificaton"),
+    (SCOPE_DEFAULT, FREQ_INSTANT, "NewWhiteboardMessageNotificaton"),
     (SCOPE_ADMIN, FREQ_INSTANT, "MergeFailureNotification"),
     (SCOPE_ADMIN, FREQ_INSTANT, "ParseErrorNotification"),
     (SCOPE_ADMIN, FREQ_INSTANT, "NewTranslationNotificaton"),
+    (SCOPE_ADMIN, FREQ_INSTANT, "NewComponentNotificaton"),
     (SCOPE_ADMIN, FREQ_INSTANT, "NewAlertNotificaton"),
-    (SCOPE_ADMIN, FREQ_INSTANT, "NewAnnouncementNotificaton"),
+    (SCOPE_ADMIN, FREQ_INSTANT, "NewWhiteboardMessageNotificaton"),
 ]
 
 

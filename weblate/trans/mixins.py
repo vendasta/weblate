@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,8 +18,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 import os
-from typing import Optional
 
 from django.urls import reverse
 from django.utils.functional import cached_property
@@ -30,7 +31,7 @@ from weblate.logger import LOGGER
 class URLMixin:
     """Mixin for models providing standard shortcut API for few standard URLs."""
 
-    _reverse_url_name: Optional[str] = None
+    _reverse_url_name = None
 
     def get_reverse_url_kwargs(self):
         """Return kwargs for URL reversing."""
@@ -41,7 +42,7 @@ class URLMixin:
         if name is None:
             urlname = self._reverse_url_name
         else:
-            urlname = f"{name}_{self._reverse_url_name}"
+            urlname = "{0}_{1}".format(name, self._reverse_url_name)
         return reverse(urlname, kwargs=self.get_reverse_url_kwargs())
 
     def get_absolute_url(self):
@@ -145,14 +146,8 @@ class PathMixin(LoggerMixin):
 
 
 class UserDisplayMixin:
-    def get_user_display(self, icon: bool = True):
+    def get_user_display(self, icon=True):
         return get_user_display(self.user, icon, link=True)
 
     def get_user_text_display(self):
         return get_user_display(self.user, icon=False, link=True)
-
-
-class CacheKeyMixin:
-    @cached_property
-    def cache_key(self):
-        return f"{self.__class__.__name__}-{self.pk}"

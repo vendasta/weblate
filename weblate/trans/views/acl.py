@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,19 +20,20 @@
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.http import JsonResponse
+from django.http import HttpRequest, JsonResponse
 from django.shortcuts import redirect
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
+from social_django.views import complete
 
-from weblate.auth.forms import InviteUserForm, send_invitation
-from weblate.auth.models import Group, User
-from weblate.trans.forms import UserManageForm
+from weblate.accounts.strategy import create_session
+from weblate.accounts.views import store_userid
+from weblate.auth.models import Group, User, get_anonymous
+from weblate.trans.forms import InviteUserForm, UserManageForm
 from weblate.trans.models import Change
 from weblate.trans.util import render
 from weblate.utils import messages
 from weblate.utils.views import get_project, show_form_errors
-from weblate.vcs.ssh import get_key_data
 
 
 def check_user_form(request, project, verbose=False, form_class=UserManageForm):
@@ -133,6 +135,21 @@ def add_user(request, project):
     return redirect("manage-access", project=obj.slug)
 
 
+def send_invitation(request, project, user):
+    fake = HttpRequest()
+    fake.user = get_anonymous()
+    fake.method = "POST"
+    fake.session = create_session()
+    fake.session["invitation_context"] = {
+        "from_user": request.user.full_name,
+        "project_name": project.name,
+    }
+    fake.POST["email"] = user.email
+    fake.META = request.META
+    store_userid(fake, invite=True)
+    complete(fake, "email")
+
+
 @require_POST
 @login_required
 def invite_user(request, project):
@@ -141,7 +158,15 @@ def invite_user(request, project):
 
     if form is not None:
         try:
-            form.save(request, obj)
+            user = form.save()
+            obj.add_user(user)
+            Change.objects.create(
+                project=obj,
+                action=Change.ACTION_INVITE_USER,
+                user=request.user,
+                details={"username": user.username},
+            )
+            send_invitation(request, obj, user)
             messages.success(request, _("User has been invited to this project."))
         except Group.DoesNotExist:
             messages.error(request, _("Failed to find group to add a user!"))
@@ -156,7 +181,7 @@ def resend_invitation(request, project):
     obj, form = check_user_form(request, project, True)
 
     if form is not None:
-        send_invitation(request, obj.name, form.cleaned_data["user"])
+        send_invitation(request, obj, form.cleaned_data["user"])
         messages.success(request, _("User has been invited to this project."))
 
     return redirect("manage-access", project=obj.slug)
@@ -205,6 +230,5 @@ def manage_access(request, project):
             "all_users": User.objects.for_project(obj),
             "add_user_form": UserManageForm(),
             "invite_user_form": InviteUserForm(),
-            "ssh_key": get_key_data(),
         },
     )

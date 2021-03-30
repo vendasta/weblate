@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -32,11 +33,11 @@ def tos_confirm(strategy, backend, user, current_partial, **kwargs):
     if not agreement.is_current():
         if user:
             strategy.request.session["tos_user"] = user.pk
-        url = "{}?partial_token={}".format(
+        url = "{0}?partial_token={1}".format(
             reverse("social:complete", args=(backend.name,)), current_partial.token
         )
         return redirect(
-            "{}?{}".format(reverse("legal:confirm"), urlencode({"next": url}))
+            "{0}?{1}".format(reverse("legal:confirm"), urlencode({"next": url}))
         )
     strategy.request.session.pop("tos_user", None)
     return None

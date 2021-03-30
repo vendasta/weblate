@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 import sys
 
@@ -8,7 +9,7 @@ if len(sys.argv) != 2:
 start = "Weblate {}\n".format(sys.argv[1])
 display = False
 
-with open("docs/changes.rst") as handle:
+with open("docs/changes.rst", "r") as handle:
     for line in handle:
         if display:
             if line.startswith("Weblate "):

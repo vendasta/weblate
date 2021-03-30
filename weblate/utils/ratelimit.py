@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,15 +18,18 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
+from hashlib import md5
+
 from django.conf import settings
 from django.contrib.auth import logout
 from django.core.cache import cache
 from django.middleware.csrf import rotate_token
 from django.shortcuts import redirect
 from django.template.loader import render_to_string
+from django.utils.encoding import force_bytes
 
 from weblate.utils import messages
-from weblate.utils.hash import calculate_checksum
 from weblate.utils.request import get_ip_address
 
 
@@ -41,8 +45,8 @@ def get_cache_key(scope, request=None, address=None, user=None):
         if address is None:
             address = get_ip_address(request)
         origin = "ip"
-        key = calculate_checksum(address)
-    return f"ratelimit-{origin}-{scope}-{key}"
+        key = md5(force_bytes(address)).hexdigest()
+    return "ratelimit-{0}-{1}-{2}".format(origin, scope, key)
 
 
 def reset_rate_limit(scope, request=None, address=None, user=None):
@@ -51,10 +55,10 @@ def reset_rate_limit(scope, request=None, address=None, user=None):
 
 
 def get_rate_setting(scope, suffix):
-    key = f"RATELIMIT_{scope.upper()}_{suffix}"
+    key = "RATELIMIT_{}_{}".format(scope.upper(), suffix)
     if hasattr(settings, key):
         return getattr(settings, key)
-    return getattr(settings, f"RATELIMIT_{suffix}")
+    return getattr(settings, "RATELIMIT_{}".format(suffix))
 
 
 def revert_rate_limit(scope, request):
@@ -105,9 +109,7 @@ def session_ratelimit_post(scope):
                     logout(request)
                 messages.error(
                     request,
-                    render_to_string(
-                        "ratelimit.html", {"do_logout": do_logout, "user": request.user}
-                    ),
+                    render_to_string("ratelimit.html", {"do_logout": do_logout}),
                 )
                 return redirect("login")
             return function(request, *args, **kwargs)

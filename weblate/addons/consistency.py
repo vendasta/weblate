@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -22,7 +23,6 @@ from django.utils.translation import gettext_lazy as _
 
 from weblate.addons.base import BaseAddon
 from weblate.addons.events import EVENT_DAILY, EVENT_POST_ADD
-from weblate.addons.tasks import language_consistency
 from weblate.lang.models import Language
 
 
@@ -31,25 +31,25 @@ class LangaugeConsistencyAddon(BaseAddon):
     name = "weblate.consistency.languages"
     verbose = _("Language consistency")
     description = _(
-        "Ensures all components within a project have translations for every added "
-        "translated language by creating empty translations in languages that "
-        "have unadded components."
+        "Ensure that all components within one project "
+        "have translation to same languages."
     )
     icon = "language.svg"
     project_scope = True
 
+    def ensure_all_have(self, project, languages):
+        for component in project.component_set.iterator():
+            missing = languages.exclude(translation__component=component)
+            for language in missing:
+                component.add_new_language(language, None, send_signal=False)
+
     def daily(self, component):
-        language_consistency.delay(
-            component.project_id,
-            list(
-                Language.objects.filter(translation__component=component).values_list(
-                    "pk", flat=True
-                )
-            ),
+        self.ensure_all_have(
+            component.project, Language.objects.filter(translation__component=component)
         )
 
     def post_add(self, translation):
-        language_consistency.delay(
-            translation.component.project_id,
-            [translation.language_id],
+        self.ensure_all_have(
+            translation.component.project,
+            Language.objects.filter(pk=translation.language_id),
         )

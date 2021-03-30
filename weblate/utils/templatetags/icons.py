@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,8 +18,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 import os
-from typing import Dict
 
 from django import template
 from django.conf import settings
@@ -28,7 +29,7 @@ from weblate.utils.errors import report_error
 
 register = template.Library()
 
-CACHE: Dict[str, str] = {}
+CACHE = {}
 
 SPIN = '<span class="icon-spin" {} {}>{}</span>'
 
@@ -45,10 +46,10 @@ def icon(name):
     if name not in CACHE:
         icon_file = os.path.join(settings.STATIC_ROOT, "icons", name)
         try:
-            with open(icon_file) as handle:
+            with open(icon_file, "r") as handle:
                 CACHE[name] = mark_safe(handle.read())
-        except OSError:
-            report_error(cause="Failed to load icon")
+        except OSError as error:
+            report_error(error, prefix="Failed to load icon")
             return ""
 
     return CACHE[name]
@@ -58,7 +59,7 @@ def icon(name):
 def loading_icon(name=None, hidden=True):
     return mark_safe(
         SPIN.format(
-            f'id="loading-{name}"' if name else "",
+            'id="loading-{}"'.format(name) if name else "",
             'style="display: none"' if hidden else "",
             icon("loading.svg"),
         )

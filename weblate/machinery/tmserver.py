@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -16,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
+
 
 from urllib.parse import quote
 
@@ -45,15 +47,15 @@ class TMServerTranslation(MachineTranslation):
 
         return settings.MT_TMSERVER.rstrip("/")
 
-    def map_language_code(self, code):
+    def convert_language(self, language):
         """Convert language to service specific code."""
-        return super().map_language_code(code).replace("-", "_").lower()
+        return language.replace("-", "_").lower()
 
     def download_languages(self):
         """Download list of supported languages from a service."""
         try:
             # This will raise exception in DEBUG mode
-            response = self.request("get", f"{self.url}/languages/")
+            response = self.request("get", "{0}/languages/".format(self.url))
             data = response.json()
         except HTTPError as error:
             if error.response.status_code == 404:
@@ -73,18 +75,9 @@ class TMServerTranslation(MachineTranslation):
             return True
         return (source, language) in self.supported_languages
 
-    def download_translations(
-        self,
-        source,
-        language,
-        text: str,
-        unit,
-        user,
-        search: bool,
-        threshold: int = 75,
-    ):
+    def download_translations(self, source, language, text, unit, user):
         """Download list of possible translations from a service."""
-        url = "{}/{}/{}/unit/{}".format(
+        url = "{0}/{1}/{2}/unit/{3}".format(
             self.url,
             quote(source, b""),
             quote(language, b""),

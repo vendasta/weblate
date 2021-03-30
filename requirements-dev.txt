@@ -1,8 +1,0 @@
--r docs/requirements.txt
--r requirements-dist.txt
--r requirements-lint.txt
--r requirements-optional.txt
--r requirements-test.txt
-django-debug-toolbar
-PyICU
-scour

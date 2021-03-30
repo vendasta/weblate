@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -29,43 +30,20 @@ from weblate.auth.data import (
 )
 
 
-def is_django_permission(permission: str):
-    """
-    Checks whether permission looks like a Django one.
-
-    Django permissions are <app>.<action>_<model>, while
-    Weblate ones are <scope>.<action> where action lacks underscores
-    with single exception of "add_more".
-    """
-    parts = permission.split(".", 1)
-    if len(parts) != 2:
-        return False
-    return "_" in parts[1] and parts[1] != "add_more"
-
-
 def migrate_permissions_list(model, permissions):
-    ids = set()
-    # Update/create permissions
     for code, name in permissions:
         instance, created = model.objects.get_or_create(
             codename=code, defaults={"name": name}
         )
-        ids.add(instance.pk)
         if not created and instance.name != name:
             instance.name = name
             instance.save(update_fields=["name"])
-    return ids
 
 
 def migrate_permissions(model):
     """Create permissions as defined in the data."""
-    ids = set()
-    # Per object permissions
-    ids.update(migrate_permissions_list(model, PERMISSIONS))
-    # Global permissions
-    ids.update(migrate_permissions_list(model, GLOBAL_PERMISSIONS))
-    # Delete stale permissions
-    model.objects.exclude(id__in=ids).delete()
+    migrate_permissions_list(model, PERMISSIONS)
+    migrate_permissions_list(model, GLOBAL_PERMISSIONS)
 
 
 def migrate_roles(model, perm_model):
@@ -109,9 +87,10 @@ def create_anonymous(model, group_model, update=True):
     )
     if user.is_active:
         raise ValueError(
-            f"Anonymous user ({settings.ANONYMOUS_USER_NAME}) already exists and is "
-            "active, please change the ANONYMOUS_USER_NAME setting or mark the user "
-            "as not active in the admin interface."
+            "Anonymous user ({}) already exists and enabled, "
+            "please change ANONYMOUS_USER_NAME setting.".format(
+                settings.ANONYMOUS_USER_NAME
+            )
         )
 
     if created or update:

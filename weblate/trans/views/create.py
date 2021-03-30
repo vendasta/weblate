@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,7 +19,6 @@
 #
 
 import json
-import subprocess
 from zipfile import BadZipfile
 
 from django.conf import settings
@@ -32,11 +32,11 @@ from django.utils.http import urlencode
 from django.utils.translation import gettext as _
 from django.views.generic.edit import CreateView
 
+from weblate.formats.models import FILE_FORMATS
 from weblate.trans.forms import (
     ComponentBranchForm,
     ComponentCreateForm,
     ComponentDiscoverForm,
-    ComponentDocCreateForm,
     ComponentInitCreateForm,
     ComponentScratchCreateForm,
     ComponentSelectForm,
@@ -44,13 +44,29 @@ from weblate.trans.forms import (
     ProjectCreateForm,
 )
 from weblate.trans.models import Component, Project
-from weblate.trans.tasks import perform_update
-from weblate.trans.util import get_clean_env
-from weblate.utils import messages
-from weblate.utils.errors import report_error
-from weblate.utils.licenses import LICENSE_URLS
-from weblate.utils.views import create_component_from_doc, create_component_from_zip
+from weblate.vcs.git import LocalRepository
 from weblate.vcs.models import VCS_REGISTRY
+
+
+def scratch_create_component(project, name, slug, file_format):
+    format_cls = FILE_FORMATS[file_format]
+    template = "{}.{}".format(project.source_language.code, format_cls.extension())
+    fake = Component(project=project, slug=slug, name=name)
+    # Create VCS with empty file
+    LocalRepository.from_files(
+        fake.full_path, {template: format_cls.get_new_file_content()}
+    )
+    # Create component
+    return Component.objects.create(
+        file_format=file_format,
+        filemask="*.{}".format(format_cls.extension()),
+        template=template,
+        vcs="local",
+        repo="local:",
+        project=project,
+        name=name,
+        slug=slug,
+    )
 
 
 class BaseCreateView(CreateView):
@@ -121,13 +137,13 @@ class CreateProject(BaseCreateView):
         if self.has_billing:
             from weblate.billing.models import Billing
 
-            billings = Billing.objects.get_valid().for_user(request.user).prefetch()
+            billings = Billing.objects.get_valid().for_user(request.user)
             pks = set()
             for billing in billings:
                 limit = billing.plan.display_limit_projects
                 if limit == 0 or billing.count_projects < limit:
                     pks.add(billing.pk)
-            self.billings = Billing.objects.filter(pk__in=pks).prefetch()
+            self.billings = Billing.objects.filter(pk__in=pks)
         return super().dispatch(request, *args, **kwargs)
 
 
@@ -137,7 +153,7 @@ class CreateComponent(BaseCreateView):
     projects = None
     stage = None
     selected_project = ""
-    basic_fields = ("repo", "name", "slug", "vcs", "source_language")
+    basic_fields = ("repo", "name", "slug", "vcs")
     empty_form = False
     form_class = ComponentInitCreateForm
 
@@ -165,54 +181,8 @@ class CreateComponent(BaseCreateView):
             "component_progress", kwargs=self.object.get_reverse_url_kwargs()
         )
 
-    def warn_outdated(self, form):
-        linked = form.instance.linked_component
-        if linked:
-            perform_update.delay("Component", linked.pk, auto=True)
-            if linked.repo_needs_merge():
-                messages.warning(
-                    self.request,
-                    _(
-                        "The repository is outdated, you might not get "
-                        "expected results until you update it."
-                    ),
-                )
-
-    def detect_license(self, form):
-        """Automatic license detection based on licensee."""
-        try:
-            process_result = subprocess.run(
-                ["licensee", "detect", "--json", form.instance.full_path],
-                universal_newlines=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=get_clean_env(),
-                check=True,
-            )
-        except FileNotFoundError:
-            return
-        except (OSError, subprocess.CalledProcessError) as error:
-            if getattr(error, "returncode", 0) != 1:
-                report_error(cause="Failed licensee invocation")
-            return
-        result = json.loads(process_result.stdout)
-        for license_data in result["licenses"]:
-            spdx_id = license_data["spdx_id"]
-            for license in (f"{spdx_id}-or-later", f"{spdx_id}-only", spdx_id):
-                if license in LICENSE_URLS:
-                    self.initial["license"] = license
-                    messages.info(
-                        self.request,
-                        _("Detected license as %s, please check whether it is correct.")
-                        % license,
-                    )
-                    return
-
     def form_valid(self, form):
         if self.stage == "create":
-            form.instance.manage_units = (
-                bool(form.instance.template) or form.instance.file_format == "tbx"
-            )
             result = super().form_valid(form)
             self.object.post_create(self.request.user)
             return result
@@ -221,14 +191,11 @@ class CreateComponent(BaseCreateView):
             self.initial = form.cleaned_data
             self.stage = "create"
             self.request.method = "GET"
-            self.warn_outdated(form)
-            self.detect_license(form)
             return self.get(self, self.request)
         # Move to discover
         self.stage = "discover"
         self.request.method = "GET"
         self.initial = form.cleaned_data
-        self.warn_outdated(form)
         return self.get(self, self.request)
 
     def get_form(self, form_class=None, empty=False):
@@ -240,12 +207,6 @@ class CreateComponent(BaseCreateView):
             project_field.empty_label = None
             if self.selected_project:
                 project_field.initial = self.selected_project
-                try:
-                    form.fields["source_language"].initial = Component.objects.filter(
-                        project=self.selected_project
-                    )[0].source_language_id
-                except IndexError:
-                    pass
         self.empty_form = False
         return form
 
@@ -267,11 +228,11 @@ class CreateComponent(BaseCreateView):
         elif self.has_billing:
             from weblate.billing.models import Billing
 
-            self.projects = request.user.managed_projects.filter(
+            self.projects = request.user.owned_projects.filter(
                 billing__in=Billing.objects.get_valid()
             ).order()
         else:
-            self.projects = request.user.managed_projects
+            self.projects = request.user.owned_projects
         self.initial = {}
         for field in self.basic_fields:
             if field in request.GET:
@@ -306,8 +267,16 @@ class CreateFromZip(CreateComponent):
         if self.stage != "init":
             return super().form_valid(form)
 
+        # Create fake component (needed to calculate path)
+        fake = Component(
+            project=form.cleaned_data["project"],
+            slug=form.cleaned_data["slug"],
+            name=form.cleaned_data["name"],
+        )
+
+        # Create repository
         try:
-            create_component_from_zip(form.cleaned_data)
+            LocalRepository.from_zip(fake.full_path, form.cleaned_data["zipfile"])
         except BadZipfile:
             form.add_error("zipfile", _("Failed to parse uploaded ZIP file."))
             return self.form_invalid(form)
@@ -317,28 +286,7 @@ class CreateFromZip(CreateComponent):
         self.initial = form.cleaned_data
         self.initial["vcs"] = "local"
         self.initial["repo"] = "local:"
-        self.initial["branch"] = "main"
         self.initial.pop("zipfile")
-        self.request.method = "GET"
-        return self.get(self, self.request)
-
-
-class CreateFromDoc(CreateComponent):
-    form_class = ComponentDocCreateForm
-
-    def form_valid(self, form):
-        if self.stage != "init":
-            return super().form_valid(form)
-
-        create_component_from_doc(form.cleaned_data)
-
-        # Move to discover phase
-        self.stage = "discover"
-        self.initial = form.cleaned_data
-        self.initial["vcs"] = "local"
-        self.initial["repo"] = "local:"
-        self.initial["branch"] = "main"
-        self.initial.pop("docfile")
         self.request.method = "GET"
         return self.get(self, self.request)
 
@@ -369,11 +317,7 @@ class CreateComponentSelection(CreateComponent):
     def fetch_params(self, request):
         super().fetch_params(request)
         self.components = (
-            Component.objects.filter_access(request.user)
-            .with_repo()
-            .prefetch()
-            .filter(project__in=self.projects)
-            .order_project()
+            Component.objects.with_repo().prefetch().filter(project__in=self.projects)
         )
         if self.selected_project:
             self.components = self.components.filter(project__pk=self.selected_project)
@@ -392,7 +336,6 @@ class CreateComponentSelection(CreateComponent):
             kwargs["scratch_form"] = self.get_form(
                 ComponentScratchCreateForm, empty=True
             )
-            kwargs["doc_form"] = self.get_form(ComponentDocCreateForm, empty=True)
         if self.origin == "branch":
             kwargs["branch_form"] = kwargs["form"]
         elif self.origin == "scratch":
@@ -406,10 +349,12 @@ class CreateComponentSelection(CreateComponent):
         if isinstance(form, ComponentBranchForm):
             form.fields["component"].queryset = Component.objects.filter(
                 pk__in=self.branch_data.keys()
-            ).order_project()
+            )
             form.branch_data = self.branch_data
+            form.auto_id = "id_branch_%s"
         elif isinstance(form, ComponentSelectForm):
             form.fields["component"].queryset = self.components
+            form.auto_id = "id_existing_%s"
         return form
 
     def get_form_class(self):
@@ -426,8 +371,7 @@ class CreateComponentSelection(CreateComponent):
 
     def form_valid(self, form):
         if self.origin == "scratch":
-            project = form.cleaned_data["project"]
-            component = project.scratch_create_component(**form.cleaned_data)
+            component = scratch_create_component(**form.cleaned_data)
             return redirect(
                 reverse("component_progress", kwargs=component.get_reverse_url_kwargs())
             )
@@ -439,7 +383,6 @@ class CreateComponentSelection(CreateComponent):
                 name=form.cleaned_data["name"],
                 slug=form.cleaned_data["slug"],
                 vcs=component.vcs,
-                source_language=component.source_language.pk,
             )
         if self.origin == "branch":
             form.instance.save()

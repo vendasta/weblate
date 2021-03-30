@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,25 +18,35 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+import json
 import os
 
 from django.conf import settings
-from django.test import TransactionTestCase
+from django.test import SimpleTestCase
 from django.test.utils import override_settings
 
+from weblate.memory.tasks import memory_backup
 from weblate.utils.backup import backup, get_paper_key, initialize, prune
 from weblate.utils.data import data_dir
 from weblate.utils.tasks import database_backup, settings_backup
 from weblate.utils.unittest import tempdir_setting
 
 
-class BackupTest(TransactionTestCase):
+class BackupTest(SimpleTestCase):
     @tempdir_setting("DATA_DIR")
     def test_settings_backup(self):
         settings_backup()
-        filename = data_dir("backups", "settings-expanded.py")
+        filename = data_dir("backups", "settings.py")
         with open(filename) as handle:
             self.assertIn(settings.DATA_DIR, handle.read())
+
+    @tempdir_setting("DATA_DIR")
+    def test_memory_backup(self):
+        memory_backup()
+        filename = data_dir("backups", "memory.json")
+        with open(filename) as handle:
+            data = json.load(handle)
+        self.assertEqual(data, [])
 
     @tempdir_setting("DATA_DIR")
     @tempdir_setting("BACKUP_DIR")
@@ -51,16 +62,20 @@ class BackupTest(TransactionTestCase):
     @tempdir_setting("DATA_DIR")
     def test_database_backup(self):
         database_backup()
-        self.assertTrue(
-            os.path.exists(os.path.join(settings.DATA_DIR, "backups", "database.sql"))
-        )
+        if settings.DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+            self.assertTrue(
+                os.path.exists(
+                    os.path.join(settings.DATA_DIR, "backups", "database.sql")
+                )
+            )
 
     @tempdir_setting("DATA_DIR")
     @override_settings(DATABASE_BACKUP="compressed")
     def test_database_backup_compress(self):
         database_backup()
-        self.assertTrue(
-            os.path.exists(
-                os.path.join(settings.DATA_DIR, "backups", "database.sql.gz")
+        if settings.DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+            self.assertTrue(
+                os.path.exists(
+                    os.path.join(settings.DATA_DIR, "backups", "database.sql.gz")
+                )
             )
-        )

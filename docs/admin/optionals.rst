@@ -1,7 +1,8 @@
 Optional Weblate modules
 ========================
 
-Several optional modules are available for your setup.
+Weblate comes with several optional modules which might be useful for your
+setup.
 
 .. _git-exporter:
 
@@ -10,50 +11,47 @@ Git exporter
 
 .. versionadded:: 2.10
 
-Provides you read-only access to the underlying Git repository using HTTP(S).
+The Git exporter provides you read only access to the underlying Git repository
+using HTTP.
 
 Installation
 ++++++++++++
 
-1. Add ``weblate.gitexport`` to installed apps in :file:`settings.py`:
+To install, simply add ``weblate.gitexport`` to installed applications in
+:file:`settings.py`:
 
 .. code-block:: python
 
-    INSTALLED_APPS += ("weblate.gitexport",)
+    INSTALLED_APPS += (
+        'weblate.gitexport',
+    )
 
-2. Export existing repositories by migrating your database after installation:
+After installing, you need to migrate your database so that existing
+repositories are properly exported:
 
 .. code-block:: sh
 
-    weblate migrate
+    ./manage.py migrate
 
 Usage
 +++++
 
-The module automatically hooks into Weblate and sets the exported repository URL in
+The module automatically hooks into Weblate and sets exported repository URL in
 the :ref:`component`.
-The repositories are accessible under the ``/git/`` part of the Weblate URL, for example
-``https://example.org/git/weblate/master/``.
-
-Repositories for publicly available projects can be cloned without authentication:
+The repositories are accessible under ``/git/`` path of the Weblate, for example
+``https://example.org/git/weblate/master/``:
 
 .. code-block:: sh
 
     git clone 'https://example.org/git/weblate/master/'
 
-Access to the repositories with restricted access (using :ref:`acl` or when
-:setting:`REQUIRE_LOGIN` is enabled) requires a API token which can be obtained
-in your :ref:`user-profile`:
+Repositories are available anonymously unless :ref:`acl` is enabled. In that
+case you need to authenticate using your API token (you can obtain it in your
+:ref:`user-profile`):
 
 .. code-block:: sh
 
     git clone 'https://user:KEY@example.org/git/weblate/master/'
-
-.. hint::
-
-   By default members or :guilabel:`Users` group and anonymous user have access
-   to the repositories for public projects via :guilabel:`Access repository`
-   and :guilabel:`Power user` roles.
 
 
 .. _billing:
@@ -63,24 +61,27 @@ Billing
 
 .. versionadded:: 2.4
 
-This is used on `Hosted Weblate <https://weblate.org/hosting/>`_ to define
-billing plans, track invoices and usage limits.
+Billing module is used on `Hosted Weblate <https://weblate.org/hosting/>`_
+and is used to define billing plans, track invoices and usage limits.
 
 Installation
 ++++++++++++
 
-1. Add ``weblate.billing`` to installed apps in
+To install, simply add ``weblate.billing`` to installed applications in
 :file:`settings.py`:
 
 .. code-block:: python
 
-    INSTALLED_APPS += ("weblate.billing",)
+    INSTALLED_APPS += (
+        'weblate.billing',
+    )
 
-2. Run the database migration to optionally install additional database structures for the module:
+This module includes additional database structures, to have them installed you
+should run the database migration:
 
 .. code-block:: sh
 
-    weblate migrate
+    ./manage.py migrate
 
 Usage
 +++++
@@ -93,8 +94,8 @@ The billing module additionally allows project admins to create new projects
 and components without being superusers (see :ref:`adding-projects`). This is
 possible when following conditions are met:
 
-* The billing is in its configured limits (any overusage results in blocking
-  of project/component creation) and paid (if its price is non zero)
+* The billing is in it's configured limits (any overusage results in blocking
+  of project/component creation) and paid (if it's price is non zero)
 * The user is admin of existing project with billing or user is owner of
   billing (the latter is necessary when creating new billing for users to be
   able to import new projects).
@@ -110,71 +111,77 @@ Legal
 
 .. versionadded:: 2.15
 
-This is used on `Hosted Weblate <https://weblate.org/hosting/>`_ to provide required
-legal documents. It comes provided with blank documents, and you are expected to fill out the
-following templates in the documents:
+Legal module is used on `Hosted Weblate <https://weblate.org/hosting/>`_
+and is used to provide required legal documents. It comes with blank documents
+and you are expected to provide following templates with the documents:
 
 :file:`legal/documents/tos.html`
    Terms of service document
 :file:`legal/documents/privacy.html`
    Privacy policy document
 :file:`legal/documents/summary.html`
-   Short overview of the terms of service and privacy policy
+   Short overview of terms of service and privacy policy
 
 .. note::
 
-    Legal documents for the Hosted Weblate service are available in this Git repository
-    <https://github.com/WeblateOrg/wllegal/tree/master/wllegal/templates/legal/documents>.
+    You can find legal documents for the Hosted Weblate service in separate Git repository
+    <https://github.com/WeblateOrg/hosted/tree/master/wlhosted/legal/templates/legal/documents>.
 
-    Most likely these will not be directly usable to you, but might come in handy
-    as a starting point if adjusted to meet your needs.
+    Most likely these will not be directly usable for you, but you might want
+    to use them as a starting point and adjust them to match your use case.
 
 Installation
 ++++++++++++
 
-1. Add ``weblate.legal`` to installed apps in
+To install, simply add ``weblate.legal`` to installed applications in
 :file:`settings.py`:
 
 .. code-block:: python
 
-    INSTALLED_APPS += ("weblate.legal",)
+    INSTALLED_APPS += (
+        'weblate.legal',
+    )
 
-    # Optional:
+    # Optionals:
 
-    # Social auth pipeline to confirm TOS upon registration/subsequent sign in
-    SOCIAL_AUTH_PIPELINE += ("weblate.legal.pipeline.tos_confirm",)
+    # Social auth pipeline to confirm TOS on registration/login
+    SOCIAL_AUTH_PIPELINE += (
+        'weblate.legal.pipeline.tos_confirm',
+    )
 
     # Middleware to enforce TOS confirmation of signed in users
     MIDDLEWARE += [
-        "weblate.legal.middleware.RequireTOSMiddleware",
+        'weblate.legal.middleware.RequireTOSMiddleware',
     ]
 
-2. Run the database migration to optionally install additional database structures for the module:
+This module includes additional database structures, to have them installed you
+should run the database migration:
 
 .. code-block:: sh
 
-    weblate migrate
+    ./manage.py migrate
 
-3. Edit the legal documents in the :file:`weblate/legal/templates/legal/` folder to match your service.
+Now you should edit the legal documents to match your service. You can
+find them in the :file:`weblate/legal/templates/legal/` folder.
 
 Usage
 +++++
 
-After installation and editing, the legal documents are shown in the Weblate UI.
+After installation the legal documents are shown in Weblate UI.
 
 .. _avatars:
 
 Avatars
 -------
 
-Avatars are downloaded and cached server-side to reduce information leaks to the sites serving them
-by default. The built-in support for fetching avatars from e-mails addresses configured for it can be
-turned off using :setting:`ENABLE_AVATARS`.
+Weblate comes with built in support for showing user avatars based on e-mails.
+This can be disabled using :setting:`ENABLE_AVATARS`. The avatars are
+downloaded and cached server side to reduce information leaks to the sites
+serving them.
 
-Weblate currently supports:
+Weblate currently supports single backend:
 
 * `Gravatar <https://gravatar.com/>`_
-* `Libravatar <https://www.libravatar.org/>`_
 
 .. seealso::
 
@@ -182,55 +189,40 @@ Weblate currently supports:
    :setting:`AVATAR_URL_PREFIX`,
    :setting:`ENABLE_AVATARS`
 
-.. _spam-protection:
-
 Spam protection
 ---------------
 
-You can protect against spamming by users by using the `Akismet
-<https://akismet.com/>`_ service.
+Optionally Weblate can be protected against suggestion spamming by
+unauthenticated users through `akismet.com <https://akismet.com/>`_
+service.
 
-1. Install the `akismet` Python module (this is already included in the official Docker image).
-2. Obtain the Akismet API key.
-3. Store it as :setting:`AKISMET_API_KEY` or :envvar:`WEBLATE_AKISMET_API_KEY` in Docker.
-
-Following content is sent to Akismet for checking:
-
-* Suggestions from unauthenticated users
-* Project and component descriptions and links
-
-.. note::
-
-   This (among other things) relies on IP address of the client, please see
-   :ref:`reverse-proxy` for properly configuring that.
+To enable this, you need to install `akismet` Python module and configure
+Akismet API key.
 
 .. seealso::
 
-    :ref:`reverse-proxy`,
-    :setting:`AKISMET_API_KEY`,
-    :envvar:`WEBLATE_AKISMET_API_KEY`
+    :setting:`AKISMET_API_KEY`
 
 
 .. _gpg-sign:
 
-Signing Git commits with GnuPG
-------------------------------
+Signing Git commits by GnuPG
+----------------------------
 
 .. versionadded:: 3.1
 
-All commits can be signed by the GnuPG key of the Weblate instance.
-
-1. Turn on :setting:`WEBLATE_GPG_IDENTITY`. (Weblate will generate a GnuPG
-key when needed and will use it to sign all translation commits.)
+Weblate allows you to sign all commits by it's GnuPG key. To configure this,
+you need to enable :setting:`WEBLATE_GPG_IDENTITY`. Weblate will generate GnuPG
+key when needed and will use it to sign all translation commits.
 
 This feature needs GnuPG 2.1 or newer installed.
 
 You can find the key in the :setting:`DATA_DIR` and the public key is shown on
-the "About" page:
+the about page:
 
 .. image:: /images/about-gpg.png
 
-2. Alternatively you can also import existing keys into Weblate, just set
+Alternatively you can also import existing keys into Weblate, just set
 ``HOME=$DATA_DIR/home`` when invoking gpg.
 
 .. seealso::
@@ -244,13 +236,17 @@ Rate limiting
 
 .. versionchanged:: 3.2
 
-      The rate limiting now accepts more fine-grained configuration.
+      The rate limiting now accepts more fine grained configuration.
 
 Several operations in Weblate are rate limited. At most
-:setting:`RATELIMIT_ATTEMPTS` attempts are allowed within :setting:`RATELIMIT_WINDOW` seconds.
-The user is then blocked for :setting:`RATELIMIT_LOCKOUT`. There are also settings specific to scopes, for example ``RATELIMIT_CONTACT_ATTEMPTS`` or ``RATELIMIT_TRANSLATE_ATTEMPTS``. The table below is a full list of available scopes.
+:setting:`RATELIMIT_ATTEMPTS` attempts are allowed within
+:setting:`RATELIMIT_WINDOW` seconds. The user is then blocked
+for :setting:`RATELIMIT_LOCKOUT`. There are also per scope variants of those
+settings, for example ``RATELIMIT_CONTACT_ATTEMPTS`` or
+``RATELIMIT_TRANSLATE_ATTEMPTS``, see table below for full list of available
+scopes.
 
-The following operations are subject to rate limiting:
+Following operations are subject to rate limiting:
 
 +-----------------------------------+--------------------+------------------+------------------+----------------+
 | Name                              | Scope              | Allowed attempts | Ratelimit window | Lockout period |
@@ -259,7 +255,7 @@ The following operations are subject to rate limiting:
 +-----------------------------------+--------------------+------------------+------------------+----------------+
 | Sending message to admins         | ``MESSAGE``        |                5 |              300 |            600 |
 +-----------------------------------+--------------------+------------------+------------------+----------------+
-| Password authentication on sign in| ``LOGIN``          |                5 |              300 |            600 |
+| Password authentication on login  | ``LOGIN``          |                5 |              300 |            600 |
 +-----------------------------------+--------------------+------------------+------------------+----------------+
 | Sitewide search                   | ``SEARCH``         |                6 |               60 |             60 |
 +-----------------------------------+--------------------+------------------+------------------+----------------+
@@ -267,16 +263,26 @@ The following operations are subject to rate limiting:
 +-----------------------------------+--------------------+------------------+------------------+----------------+
 | Adding to glossary                | ``GLOSSARY``       |               30 |               60 |            600 |
 +-----------------------------------+--------------------+------------------+------------------+----------------+
-| Starting translation into a new   | ``LANGUAGE``       |                2 |              300 |            600 |
-| language                          |                    |                  |                  |                |
-+-----------------------------------+--------------------+------------------+------------------+----------------+
 
-If a user fails to log in :setting:`AUTH_LOCK_ATTEMPTS` times, password authentication will be turned off on the account until having gone through the process of having its password reset.
-
-The API has separate rate limiting settings, see :ref:`api-rate`.
+Additionally if there are more than :setting:`AUTH_LOCK_ATTEMPTS` failed
+authentication attempts on one account, this account password authentication is
+disabled and it's not possible to login until user asks for password reset.
 
 .. seealso::
 
-   :ref:`user-rate`,
-   :ref:`reverse-proxy`,
-   :ref:`api-rate`
+   :ref:`user-rate`
+
+.. _rate-ip:
+
+IP address for rate limiting
+++++++++++++++++++++++++++++
+
+The rate limiting is based on client IP address. This is obtained from HTTP
+headers and you will have to change configuration in the event Weblate is
+running behind reverse proxy to work it properly.
+
+.. seealso::
+
+    :setting:`IP_BEHIND_REVERSE_PROXY`,
+    :setting:`IP_PROXY_HEADER`,
+    :setting:`IP_PROXY_OFFSET`

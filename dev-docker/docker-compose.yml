@@ -1,4 +1,4 @@
-version: "3"
+version: '3'
 
 ##########
 # WARNING!
@@ -13,14 +13,15 @@ services:
   weblate:
     image: weblate-dev:latest
     build:
-      context: ./weblate-dev/
+      context: ../
+      dockerfile: dev-docker/Dockerfile
       args:
         USER_ID: ${USER_ID}
         GROUP_ID: ${GROUP_ID}
     ports:
       - ${WEBLATE_HOST}:8080
     user: $USER_ID:$GROUP_ID
-    userns_mode: host
+    userns_mode: "host"
     volumes:
       # Local data directory
       - $PWD/data:/app/data
@@ -32,11 +33,10 @@ services:
       - cache
     environment:
       DJANGO_SETTINGS_MODULE: weblate.settings_docker
-      WEBLATE_SITE_DOMAIN: ${WEBLATE_HOST}
     env_file:
       - ./environment
   database:
-    image: postgres:12-alpine
+    image: postgres:11-alpine
     env_file:
       - ./environment
     volumes:
@@ -44,7 +44,7 @@ services:
       - ./postgres-init:/docker-entrypoint-initdb.d
     restart: always
   cache:
-    image: redis:6-alpine
+    image: redis:4-alpine
     restart: always
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
