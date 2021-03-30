@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -16,3 +17,37 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
+
+import os
+
+from weblate.vcs.base import RepositoryException
+from weblate.vcs.git import GitRepository
+
+
+def get_root_dir():
+    """Return Weblate root dir."""
+    curdir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.abspath(os.path.join(curdir, ".."))
+
+
+# Weblate version
+VERSION = "4.0-dev"
+
+# Version string without suffix
+VERSION_BASE = VERSION.replace("-dev", "")
+
+# User-Agent string to use
+USER_AGENT = "Weblate/{0}".format(VERSION)
+
+# Grab some information from git
+try:
+    # Describe current checkout
+    GIT_REPO = GitRepository(get_root_dir(), local=True)
+    GIT_VERSION = GIT_REPO.describe()
+    GIT_REVISION = GIT_REPO.last_revision
+    del GIT_REPO
+except (RepositoryException, OSError):
+    # Import failed or git has troubles reading
+    # repo (for example swallow clone)
+    GIT_VERSION = VERSION
+    GIT_REVISION = None

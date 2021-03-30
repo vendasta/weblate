@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -21,7 +22,7 @@
 from django.apps import AppConfig
 from django.core.checks import Warning, register
 
-from weblate.utils.checks import weblate_check
+from weblate.utils.docs import get_doc_url
 
 
 def check_formats(app_configs, **kwargs):
@@ -29,8 +30,10 @@ def check_formats(app_configs, **kwargs):
 
     message = "Failure in loading handler for {} file format: {}"
     return [
-        weblate_check(
-            f"weblate.W025.{key}", message.format(key, value.strip()), Warning
+        Warning(
+            message.format(key, value.strip()),
+            hint=get_doc_url("admin/install", "optional-deps"),
+            id="weblate.W025.{}".format(key),
         )
         for key, value in FILE_FORMATS.errors.items()
     ]

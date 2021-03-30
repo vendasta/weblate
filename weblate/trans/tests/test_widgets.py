@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -62,7 +63,7 @@ class WidgetsMeta(type):
 
         for widget in WIDGETS:
             for color in WIDGETS[widget].colors:
-                test_name = f"test_{widget}_{color}"
+                test_name = "test_{0}_{1}".format(widget, color)
                 attrs[test_name] = gen_test(widget, color)
         return type.__new__(mcs, name, bases, attrs)
 

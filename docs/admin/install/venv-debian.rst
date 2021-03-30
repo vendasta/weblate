@@ -32,7 +32,7 @@ Installing on Debian and Ubuntu
     apt install redis-server
 
     # Database server: PostgreSQL
-    apt install postgresql postgresql-contrib
+    apt install postgresql
 
     # SMTP server
     apt install exim4

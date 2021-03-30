@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -61,7 +62,8 @@ class WeblateUserBackend(ModelBackend):
 
 
 @receiver(pre_save, sender=User)
-def disable_anon_user_password_save(sender, instance, **kwargs):
+def disable_anon_user_password_save(sender, **kwargs):
     """Block setting password for anonymous user."""
+    instance = kwargs["instance"]
     if instance.is_anonymous and instance.has_usable_password():
         raise ValueError("Anonymous user can not have usable password!")

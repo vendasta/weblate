@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,22 +18,22 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-from django.test.utils import modify_settings, override_settings
+from django.test import TestCase
+from django.test.utils import override_settings
 
 from weblate.auth.models import Group, Permission, Role, User
 from weblate.trans.models import Comment, Project
-from weblate.trans.tests.test_views import FixtureTestCase
-from weblate.trans.tests.utils import create_test_billing
 
 
-class PermissionsTest(FixtureTestCase):
+class PermissionsTest(TestCase):
     def setUp(self):
-        super().setUp()
-        self.user = User.objects.create_user("user", "test@example.com")
-        self.admin = User.objects.create_user("admin", "admin@example.com")
+        self.user = User.objects.create_user("user", "test@example.com", "x")
+        self.admin = User.objects.create_user("admin", "admin@example.com", "x")
         self.superuser = User.objects.create_user(
-            "super", "super@example.com", is_superuser=True
+            "super", "super@example.com", "x", is_superuser=True
         )
+
+        self.project = Project.objects.create(slug="test")
         self.project.add_user(self.admin, "@Administration")
 
     def test_admin_perm(self):
@@ -46,22 +47,28 @@ class PermissionsTest(FixtureTestCase):
         self.assertTrue(self.user.has_perm("comment.add", self.project))
 
     def test_delete_comment(self):
-        comment = Comment(unit=self.get_unit())
-        self.assertTrue(self.superuser.has_perm("comment.delete", comment))
-        self.assertTrue(self.admin.has_perm("comment.delete", comment))
-        self.assertFalse(self.user.has_perm("comment.delete", comment))
+        comment = Comment()
+        self.assertTrue(
+            self.superuser.has_perm("comment.delete", comment, self.project)
+        )
+        self.assertTrue(self.admin.has_perm("comment.delete", comment, self.project))
+        self.assertFalse(self.user.has_perm("comment.delete", comment, self.project))
 
     def test_delete_owned_comment(self):
-        comment = Comment(unit=self.get_unit(), user=self.user)
-        self.assertTrue(self.superuser.has_perm("comment.delete", comment))
-        self.assertTrue(self.admin.has_perm("comment.delete", comment))
-        self.assertTrue(self.user.has_perm("comment.delete", comment))
+        comment = Comment(user=self.user)
+        self.assertTrue(
+            self.superuser.has_perm("comment.delete", comment, self.project)
+        )
+        self.assertTrue(self.admin.has_perm("comment.delete", comment, self.project))
+        self.assertTrue(self.user.has_perm("comment.delete", comment, self.project))
 
     def test_delete_not_owned_comment(self):
-        comment = Comment(unit=self.get_unit(), user=self.admin)
-        self.assertTrue(self.superuser.has_perm("comment.delete", comment))
-        self.assertTrue(self.admin.has_perm("comment.delete", comment))
-        self.assertFalse(self.user.has_perm("comment.delete", comment))
+        comment = Comment(user=self.admin)
+        self.assertTrue(
+            self.superuser.has_perm("comment.delete", comment, self.project)
+        )
+        self.assertTrue(self.admin.has_perm("comment.delete", comment, self.project))
+        self.assertFalse(self.user.has_perm("comment.delete", comment, self.project))
 
     @override_settings(AUTH_RESTRICT_ADMINS={"super": ("trans.add_project",)})
     def test_restrict_super(self):
@@ -102,60 +109,3 @@ class PermissionsTest(FixtureTestCase):
         self.user.groups.add(group)
 
         self.assertTrue(self.user.has_perm("management.use"))
-
-    def test_restricted_component(self):
-        self.assertTrue(self.superuser.has_perm("unit.edit", self.component))
-        self.assertTrue(self.admin.has_perm("unit.edit", self.component))
-        self.assertTrue(self.user.has_perm("unit.edit", self.component))
-
-        self.component.restricted = True
-        self.component.save(update_fields=["restricted"])
-
-        self.assertTrue(self.superuser.has_perm("unit.edit", self.component))
-        self.assertFalse(self.admin.has_perm("unit.edit", self.component))
-        self.assertFalse(self.user.has_perm("unit.edit", self.component))
-
-    @modify_settings(INSTALLED_APPS={"append": "weblate.billing"})
-    def test_permission_billing(self):
-        # Permissions should apply without billing
-        with modify_settings(INSTALLED_APPS={"remove": "weblate.billing"}):
-            self.assertTrue(
-                self.superuser.has_perm("billing:project.permissions", self.project)
-            )
-            self.assertTrue(
-                self.admin.has_perm("billing:project.permissions", self.project)
-            )
-            self.assertFalse(
-                self.user.has_perm("billing:project.permissions", self.project)
-            )
-
-        # With billing enabled and no plan it should be disabled
-        self.assertFalse(
-            self.superuser.has_perm("billing:project.permissions", self.project)
-        )
-        self.assertFalse(
-            self.admin.has_perm("billing:project.permissions", self.project)
-        )
-        self.assertFalse(
-            self.user.has_perm("billing:project.permissions", self.project)
-        )
-
-        project = Project.objects.get(pk=self.project.pk)
-        billing = create_test_billing(self.admin)
-        billing.projects.add(project)
-
-        # The default plan allows
-        self.assertTrue(self.superuser.has_perm("billing:project.permissions", project))
-        self.assertTrue(self.admin.has_perm("billing:project.permissions", project))
-        self.assertFalse(self.user.has_perm("billing:project.permissions", project))
-
-        billing.plan.change_access_control = False
-        billing.plan.save()
-        project = Project.objects.get(pk=self.project.pk)
-
-        # It should be restricted now
-        self.assertFalse(
-            self.superuser.has_perm("billing:project.permissions", project)
-        )
-        self.assertFalse(self.admin.has_perm("billing:project.permissions", project))
-        self.assertFalse(self.user.has_perm("billing:project.permissions", project))

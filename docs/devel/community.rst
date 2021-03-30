@@ -1,13 +1,13 @@
 Building translators community
 ==============================
 
-Community localization checklist
---------------------------------
+Localization guide
+------------------
 
 .. versionadded:: 3.9
 
-The :guilabel:`Community localization checklist` which can be found in the
-menu of each component can give you guidance to make your
-localization process easy for community translators.
+The :guilabel:`Localization guide` which can be found in the
+:guilabel:`Insights` menu of each component can give you guidance to make your
+localization process easy for translators.
 
 .. image:: /images/guide.png

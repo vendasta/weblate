@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -35,49 +36,30 @@ BBCODE_MATCH = re.compile(
 )
 
 MD_LINK = re.compile(
-    r"""
-    (?:
-    !?                                                          # Exclamation for images
-    \[((?:\[[^^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*)\]               # Link text
-    \(
-        \s*(<)?([\s\S]*?)(?(2)>)                                # URL
-        (?:\s+['"]([\s\S]*?)['"])?\s*                           # Title
-    \)
-    |
-    <(https?://[^>]+)>                                          # URL
-    |
-    <([^>]+@[^>]+\.[^>]+)>                                      # E-mail
-    )
-    """,
-    re.VERBOSE,
+    r"!?\[("
+    r"(?:\[[^^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*"
+    r")\]\("
+    r"""\s*(<)?([\s\S]*?)(?(2)>)(?:\s+['"]([\s\S]*?)['"])?\s*"""
+    r"\)"
 )
-MD_BROKEN_LINK = re.compile(r"\] +\(")
 MD_REFLINK = re.compile(
     r"!?\[("  # leading [
     r"(?:\[[^^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*"  # link text
     r")\]\s*\[([^^\]]*)\]"  # trailing ] with optional target
 )
 MD_SYNTAX = re.compile(
-    r"""
-    (_{2})(?:[\s\S]+?)_{2}(?!_)         # __word__
-    |
-    (\*{2})(?:[\s\S]+?)\*{2}(?!\*)      # **word**
-    |
-    \b(_)(?:(?:__|[^_])+?)_\b           # _word_
-    |
-    (\*)(?:(?:\*\*|[^\*])+?)\*(?!\*)    # *word*
-    |
-    (`+)\s*(?:[\s\S]*?[^`])\s*\5(?!`)   # `code`
-    |
-    (~~)(?=\S)(?:[\s\S]*?\S)~~          # ~~word~~
-    |
-    (<)(?:https?://[^>]+)>              # URL
-    |
-    (<)(?:[^>]+@[^>]+\.[^>]+)>          # E-mail
-    """,
-    re.VERBOSE,
+    r"(_{2})(?:[\s\S]+?)_{2}(?!_)"  # __word__
+    r"|"
+    r"(\*{2})(?:[\s\S]+?)\*{2}(?!\*)"  # **word**
+    r"|"
+    r"\b(_)(?:(?:__|[^_])+?)_\b"  # _word_
+    r"|"
+    r"(\*)(?:(?:\*\*|[^\*])+?)\*(?!\*)"  # *word*
+    r"|"
+    r"(`+)\s*(?:[\s\S]*?[^`])\s*\5(?!`)"  # `code`
+    r"|"
+    r"(~~)(?=\S)(?:[\s\S]*?\S)~~"  # ~~word~~
 )
-MD_SYNTAX_GROUPS = 8
 
 XML_MATCH = re.compile(r"<[^>]+>")
 XML_ENTITY_MATCH = re.compile(r"&#?\w+;")
@@ -94,6 +76,7 @@ class BBCodeCheck(TargetCheck):
     check_id = "bbcode"
     name = _("BBcode markup")
     description = _("BBcode in translation does not match source")
+    severity = "warning"
 
     def check_single(self, source, target, unit):
         # Parse source
@@ -132,7 +115,7 @@ class BaseXMLCheck(TargetCheck):
                 return self.parse_xml(text, False), False
         text = strip_entities(text)
         if wrap:
-            text = f"<weblate>{text}</weblate>"
+            text = "<weblate>{}</weblate>".format(text)
 
         return parse_xml(text.encode() if "encoding" in text else text)
 
@@ -153,6 +136,7 @@ class XMLValidityCheck(BaseXMLCheck):
     check_id = "xml-invalid"
     name = _("XML syntax")
     description = _("The translation is not valid XML")
+    severity = "danger"
 
     def check_single(self, source, target, unit):
         if not self.is_source_xml(unit.all_flags, source):
@@ -181,6 +165,7 @@ class XMLTagsCheck(BaseXMLCheck):
     check_id = "xml-tags"
     name = _("XML markup")
     description = _("XML tags in translation do not match source")
+    severity = "warning"
 
     def check_single(self, source, target, unit):
         if not self.is_source_xml(unit.all_flags, source):
@@ -280,11 +265,6 @@ class MarkdownLinkCheck(MarkdownBaseCheck):
         src_anchors = {x[2] for x in src_match if x[2] and x[2][0] in link_start}
         return tgt_anchors != src_anchors
 
-    def get_fixup(self, unit):
-        if MD_BROKEN_LINK.findall(unit.target):
-            return [(MD_BROKEN_LINK.pattern, "](")]
-        return None
-
 
 class MarkdownSyntaxCheck(MarkdownBaseCheck):
     check_id = "md-syntax"
@@ -310,14 +290,14 @@ class MarkdownSyntaxCheck(MarkdownBaseCheck):
         ret = []
         for match in MD_SYNTAX.finditer(source):
             value = ""
-            for i in range(MD_SYNTAX_GROUPS):
+            for i in range(6):
                 value = match.group(i + 1)
                 if value:
                     break
             start = match.start()
             end = match.end()
             ret.append((start, start + len(value), value))
-            ret.append((end - len(value), end, value if value != "<" else ">"))
+            ret.append((end - len(value), end, value))
         return ret
 
 
@@ -346,6 +326,11 @@ class SafeHTMLCheck(TargetCheck):
     name = _("Unsafe HTML")
     description = _("The translation uses unsafe HTML markup")
     default_disabled = True
+    severity = "danger"
+
+    @cached_property
+    def validator(self):
+        return URLValidator()
 
     def check_single(self, source, target, unit):
         return bleach.clean(target, **extract_bleach(source)) != target

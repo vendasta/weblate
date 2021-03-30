@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -38,19 +39,19 @@ class SpecialCharsTest(TestCase):
 
     def test_af(self):
         chars = list(get_special_chars(Language(code="af")))
-        self.assertEqual(len(chars), 11)
+        self.assertEqual(len(chars), 10)
 
     def test_cs(self):
         chars = list(get_special_chars(Language(code="cs")))
-        self.assertEqual(len(chars), 10)
+        self.assertEqual(len(chars), 9)
 
     def test_brx(self):
         chars = list(get_special_chars(Language(code="brx")))
-        self.assertEqual(len(chars), 10)
+        self.assertEqual(len(chars), 9)
 
     def test_brx_add(self):
         chars = list(get_special_chars(Language(code="brx"), "ahoj"))
-        self.assertEqual(len(chars), 14)
+        self.assertEqual(len(chars), 13)
 
     @override_settings(SPECIAL_CHARS=[chr(x) for x in range(256)])
     def test_settings(self):
@@ -59,13 +60,13 @@ class SpecialCharsTest(TestCase):
 
     def test_additional(self):
         self.check_chars(
-            Language(code="cs"), 14, ["a", "h", "o", "j"], additional="ahoj"
+            Language(code="cs"), 13, ["a", "h", "o", "j"], additional="ahoj"
         )
 
     def test_arrows(self):
-        self.check_chars(Language(code="cs"), 12, ["→", "⇒"], source="→⇒→⇒")
+        self.check_chars(Language(code="cs"), 11, ["→", "⇒"], source="→⇒→⇒")
 
     def test_arrows_rtl(self):
         self.check_chars(
-            Language(code="ar", direction="rtl"), 13, ["←", "⇐"], source="→⇒→⇒"
+            Language(code="ar", direction="rtl"), 12, ["←", "⇐"], source="→⇒→⇒"
         )

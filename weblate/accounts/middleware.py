@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -23,10 +24,8 @@ from django.conf import settings
 from django.contrib import auth
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import AnonymousUser
-from django.utils.translation import activate, get_language, get_language_from_request
+from django.utils.functional import SimpleLazyObject
 
-from weblate.accounts.models import set_lang_cookie
-from weblate.accounts.utils import adjust_session_expiry
 from weblate.auth.models import get_anonymous
 
 
@@ -40,6 +39,10 @@ def get_user(request):
         user = auth.get_user(request)
         if isinstance(user, AnonymousUser):
             user = get_anonymous()
+            # Set short expiry for anonymous sessions
+            request.session.set_expiry(2200)
+        else:
+            request.session.set_expiry(None)
 
         request._cached_user = user
     return request._cached_user
@@ -52,34 +55,8 @@ class AuthenticationMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        # Django uses lazy object here, but we need the user in pretty
-        # much every request, so there is no reason to delay this
-        request.user = user = get_user(request)
-
-        # Get language to use in this request
-        if user.is_authenticated and user.profile.language:
-            language = user.profile.language
-        else:
-            language = get_language_from_request(request)
-
-        # Extend session expiry for authenticated users
-        if user.is_authenticated:
-            adjust_session_expiry(request)
-
-        # Based on django.middleware.locale.LocaleMiddleware
-        activate(language)
-        request.LANGUAGE_CODE = get_language()
-
-        # Invoke the request
-        response = self.get_response(request)
-
-        # Update the language cookie if needed
-        if user.is_authenticated and user.profile.language != request.COOKIES.get(
-            settings.LANGUAGE_COOKIE_NAME
-        ):
-            set_lang_cookie(response, user.profile)
-
-        return response
+        request.user = SimpleLazyObject(lambda: get_user(request))
+        return self.get_response(request)
 
 
 class RequireLoginMiddleware:
@@ -111,10 +88,7 @@ class RequireLoginMiddleware:
 
     def get_setting_re(self, setting):
         """Grab regexp list from settings and compiles them."""
-        return tuple(
-            re.compile(url.replace("{URL_PREFIX}", settings.URL_PREFIX))
-            for url in setting
-        )
+        return tuple(re.compile(url) for url in setting)
 
     def process_view(self, request, view_func, view_args, view_kwargs):
         """Check request whether it needs to enforce login for this URL."""

@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -67,9 +68,13 @@ class WeblateComponentCommand(BaseCommand):
 
         # Iterate over chunks
         while current < last:
-            self.stdout.write("Processing {:.1f}%".format(done * 100.0 / count))
+            self.stdout.write("Processing {0:.1f}%".format(done * 100.0 / count))
             with transaction.atomic():
-                step_units = units.filter(pk__gt=current)[:step].prefetch()
+                step_units = units.filter(pk__gt=current)[:step].prefetch_related(
+                    "translation__language",
+                    "translation__component",
+                    "translation__component__project",
+                )
                 for unit in step_units:
                     current = unit.pk
                     done += 1
@@ -114,7 +119,7 @@ class WeblateComponentCommand(BaseCommand):
 
                 # warn on no match
                 if found.count() == 0:
-                    self.stderr.write(f'"{arg}" did not match any components')
+                    self.stderr.write('"{0}" did not match any components'.format(arg))
                     raise CommandError("Nothing to process!")
 
                 # merge results

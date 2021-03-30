@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,31 +18,25 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 from siphashc import siphash
 
 
-def raw_hash(*parts: str):
+def calculate_hash(source, context):
     """Calculates checksum identifying translation."""
-    data = "".join(part for part in parts)
-    return siphash("Weblate Sip Hash", data)
-
-
-def calculate_hash(*parts: str):
-    """Calculates checksum identifying translation."""
+    if source is not None:
+        data = source.encode() + context.encode()
+    else:
+        data = context.encode()
     # Need to convert it from unsigned 64-bit int to signed 64-bit int
-    return raw_hash(*parts) - 2 ** 63
+    return siphash("Weblate Sip Hash", data) - 2 ** 63
 
 
-def calculate_checksum(*parts: str):
-    """Calcualtes siphashc checksum for given strings."""
-    return format(raw_hash(*parts), "x")
-
-
-def checksum_to_hash(checksum: str):
+def checksum_to_hash(checksum):
     """Converts hex to id_hash (signed 64-bit int)."""
     return int(checksum, 16) - 2 ** 63
 
 
-def hash_to_checksum(id_hash: int):
+def hash_to_checksum(id_hash):
     """Converts id_hash (signed 64-bit int) to unsigned hex."""
     return format(id_hash + 2 ** 63, "x")

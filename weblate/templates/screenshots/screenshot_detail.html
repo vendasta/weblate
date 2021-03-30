@@ -6,16 +6,16 @@
 {% load icons %}
 
 {% block breadcrumbs %}
-<li><a href="{{ object.translation.component.project.get_absolute_url }}">{{ object.translation.component.project }}</a></li>
-{% include "snippets/component-breadcrumb.html" with object=obj.translation.component %}
-<li><a href="{% url 'screenshots' project=object.translation.component.project.slug component=object.translation.component.slug %}">{% trans "Screenshots" %}</a></li>
+<li><a href="{{ object.component.project.get_absolute_url }}">{{ object.component.project }}</a></li>
+<li><a href="{{ object.component.get_absolute_url }}">{{ object.component.name }}</a></li>
+<li><a href="{% url 'screenshots' project=object.component.project.slug component=object.component.slug %}">{% trans "Screenshots" %}</a></li>
 <li><a href="{{ object.get_absolute_url }}">{{ object.name }}</a></li>
 {% endblock %}
 
 {% block content %}
 
-{% perm 'screenshot.delete' object.translation.component as user_can_delete_screenshot %}
-{% perm 'screenshot.edit' object.translation.component as user_can_change_screenshot %}
+{% perm 'screenshot.delete' object.component as user_can_delete_screenshot %}
+{% perm 'screenshot.edit' object.component as user_can_change_screenshot %}
 
 
 <div class="panel panel-default">
@@ -25,14 +25,15 @@
 <thead>
 <tr>
     <th>{% trans "Source string" %}</th>
-    <th>{{ object.translation.component.context_label }}</th>
+    <th>{% trans "Context" %}</th>
     <th>{% trans "Location" %}</th>
-    <th>{% trans "Assigned screenshots" %}</th>
     <th colspan="2">{% trans "Actions" %}</th>
 </tr>
 </thead>
 <tbody id="sources-listing" data-href="{% url 'screenshot-js-get' pk=object.pk %}">
-{% include "screenshots/screenshot_sources_body.html" with sources=objects.units.order %}
+{% with object.units.all as sources %}
+{% include "screenshots/screenshot_sources_body.html" %}
+{% endwith %}
 </tbody>
 </table>
   <div class="panel-footer">
@@ -53,17 +54,16 @@
     <thead>
     <tr>
     <th>{% trans "Source string" %}</th>
-    <th>{{ object.translation.component.context_label }}</th>
+    <th>{% trans "Context" %}</th>
     <th>{% trans "Location" %}</th>
-    <th>{% trans "Assigned screenshots" %}</th>
     <th>{% trans "Actions" %}</th>
     </tr>
     </thead>
     <tbody id="loading-screenshots" style="display:none;">
-      <tr><td colspan="5">{% loading_icon hidden=False %} {% trans "Loading results…" %}</td></tr>
+      <tr><td colspan="4">{% loading_icon hidden=False %} {% trans "Loading results…" %}</td></tr>
     </tbody>
     <tbody id="search-results">
-      <tr><td colspan="5">{% trans "Please search below to find matching source strings." %}</td></tr>
+      <tr><td colspan="4">{% trans "Please search below to find matching source strings." %}</td></tr>
     </tbody>
   </table>
   </div>
@@ -89,7 +89,9 @@
 <div class="panel-heading"><h4 class="panel-title">{% trans "Image" %}</h4></div>
   <div class="panel-body">
 
-{% include "screenshots/screenshot_show.html" with screenshot=object %}
+{% with object as screenshot %}
+{% include "screenshots/screenshot_show.html" %}
+{% endwith %}
 
 </div>
 </div>
@@ -113,9 +115,8 @@
 <div class="panel-heading"><h4 class="panel-title">{% trans "Screenshot details" %}</h4></div>
 
 <table class="table table-condensed table-striped">
-<tr><th>{% trans "Created" %}</th><td>{{ object.timestamp|naturaltime }}</td></tr>
+<tr><th>{% trans "Created on" %}</th><td>{{ object.timestamp|naturaltime }}</td></tr>
 <tr><th>{% trans "Uploaded by" %}</th><td>{{ object.get_user_display }}</td></tr>
-<tr><th>{% trans "Language" %}</th><td>{{ object.translation.language }}</td></tr>
 </table>
 
 </div>

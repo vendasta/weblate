@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -21,6 +22,7 @@ import csv
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -36,9 +38,8 @@ from weblate.lang.models import Language
 from weblate.trans.forms import ChangesForm
 from weblate.trans.models.change import Change
 from weblate.utils import messages
-from weblate.utils.forms import FilterForm
 from weblate.utils.site import get_site_url
-from weblate.utils.views import get_project_translation, show_form_errors
+from weblate.utils.views import get_project_translation
 
 
 class ChangesView(ListView):
@@ -119,58 +120,55 @@ class ChangesView(ListView):
 
         context["form"] = ChangesForm(self.request, data=self.request.GET)
 
-        context["search_items"] = url
-
         return context
 
-    def _get_queryset_project(self, form):
+    def _get_queryset_project(self):
         """Filtering by translation/project."""
-        if not form.cleaned_data.get("project"):
+        if "project" not in self.request.GET:
             return
         try:
             self.project, self.component, self.translation = get_project_translation(
                 self.request,
-                form.cleaned_data.get("project"),
-                form.cleaned_data.get("component"),
-                form.cleaned_data.get("lang"),
+                self.request.GET.get("project"),
+                self.request.GET.get("component"),
+                self.request.GET.get("lang"),
             )
         except Http404:
             messages.error(self.request, _("Failed to find matching project!"))
 
-    def _get_queryset_language(self, form):
+    def _get_queryset_language(self):
         """Filtering by language."""
-        if self.translation is None and form.cleaned_data.get("lang"):
+        if self.translation is None and self.request.GET.get("lang"):
             try:
-                self.language = Language.objects.get(code=form.cleaned_data["lang"])
+                self.language = Language.objects.get(code=self.request.GET["lang"])
             except Language.DoesNotExist:
                 messages.error(self.request, _("Failed to find matching language!"))
 
-    def _get_queryset_user(self, form):
+    def _get_queryset_user(self):
         """Filtering by user."""
-        if form.cleaned_data.get("user"):
+        if "user" in self.request.GET:
             try:
-                self.user = User.objects.get(username=form.cleaned_data["user"])
+                self.user = User.objects.get(username=self.request.GET["user"])
             except User.DoesNotExist:
                 messages.error(self.request, _("Failed to find matching user!"))
 
     def _get_request_actions(self):
-        form = ChangesForm(self.request, data=self.request.GET)
-        if form.is_valid() and "action" in form.cleaned_data:
-            self.actions.update(form.cleaned_data["action"])
+        if "action" in self.request.GET:
+            for action in self.request.GET.getlist("action"):
+                try:
+                    self.actions.add(int(action))
+                except ValueError:
+                    continue
 
     def get_queryset(self):
         """Return list of changes to browse."""
-        form = FilterForm(self.request.GET)
-        if form.is_valid():
-            self._get_queryset_project(form)
+        self._get_queryset_project()
 
-            self._get_queryset_language(form)
+        self._get_queryset_language()
 
-            self._get_queryset_user(form)
+        self._get_queryset_user()
 
-            self._get_request_actions()
-        else:
-            show_form_errors(self.request, form)
+        self._get_request_actions()
 
         result = Change.objects.last_changes(self.request.user)
 
@@ -182,7 +180,10 @@ class ChangesView(ListView):
             result = result.filter(project=self.project)
 
         if self.language is not None:
-            result = result.filter(language=self.language)
+            result = result.filter(
+                Q(translation__language=self.language)
+                | Q(dictionary__language=self.language)
+            )
 
         if self.actions:
             result = result.filter(action__in=self.actions)
@@ -221,9 +222,7 @@ class ChangesCSVView(ChangesView):
         writer = csv.writer(response)
 
         # Add header
-        writer.writerow(
-            ("timestamp", "action", "user", "url", "target", "edit_distance")
-        )
+        writer.writerow(("timestamp", "action", "user", "url", "target"))
 
         for change in object_list:
             writer.writerow(
@@ -233,7 +232,6 @@ class ChangesCSVView(ChangesView):
                     change.user.username if change.user else "",
                     get_site_url(change.get_absolute_url()),
                     change.target,
-                    change.get_distance(),
                 )
             )
 

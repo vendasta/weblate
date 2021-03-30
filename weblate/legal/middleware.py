@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -59,7 +60,7 @@ class RequireTOSMiddleware:
                 ),
             )
             return redirect(
-                "{}?{}".format(
+                "{0}?{1}".format(
                     reverse("legal:confirm"),
                     urlencode({"next": request.get_full_path()}),
                 )

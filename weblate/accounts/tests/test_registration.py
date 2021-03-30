@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -23,17 +24,14 @@ from urllib.parse import parse_qs, urlparse
 
 import responses
 import social_django.utils
-from django.conf import settings
 from django.core import mail
 from django.test import Client, TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
 
 from weblate.accounts.models import VerifiedEmail
-from weblate.accounts.tasks import cleanup_social_auth
 from weblate.auth.models import User
 from weblate.trans.tests.test_views import RegistrationTestMixin
-from weblate.trans.tests.utils import get_test_file
 from weblate.utils.django_hacks import immediate_on_commit, immediate_on_commit_leave
 from weblate.utils.ratelimit import reset_rate_limit
 
@@ -49,20 +47,10 @@ GH_BACKENDS = (
     "social_core.backends.github.GithubOAuth2",
     "weblate.accounts.auth.WeblateUserBackend",
 )
-SAML_BACKENDS = (
-    "social_core.backends.email.EmailAuth",
-    "social_core.backends.saml.SAMLAuth",
-    "weblate.accounts.auth.WeblateUserBackend",
-)
-with open(get_test_file("saml.crt")) as handle:
-    SAML_CERT = handle.read()
-with open(get_test_file("saml.key")) as handle:
-    SAML_KEY = handle.read()
 
 
 class BaseRegistrationTest(TestCase, RegistrationTestMixin):
     clear_cookie = False
-    social_cleanup = False
 
     @classmethod
     def setUpClass(cls):
@@ -87,10 +75,6 @@ class BaseRegistrationTest(TestCase, RegistrationTestMixin):
 
         if self.clear_cookie and "sessionid" in self.client.cookies:
             del self.client.cookies["sessionid"]
-
-        # Verify that cleanup does not break the workflow
-        if self.social_cleanup:
-            cleanup_social_auth()
 
         # Confirm account
         response = self.client.get(url, follow=True)
@@ -149,12 +133,6 @@ class BaseRegistrationTest(TestCase, RegistrationTestMixin):
 
         # Ensure we've picked up all mails
         self.assertEqual(len(mail.outbox), 0)
-
-        # Ensure the audit log matches expectations
-        self.assertEqual(
-            set(user.auditlog_set.values_list("activity", flat=True)),
-            {"sent-email", "password"},
-        )
 
 
 class RegistrationTest(BaseRegistrationTest):
@@ -240,7 +218,7 @@ class RegistrationTest(BaseRegistrationTest):
         # Confirm account
         response = self.client.get(url, follow=True)
         self.assertRedirects(response, reverse("login"))
-        self.assertContains(response, "the verification token probably expired")
+        self.assertContains(response, "Could not verify your registration!")
 
     @override_settings(REGISTRATION_CAPTCHA=False, AUTH_LOCK_ATTEMPTS=5)
     def test_reset_ratelimit(self):
@@ -381,7 +359,7 @@ class RegistrationTest(BaseRegistrationTest):
             {"new_password1": "3pa$$word!", "new_password2": "3pa$$word!"},
             follow=True,
         )
-        self.assertContains(response, "Password reset has been already completed.")
+        self.assertContains(response, "Password reset has been already completed!")
 
     def test_wrong_username(self):
         data = REGISTRATION_DATA.copy()
@@ -453,7 +431,7 @@ class RegistrationTest(BaseRegistrationTest):
         response = self.client.post(
             reverse("confirm"), {"password": "1pa$$word!"}, follow=True
         )
-        self.assertRedirects(response, "{}#account".format(reverse("profile")))
+        self.assertRedirects(response, "{0}#account".format(reverse("profile")))
 
         # Check database models
         user = User.objects.get(username="username")
@@ -495,30 +473,6 @@ class RegistrationTest(BaseRegistrationTest):
         )
         notification = mail.outbox.pop()
         self.assert_notify_mailbox(notification)
-
-    @override_settings(REGISTRATION_CAPTCHA=False)
-    def test_remove_mail_verified(self):
-        """Test rejected removal of association in case no verified e-mail left."""
-        # Register user with two mails
-        self.test_add_mail()
-        mail.outbox = []
-
-        user = User.objects.get(username="username")
-        social = user.social_auth.get(uid="noreply-weblate@example.org")
-
-        # Remove other verified emails
-        VerifiedEmail.objects.exclude(social=social).delete()
-
-        response = self.client.post(
-            reverse(
-                "social:disconnect_individual",
-                kwargs={"backend": social.provider, "association_id": social.pk},
-            ),
-            follow=True,
-        )
-        self.assertContains(
-            response, "Add another identity by confirming your e-mail address first."
-        )
 
     @override_settings(REGISTRATION_CAPTCHA=False)
     def test_pipeline_redirect(self):
@@ -668,28 +622,6 @@ class RegistrationTest(BaseRegistrationTest):
         self.assert_notify_mailbox(mail.outbox[0])
         self.assertEqual(mail.outbox[0].to, ["noreply-weblate@example.org"])
 
-    def test_saml_disabled(self):
-        url = reverse("social:saml-metadata")
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 404)
-
-    @override_settings(
-        AUTHENTICATION_BACKENDS=SAML_BACKENDS,
-        SOCIAL_AUTH_SAML_SP_PUBLIC_CERT=SAML_CERT,
-        SOCIAL_AUTH_SAML_SP_PRIVATE_KEY=SAML_KEY,
-    )
-    def test_saml(self):
-        try:
-            # psa creates copy of settings...
-            orig_backends = social_django.utils.BACKENDS
-            social_django.utils.BACKENDS = SAML_BACKENDS
-
-            url = reverse("social:saml-metadata")
-            response = self.client.get(url)
-            self.assertContains(response, url)
-        finally:
-            social_django.utils.BACKENDS = orig_backends
-
 
 class CookieRegistrationTest(BaseRegistrationTest):
     def test_register(self):
@@ -708,7 +640,7 @@ class CookieRegistrationTest(BaseRegistrationTest):
             del self.client.cookies["sessionid"]
 
         response = self.client.get(url, follow=True)
-        self.assertContains(response, "the verification token probably expired")
+        self.assertContains(response, "The verification token has probably expired.")
 
     @override_settings(REGISTRATION_CAPTCHA=False)
     def test_reset(self):
@@ -727,118 +659,3 @@ class CookieRegistrationTest(BaseRegistrationTest):
 
 class NoCookieRegistrationTest(CookieRegistrationTest):
     clear_cookie = True
-
-
-class NoCookieCleanupRegistrationTest(CookieRegistrationTest):
-    clear_cookie = True
-    social_cleanup = True
-
-
-@override_settings(
-    AUTHENTICATION_BACKENDS=[
-        "social_core.backends.email.EmailAuth",
-        "social_core.backends.username.UsernameAuth",
-        "weblate.accounts.auth.WeblateUserBackend",
-    ],
-    SOCIAL_AUTH_USERNAME_FORM_URL="/accounts/login/",
-)
-class RegistrationLimitTest(TestCase):
-    """
-    Registration limiting tests.
-
-    This uses social_core.backends.username.UsernameAuth which does not validation
-    at all.
-    """
-
-    EMAIL = "username@example.com"
-    USERNAME = "user-name"
-
-    def do_register(self, success: bool):
-        # Check that login page contains username login
-        response = self.client.get(reverse("register"))
-        if success:
-            self.assertContains(response, "/accounts/login/username/")
-        else:
-            self.assertNotContains(response, "/accounts/login/username/")
-
-        # Begin authentication
-        response = self.client.post(reverse("social:begin", args=("username",)))
-        self.assertRedirects(response, settings.SOCIAL_AUTH_USERNAME_FORM_URL)
-
-        # Complete authentication
-        response = self.client.post(
-            reverse("social:complete", args=("username",)),
-            {"username": self.USERNAME, "email": self.EMAIL},
-            follow=True,
-        )
-        if success:
-            user = User.objects.get(username=self.USERNAME)
-            self.assertTrue(user.is_active)
-            self.assertEqual(user.email, self.EMAIL)
-        else:
-            self.assertContains(response, "New registrations are turned off.")
-            self.assertFalse(User.objects.filter(username=self.USERNAME).exists())
-
-    def setUp(self):
-        super().setUp()
-        self.orig_backends = social_django.utils.BACKENDS
-        social_django.utils.BACKENDS = settings.AUTHENTICATION_BACKENDS
-
-    def tearDown(self):
-        super().tearDown()
-        social_django.utils.BACKENDS = self.orig_backends
-
-    @override_settings(REGISTRATION_OPEN=True, REGISTRATION_CAPTCHA=False)
-    def test_open(self):
-        """Registration fully open."""
-        self.do_register(True)
-
-    @override_settings(REGISTRATION_OPEN=False, REGISTRATION_CAPTCHA=False)
-    def test_closed(self):
-        """Registration fully closed."""
-        self.do_register(False)
-
-    @override_settings(
-        REGISTRATION_OPEN=False,
-        REGISTRATION_CAPTCHA=False,
-        REGISTRATION_ALLOW_BACKENDS=["username"],
-    )
-    def test_open_partial(self):
-        """Registration open for certain backend with auto redirect."""
-        self.do_register(True)
-
-    @override_settings(
-        REGISTRATION_OPEN=False,
-        REGISTRATION_CAPTCHA=False,
-        REGISTRATION_ALLOW_BACKENDS=["username", "email"],
-    )
-    def test_open_partial_two(self):
-        """Registration open for certain backend with registration form."""
-        self.do_register(True)
-
-    @override_settings(
-        REGISTRATION_OPEN=False,
-        REGISTRATION_CAPTCHA=False,
-        REGISTRATION_ALLOW_BACKENDS=["email"],
-    )
-    def test_closed_partial(self):
-        """Registration closed for certain backend with registration form."""
-        self.do_register(False)
-
-    @override_settings(
-        REGISTRATION_OPEN=True,
-        REGISTRATION_CAPTCHA=False,
-        REGISTRATION_ALLOW_BACKENDS=["username"],
-    )
-    def test_open_partial_open(self):
-        """Registration open for certain backend."""
-        self.do_register(True)
-
-    @override_settings(
-        REGISTRATION_OPEN=True,
-        REGISTRATION_CAPTCHA=False,
-        REGISTRATION_ALLOW_BACKENDS=["email"],
-    )
-    def test_closed_partial_open(self):
-        """Registration closed for certain backend."""
-        self.do_register(False)

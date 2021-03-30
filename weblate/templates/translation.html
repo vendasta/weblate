@@ -7,8 +7,8 @@
 
 {% block breadcrumbs %}
 <li><a href="{{ object.component.project.get_absolute_url }}">{{ object.component.project }}</a></li>
-{% include "snippets/component-breadcrumb.html" with object=object.component %}
-{% include "snippets/translation-breadcrumb.html" %}
+<li><a href="{{ object.component.get_absolute_url }}">{{ object.component.name }}</a></li>
+<li><a href="{{ object.get_absolute_url }}">{{ object.language }}</a></li>
 <a class="pull-right flip" href="{{ object.get_widgets_url }}">
 <img src="{% url 'widget-image' project=object.component.project.slug component=object.component.slug widget='svg' color='badge' lang=object.language.code extension='svg' %}?native=1" />
 </a>
@@ -16,11 +16,11 @@
 
 {% block content %}
 
-{% announcements component=object.component language=object.language %}
+{% whiteboard_messages component=object.component language=object.language %}
 
-{% include "snippets/component/state.html" with object=object.component %}
+{% include "show-component-state.html" with object=object.component %}
 
-{% include "snippets/watch-dropdown.html" with project=object.component.project component=object.component %}
+{% include "watch-dropdown.html" with project=object.component.project component=object.component %}
 
 {% perm 'meta:vcs.status' object as user_can_see_repository_status %}
 {% perm 'vcs.commit' object as user_can_commit_translation %}
@@ -29,21 +29,19 @@
 {% perm 'unit.add' object as user_can_add_unit %}
 
 {% get_translate_url object as translate_url %}
-{% url "translate" project=object.component.project.slug component=object.component.slug lang=object.language.code as edit_url %}
-{% url "zen" project=object.component.project.slug component=object.component.slug lang=object.language.code as zen_url %}
-{% url "browse" project=object.component.project.slug component=object.component.slug lang=object.language.code as browse_url %}
 
 <ul class="nav nav-pills">
   <li class="active"><a href="#overview" data-toggle="tab">{% trans "Overview" %}</a></li>
   <li><a href="#information" data-toggle="tab">{% trans "Info" %}</a></li>
   <li><a href="#search" data-toggle="tab">{% trans "Search" %}</a></li>
+  <li><a href="{% url 'show_dictionary' project=object.component.project.slug lang=object.language.code %}">{% trans "Glossary" %}</a></li>
   <li class="dropdown">
     <a class="dropdown-toggle" data-toggle="dropdown" href="#">
       {% trans "Insights" %} <span class="caret"></span>
     </a>
     <ul class="dropdown-menu">
       <li><a href="#history" data-toggle="tab">{% trans "History" %}</a></li>
-      <li><a href="#activity" data-toggle="tab">{% trans "Activity" %}</a></li>
+      <li><a href="#activity" data-toggle="tab" data-load="activity" data-yearly="{% url 'yearly_activity' project=object.component.project.slug component=object.component.slug lang=object.language.code %}" data-monthly="{% url 'monthly_activity' project=object.component.project.slug component=object.component.slug lang=object.language.code %}">{% trans "Activity" %}</a></li>
       <li><a href="#stats" data-toggle="tab">{% trans "Statistics" %}</a></li>
     </ul>
   </li>
@@ -60,17 +58,16 @@
       {% trans "Tools" %} <span class="caret"></span>
     </a>
     <ul class="dropdown-menu">
+      <li><a href="{% url 'data_project' project=object.component.project.slug  %}">{% trans "Data exports" %}</a></li>
+      {% if autoform %}
+      <li><a href="#auto" data-toggle="tab">{% trans "Automatic translation" %}</a></li>
+      {% endif %}
       {% if replace_form %}
       <li><a href="#replace" data-toggle="tab">{% trans "Search and replace" %}</a></li>
       {% endif %}
       {% if bulk_state_form %}
       <li><a href="#bulk-edit" data-toggle="tab">{% trans "Bulk edit" %}</a></li>
       {% endif %}
-      {% if autoform %}
-      <li><a href="#auto" data-toggle="tab">{% trans "Automatic translation" %}</a></li>
-      {% endif %}
-      <li><a href="{% url 'data_project' project=object.component.project.slug  %}">{% trans "Data exports" %}</a></li>
-      <li><a href="{% url 'checks' %}?project={{ object.component.project.slug}}&amp;component={{ object.component.slug }}&amp;language={{ object.language.code }}">{% trans "Failing checks" %}</a></li>
       {% if user_can_add_unit %}
       <li><a href="#new" data-toggle="tab">{% trans "Add new translation string" %}</a></li>
       {% endif %}
@@ -88,9 +85,9 @@
       {% if user_can_see_repository_status %}
       <li><a href="#repository" data-toggle="tab" data-href="{% url 'git_status_translation' project=object.component.project.slug component=object.component.slug lang=object.language.code %}">{% trans "Repository maintenance" %}</a></li>
       {% endif %}
-      {% if announcement_form %}
+      {% if whiteboard_form %}
       <li role="separator" class="divider"></li>
-      <li><a href="#announcement" data-toggle="tab">{% trans "Post announcement" %}</a></li>
+      <li><a href="#whiteboard" data-toggle="tab">{% trans "Add a translation message" %}</a></li>
       {% endif %}
       {% if delete_form %}
       <li role="separator" class="divider"></li>
@@ -137,10 +134,7 @@
 <td class="progress-cell hidden-xs">{% translation_progress object %}</td>
 <td class="percent">{{ object.stats.translated_percent|percent_format }}</td>
 <td rowspan="2" class="buttons-cell full-cell">
-<div class="pull-right flip">
-  <a href="{{ browse_url }}" class=" btn btn-info">{% trans "Browse" %}</a>
-  <a href="{{ translate_url }}{% if object.stats.todo > 0 %}?q=state:&lt;translated{% endif %}" class="btn btn-primary">{% trans "Translate" %}</a>
-</div>
+<a href="{{ translate_url }}{% if object.stats.todo > 0 %}?q=state:&lt;translated{% endif %}" class="pull-right flip btn btn-primary">{% trans "Translate" %}</a>
 </td>
 </tr>
 
@@ -167,26 +161,19 @@
 {% trans "Strings status" %}
 </h4>
 </div>
-<table class="table table-autowidth table-listing">
-{% for query, name, count, color, words in object.list_translation_checks %}
-<tr data-href="{{ translate_url }}?q={{ query }}" class="clickable-row">
-<th class="number">{{ count|intcomma }}</th>
+<table class="table table-autowidth">
+{% for c in object.list_translation_checks %}
+<tr data-href="{{ translate_url }}?q={{ c.0 }}" class="clickable-row">
+<th class="number">{{ c.2|intcomma }}</th>
 <td class="legend">
-    <div class="progress">
-      {% if color %}
-        <div class="progress-bar progress-bar-{{ color }}" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" style="width: 100%;"></div>
-      {% endif %}
-    </div>
+<div class="progress">
+  <div class="progress-bar progress-bar-{{ c.3 }}" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" style="width: 100%;"></div>
+</div>
 </td>
 <td class="full-cell">
-    <a href="{{ translate_url }}?q={{ query }}">
-        {{ name }} — {% blocktrans with count=words|intcomma count cnt=words %}{{ count }} word{% plural %}{{ count }} words{% endblocktrans %}
-    </a>
-</td>
-<td>
-  <a class="btn-inline" href="{{ browse_url }}?q={{ query }}">{% trans "Browse" %}</a>
-  <a class="btn-inline" href="{{ edit_url }}?q={{ query }}">{% trans "Edit" %}</a>
-  <a class="btn-inline" href="{{ zen_url }}?q={{ query }}">{% trans "Zen" %}</a>
+<a href="{{ translate_url }}?q={{ c.0 }}">
+{{ c.1 }} — {% blocktrans with count=c.4|intcomma count cnt=c.4 %}{{ count }} word{% plural %}{{ count }} words{% endblocktrans %}
+</a>
 </td>
 {% endfor %}
 </table>
@@ -195,10 +182,7 @@
 {% if other_translations %}
 <div class="panel panel-default">
   <div class="panel-heading"><h4 class="panel-title">{% trans "Other components" %}</h4></div>
-{% include "snippets/list-objects.html" with objects=other_translations name_source="component_name" label=_("Component") %}
-  <div class="panel-footer">
-    <a href="{% url 'project-language' lang=object.language.code project=object.component.project.slug %}" class="btn btn-primary">{% trans "Browse all components" %}</a>
-  </div>
+{% include "snippets/list-objects.html" with objects=other_translations name_source="component_name" label=_("Component") in_panel=True %}
 </div>
 {% endif %}
 
@@ -208,8 +192,10 @@
 <div class="panel panel-default">
   <div class="panel-heading"><h4 class="panel-title">{% trans "Translation Information" %}</h4></div>
 
-<table class="table table-striped table-autowidth">
-{% include "component_info.html" with object=object.component %}
+<table class="table">
+{% with object.component as object %}
+{% include "component_info.html" %}
+{% endwith %}
 <tr>
 <th>{% trans "Translation file" %}</th>
 <td>
@@ -270,7 +256,7 @@
 <div class="panel panel-default">
 <div class="panel-heading"><h4 class="panel-title">{% trans "Search and replace" %}</h4></div>
 <div class="panel-body">
-<p>{% trans "You can substitute all instances of a string. The search is a simple case sensitive substring search." %}</p>
+<p>{% trans "You can substitute all instances of a string. The search is a simple substring case sensitive search." %}</p>
 {% csrf_token %}
 {{ replace_form|crispy }}
 </div>
@@ -288,8 +274,9 @@
 <div class="panel panel-default">
 <div class="panel-heading"><h4 class="panel-title">{% trans "Bulk edit" %}</h4></div>
 <div class="panel-body">
-<p>{% trans "You can change the state of all strings matching a given type at once." %}</p>
-{% crispy bulk_state_form %}
+<p>{% trans "You can change the state of all strings matching given type at once." %}</p>
+{% csrf_token %}
+{{ bulk_state_form|crispy }}
 </div>
 <div class="panel-footer">
 <input type="submit" value="{% trans "Apply" %}" class="btn btn-primary" />
@@ -305,9 +292,7 @@
 <div class="panel panel-default">
 <div class="panel-heading"><h4 class="panel-title">{% trans "Add new translation string" %}</h4></div>
 <div class="panel-body">
-{% if obj.is_source %}
 <p>{% trans "You can add a new translation string here, it will automatically appear in all translations." %}</p>
-{% endif %}
 {% csrf_token %}
 {{ new_unit_form|crispy }}
 </div>
@@ -324,7 +309,8 @@
 <div class="panel panel-default">
 <div class="panel-heading"><h4 class="panel-title">{% trans "Customize download" %}</h4></div>
 <div class="panel-body">
-{% crispy download_form %}
+{% csrf_token %}
+{{ download_form|crispy }}
 </div>
 <div class="panel-footer">
 <input type="submit" value="{% trans "Download" %}" class="btn btn-primary" />
@@ -345,7 +331,7 @@
 <p>{% trans "The uploaded file will be merged with the current translation." %}</p>
 {% endif %}
 {% csrf_token %}
-{% crispy form %}
+{{ form|crispy }}
 </div>
 <div class="panel-footer">
 <input type="submit" value="{% trans "Upload" %}" class="btn btn-primary" />
@@ -356,18 +342,15 @@
 </div>
 {% endif %}
 
-{% if announcement_form %}
-<div class="tab-pane" id="announcement">
-<form action="{% url 'announcement_translation' project=object.component.project.slug component=object.component.slug lang=object.language.code %}" method="post">
+{% if whiteboard_form %}
+<div class="tab-pane" id="whiteboard">
+<form action="{% url 'whiteboard_translation' project=object.component.project.slug component=object.component.slug lang=object.language.code %}" method="post">
 <div class="panel panel-default">
-<div class="panel-heading"><h4 class="panel-title">
-    {% documentation_icon 'admin/announcements' right=True %}
-    {% trans "Post announcement" %}
-</h4></div>
+<div class="panel-heading"><h4 class="panel-title">{% trans "Add a translation message" %}</h4></div>
 <div class="panel-body">
 {% csrf_token %}
-{{ announcement_form|crispy }}
-<p class="help-block">{% trans "The message is shown on the translation page, until its given expiry, or deletion." %}</p>
+{{ whiteboard_form|crispy }}
+<p class="help-block">{% trans "The message is shown on the translation page, until its given expiry, or permanently until it is deleted." %}</p>
 </div>
 <div class="panel-footer">
 <input type="submit" value="{% trans "Add" %}" class="btn btn-primary" />
@@ -435,7 +418,7 @@
 <td class="number"></td>
 </tr>
 <tr>
-<th>{% trans "Failing checks" %}</th>
+<th>{% trans "Failing check" %}</th>
 <td class="percent">{{ object.stats.allchecks_percent|percent_format }}</td>
 <td class="number">{{ object.stats.allchecks|intcomma }}</td>
 <td class="number">{{ object.stats.allchecks_words|intcomma }}</td>
@@ -472,8 +455,6 @@
 
 </div>
 
-{% url 'yearly_activity' project=object.component.project.slug component=object.component.slug lang=object.language.code as yearly_activity %}
-{% url 'monthly_activity' project=object.component.project.slug component=object.component.slug lang=object.language.code as monthly_activity %}
 {% include "activity-tab.html" %}
 
 </div>

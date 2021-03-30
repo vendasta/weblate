@@ -7,3 +7,4 @@ The following example is shipped as :file:`weblate/settings_example.py` with Web
 
 .. literalinclude:: ../../weblate/settings_example.py
     :language: python
+    :encoding: utf-8

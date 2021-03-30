@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -56,7 +57,7 @@ class Command(WeblateTranslationCommand):
                 method="suggest",
                 author_email=options["author"],
             )
-        except OSError as err:
-            raise CommandError(f"Failed to import translation file: {err}")
+        except IOError as err:
+            raise CommandError("Failed to import translation file: {}".format(err))
         finally:
             options["file"].close()

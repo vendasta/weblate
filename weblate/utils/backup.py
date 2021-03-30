@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -76,14 +77,13 @@ def borg(cmd, env=None):
             ["borg", "--rsh", SSH_WRAPPER.filename] + cmd,
             stderr=subprocess.STDOUT,
             env=get_clean_env(env),
-            universal_newlines=True,
-        )
-    except OSError as error:
-        report_error()
-        raise BackupError(f"Could not execute borg program: {error}")
+        ).decode()
+    except EnvironmentError as error:
+        report_error(error)
+        raise BackupError("Could not execute borg program: {}".format(error))
     except subprocess.CalledProcessError as error:
-        report_error(extra_data={"stdout": error.stdout})
-        raise BackupError(error.stdout)
+        report_error(error, extra_data={"stdout": error.stdout.decode()})
+        raise BackupError(error.stdout.decode())
 
 
 def initialize(location, passphrase):
@@ -118,7 +118,7 @@ def backup(location, passphrase):
             "*/.config/borg",
             "--compression",
             "auto,zstd",
-            f"{location}::{{now}}",
+            "{}::{{now}}".format(location),
             settings.DATA_DIR,
         ],
         {"BORG_PASSPHRASE": passphrase},
@@ -132,9 +132,9 @@ def prune(location, passphrase):
             "prune",
             "--list",
             "--keep-daily",
-            "14",
+            "7",
             "--keep-weekly",
-            "8",
+            "4",
             "--keep-monthly",
             "6",
             location,

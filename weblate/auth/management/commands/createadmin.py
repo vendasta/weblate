@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -85,10 +86,10 @@ class Command(BaseCommand):
             password = options["password"]
         else:
             password = make_password(13)
-            self.stdout.write(f"Using generated password: {password}")
+            self.stdout.write("Using generated password: {}".format(password))
 
         if user and options["update"]:
-            self.stdout.write(f"Updating user {user.username}")
+            self.stdout.write("Updating user {}".format(user.username))
             user.email = options["email"]
             if password is not None and not user.check_password(password):
                 user.set_password(password)

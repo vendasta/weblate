@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -21,7 +22,6 @@ from django.contrib.sitemaps import Sitemap
 from django.urls import reverse
 
 from weblate.trans.models import Change, Component, Project, Translation
-from weblate.utils.stats import prefetch_stats
 
 
 class PagesSitemap(Sitemap):
@@ -49,7 +49,7 @@ class PagesSitemap(Sitemap):
 
 
 class WeblateSitemap(Sitemap):
-    priority = 0.0
+    priority = None
     changefreq = None
 
     def items(self):
@@ -63,19 +63,17 @@ class ProjectSitemap(WeblateSitemap):
     priority = 0.8
 
     def items(self):
-        return prefetch_stats(
-            Project.objects.filter(access_control__lt=Project.ACCESS_PRIVATE).order_by(
-                "id"
-            )
-        )
+        return Project.objects.filter(
+            access_control__lt=Project.ACCESS_PRIVATE
+        ).order_by("id")
 
 
 class ComponentSitemap(WeblateSitemap):
     priority = 0.6
 
     def items(self):
-        return prefetch_stats(
-            Component.objects.prefetch_related("project")
+        return (
+            Component.objects.prefetch()
             .filter(project__access_control__lt=Project.ACCESS_PRIVATE)
             .order_by("id")
         )
@@ -85,12 +83,8 @@ class TranslationSitemap(WeblateSitemap):
     priority = 0.2
 
     def items(self):
-        return prefetch_stats(
-            Translation.objects.prefetch_related(
-                "component",
-                "component__project",
-                "language",
-            )
+        return (
+            Translation.objects.prefetch()
             .filter(component__project__access_control__lt=Project.ACCESS_PRIVATE)
             .order_by("id")
         )

@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -27,7 +28,7 @@ from weblate.addons.events import EVENT_PRE_COMMIT
 class ExampleAddon(BaseAddon):
     # Filter for compatible components, every key is
     # matched against property of component
-    compat = {"file_format": {"po", "po-mono"}}
+    compat = {"file_format": frozenset(("po", "po-mono"))}
     # List of events addon should receive
     events = (EVENT_PRE_COMMIT,)
     # Addon unique identifier

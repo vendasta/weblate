@@ -2,6 +2,10 @@ User-agent: *
 Disallow: /admin/
 Disallow: /js/
 Disallow: /accounts/
+Disallow: /upload-dictionaries/
+Disallow: /edit-dictionaries/
+Disallow: /delete-dictionaries/
+Disallow: /download-dictionaries/
 Disallow: /source/
 Disallow: /comment/
 Disallow: /commit/

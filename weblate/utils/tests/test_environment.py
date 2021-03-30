@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -24,7 +25,6 @@ from django.test import SimpleTestCase
 
 from weblate.utils.environment import (
     get_env_bool,
-    get_env_int,
     get_env_list,
     get_env_map,
     modify_env_list,
@@ -65,12 +65,6 @@ class EnvTest(SimpleTestCase):
         self.assertEqual(get_env_bool("TEST_DATA"), False)
         del os.environ["TEST_DATA"]
         self.assertEqual(get_env_bool("TEST_DATA"), False)
-
-    def test_int(self):
-        os.environ["TEST_DATA"] = "1"
-        self.assertEqual(get_env_int("TEST_DATA"), 1)
-        del os.environ["TEST_DATA"]
-        self.assertEqual(get_env_int("TEST_DATA"), 0)
 
     def test_modify_list(self):
         os.environ["WEBLATE_ADD_TEST"] = "foo,bar"

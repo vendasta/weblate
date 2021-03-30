@@ -5,15 +5,9 @@ set -e
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-# Used by docker-compose
-WEBLATE_HOST=127.0.0.1:8080
-export WEBLATE_HOST
-# Used by docker on start
-USER_ID=$(id -u)
-export USER_ID
-GROUP_ID=$(id -g)
-export GROUP_ID
-
+export USER_ID=$(id -u)
+export GROUP_ID=$(id -g)
+export WEBLATE_HOST=127.0.0.1:8080
 
 cd dev-docker/
 
@@ -30,14 +24,15 @@ case $1 in
         docker-compose exec -e WEBLATE_DATA_DIR=/tmp/test-data -e WEBLATE_CELERY_EAGER=1 weblate weblate test --noinput "$@"
         ;;
     start|restart|"")
-        # Build single requirements file
-        sed '/^-r/D' ../requirements.txt ../requirements-optional.txt ../requirements-test.txt > weblate-dev/requirements.txt
-        # Build the container
-        docker-compose build --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g)
+        mkdir -p data/python/customize
+        touch data/python/customize/__init__.py
+        touch data/python/customize/models.py
+        docker-compose build
 
-        # Start it up
         docker-compose up -d --force-recreate
         echo -e "\n${GREEN}Running development version of Weblate on http://${WEBLATE_HOST}/${NC}\n"
+
+        docker-compose logs -f
         ;;
     *)
         docker-compose "$@"

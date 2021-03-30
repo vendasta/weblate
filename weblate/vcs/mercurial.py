@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -16,14 +17,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
-"""Mercurial version control system abstraction for Weblate needs."""
+"""Mericurial version control system abstraction for Weblate needs."""
+
 
 import os
 import os.path
 import re
 from configparser import RawConfigParser
-from datetime import datetime
-from typing import List, Optional
 
 from weblate.vcs.base import Repository, RepositoryException
 from weblate.vcs.ssh import SSH_WRAPPER
@@ -44,7 +44,6 @@ class HgRepository(Repository):
         ".",
     ]
     _cmd_list_changed_files = ["status", "--rev"]
-    _version = None
 
     name = "Mercurial"
     req_version = "2.8"
@@ -68,9 +67,12 @@ class HgRepository(Repository):
         self.set_config("ui.ssh", SSH_WRAPPER.filename)
 
     @classmethod
-    def _clone(cls, source: str, target: str, branch: str):
+    def _clone(cls, source, target, branch=None):
         """Clone repository."""
-        cls._popen(["clone", "--branch", branch, source, target])
+        if branch:
+            cls._popen(["clone", "--branch", branch, source, target])
+        else:
+            cls._popen(["clone", source, target])
 
     def get_config(self, path):
         """Read entry from configuration."""
@@ -101,7 +103,7 @@ class HgRepository(Repository):
 
     def set_committer(self, name, mail):
         """Configure commiter name."""
-        self.set_config("ui.username", f"{name} <{mail}>")
+        self.set_config("ui.username", "{0} <{1}>".format(name, mail))
 
     def reset(self):
         """Reset working copy to match remote branch."""
@@ -162,11 +164,9 @@ class HgRepository(Repository):
                     raise
                 self.execute(["commit", "--message", "Merge"])
 
-    def needs_commit(self, filenames: Optional[List[str]] = None):
+    def needs_commit(self, *filenames):
         """Check whether repository needs commit."""
-        cmd = ["status", "--"]
-        if filenames:
-            cmd.extend(filenames)
+        cmd = ("status", "--") + filenames
         status = self.execute(cmd, needs_lock=False)
         return status != ""
 
@@ -237,16 +237,10 @@ class HgRepository(Repository):
         output = cls._popen(["version", "-q"], merge_err=False)
         matches = cls.VERSION_RE.match(output)
         if matches is None:
-            raise OSError(f"Failed to parse version string: {output}")
+            raise OSError("Failed to parse version string: {0}".format(output))
         return matches.group(1)
 
-    def commit(
-        self,
-        message: str,
-        author: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
-        files: Optional[List[str]] = None,
-    ):
+    def commit(self, message, author=None, timestamp=None, files=None):
         """Create new revision."""
         # Build the commit command
         cmd = ["commit", "--message", message]
@@ -255,37 +249,22 @@ class HgRepository(Repository):
         if timestamp is not None:
             cmd.extend(["--date", timestamp.ctime()])
 
-        # Add files one by one, this has to deal with
-        # removed, untracked and non existing files
+        # Add files
         if files is not None:
-            for name in files:
-                try:
-                    self.execute(["add", "--", name])
-                except RepositoryException:
-                    try:
-                        self.execute(["remove", "--", name])
-                    except RepositoryException:
-                        continue
-                cmd.append(name)
-
-        # Bail out if there is nothing to commit.
-        # This can easily happen with squashing and reverting changes.
-        if not self.needs_commit(files):
-            return
+            self.execute(["add", "--"] + files)
+            cmd.extend(files)
 
         # Execute it
         self.execute(cmd)
         # Clean cache
         self.clean_revision_cache()
 
-    def remove(self, files: List[str], message: str, author: Optional[str] = None):
+    def remove(self, files, message, author=None):
         """Remove files and creates new revision."""
         self.execute(["remove", "--force", "--"] + files)
         self.commit(message, author)
 
-    def configure_remote(
-        self, pull_url: str, push_url: str, branch: str, fast: bool = True
-    ):
+    def configure_remote(self, pull_url, push_url, branch):
         """Configure remote repository."""
         old_pull = self.get_config("paths.default")
         old_push = self.get_config("paths.default-push")
@@ -328,7 +307,7 @@ class HgRepository(Repository):
             merge_err=False,
         ).strip()
 
-    def push(self, branch):
+    def push(self):
         """Push given branch to remote repository."""
         try:
             self.execute(["push", "-b", self.branch])
@@ -358,12 +337,3 @@ class HgRepository(Repository):
         """Parses output with chanaged files."""
         # Strip action prefix we do not use
         yield from (line[2:] for line in lines)
-
-    def list_changed_files(self, refspec):
-        try:
-            return super().list_changed_files(refspec)
-        except RepositoryException as error:
-            if error.retcode == 255:
-                # Empty revision set
-                return []
-            raise

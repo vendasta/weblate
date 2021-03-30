@@ -21,7 +21,6 @@ jellyfish==0.7.2
 kombu==4.6.8
 openpyxl==3.0.1
 phply==1.2.5
-pip==21.0.1
 python-dateutil==2.8.1
 python3-saml==1.9.0
 pyuca==1.2
@@ -37,7 +36,6 @@ social-auth-app-django==3.1.0
 social-auth-core[openidconnect]==3.2.0
 tesserocr==2.5.0
 translate-toolkit==2.5.0
-wheel==0.36.2
 Whoosh==2.7.4
 zeep==3.4.0
 # Following are installed using apt:

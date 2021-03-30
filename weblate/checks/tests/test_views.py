@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright © 2012 - 2021 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -32,7 +33,7 @@ class ChecksViewTest(ViewTestCase):
         response = self.client.get(reverse("checks"))
         self.assertContains(response, "/same/")
 
-        response = self.client.get(reverse("checks"), {"lang": "de"})
+        response = self.client.get(reverse("checks"), {"language": "de"})
         self.assertContains(response, "/same/")
 
         response = self.client.get(reverse("checks"), {"project": self.project.slug})
@@ -68,9 +69,9 @@ class ChecksViewTest(ViewTestCase):
             ),
         )
         response = self.client.get(
-            reverse("show_check", kwargs={"name": "same"}), {"lang": "de"}
+            reverse("show_check", kwargs={"name": "same"}), {"language": "de"}
         )
-        self.assertContains(response, "/checks/same/test/?lang=de")
+        self.assertContains(response, "/checks/same/test/?language=de")
 
     def test_project(self):
         response = self.client.get(
@@ -86,7 +87,7 @@ class ChecksViewTest(ViewTestCase):
                 "show_check_project",
                 kwargs={"name": "same", "project": self.project.slug},
             ),
-            {"lang": "cs"},
+            {"language": "cs"},
         )
         self.assertContains(response, "/same/")
 
@@ -129,7 +130,19 @@ class ChecksViewTest(ViewTestCase):
                 },
             )
         )
-        self.assertContains(response, "/multiple_failures/")
+        self.assertRedirects(
+            response,
+            "{0}?q=check%3Amultiple_failures".format(
+                reverse(
+                    "translate",
+                    kwargs={
+                        "project": self.project.slug,
+                        "component": self.component.slug,
+                        "lang": self.project.source_language.code,
+                    },
+                )
+            ),
+        )
 
         response = self.client.get(
             reverse(

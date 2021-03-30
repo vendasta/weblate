@@ -6,7 +6,7 @@
 
 {% block breadcrumbs %}
 <li><a href="{{ object.project.get_absolute_url }}">{{ object.project }}</a></li>
-{% include "snippets/component-breadcrumb.html" %}
+<li><a href="{{ object.get_absolute_url }}">{{ object.name }}</a></li>
 <li><a href="{% url 'addons' project=object.project.slug component=object.slug %}">{% trans "Addons" %}</a></li>
 {% endblock %}
 
@@ -66,7 +66,7 @@
   </table>
   <div class="panel-footer">
 {% if not available %}
-    {% trans "Could not find any additional addons compatible with this translation component." %}
+    {% trans "Could not find any additional addons compatible with this translation." %}
 {% else %}
     {% trans "Some addons will ask for additional configuration during installation." %}
 {% endif %}
