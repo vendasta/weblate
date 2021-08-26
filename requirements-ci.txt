@@ -37,7 +37,7 @@ social-auth-core[openidconnect]==3.2.0
 tesserocr==2.5.0
 translate-toolkit==2.5.0
 Whoosh==2.7.4
-zeep==3.4.0
+zeep==4.1.0
 # Following are installed using apt:
 # Pillow
 # lxml
