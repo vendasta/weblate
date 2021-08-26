@@ -14,7 +14,7 @@ django-auth-ldap==2.1.0
 django-crispy-forms==1.8.1
 django-redis==4.11.0
 django_compressor==2.4
-djangorestframework>=3.9,<3.12
+djangorestframework>=3.9,<3.13
 hiredis==1.0.1
 httpretty==0.9.7
 jellyfish==0.7.2
