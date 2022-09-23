@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,13 +17,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 from django.core.management.base import CommandError
 
 from weblate.auth.models import User
-from weblate.machinery.models import MACHINERY
+from weblate.machinery import MACHINE_TRANSLATION_SERVICES
+from weblate.trans.autotranslate import AutoTranslate
 from weblate.trans.management.commands import WeblateTranslationCommand
 from weblate.trans.models import Component
-from weblate.trans.tasks import auto_translate
 
 
 class Command(WeblateTranslationCommand):
@@ -66,11 +67,6 @@ class Command(WeblateTranslationCommand):
             type=int,
             help=("Set machine translation threshold"),
         )
-        parser.add_argument(
-            "--mode",
-            default="translate",
-            help=("Translation mode; translate, fuzzy or suggest"),
-        )
 
     def handle(self, *args, **options):
         # Get translation object
@@ -82,7 +78,6 @@ class Command(WeblateTranslationCommand):
         except User.DoesNotExist:
             raise CommandError("User does not exist!")
 
-        source = None
         if options["source"]:
             parts = options["source"].split("/")
             if len(parts) != 2:
@@ -92,16 +87,15 @@ class Command(WeblateTranslationCommand):
             except Component.DoesNotExist:
                 raise CommandError("No matching source component found!")
             source = component.id
+        else:
+            source = ""
 
         if options["mt"]:
             for translator in options["mt"]:
-                if translator not in MACHINERY.keys():
+                if translator not in MACHINE_TRANSLATION_SERVICES.keys():
                     raise CommandError(
-                        f"Machine translation {translator} is not available"
+                        "Machine translation {} is not available".format(translator)
                     )
-
-        if options["mode"] not in ("translate", "fuzzy", "suggest"):
-            raise CommandError("Invalid translation mode specified!")
 
         if options["inconsistent"]:
             filter_type = "check:inconsistent"
@@ -109,16 +103,9 @@ class Command(WeblateTranslationCommand):
             filter_type = "all"
         else:
             filter_type = "todo"
-
-        result = auto_translate(
-            user.id,
-            translation.id,
-            options["mode"],
-            filter_type,
-            "mt" if options["mt"] else "others",
-            source,
-            options["mt"],
-            options["threshold"],
-            translation=translation,
-        )
-        self.stdout.write(result["message"])
+        auto = AutoTranslate(user, translation, filter_type, "translate")
+        if options["mt"]:
+            auto.process_mt(options["mt"], options["threshold"])
+        else:
+            auto.process_others(source)
+        self.stdout.write("Updated {0} units".format(auto.updated))

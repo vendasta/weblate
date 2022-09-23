@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,11 +18,14 @@
 #
 
 
+from django.utils.encoding import force_str
+
+
 def get_project_stats(project):
     """Return stats for project."""
     return [
         {
-            "language": str(tup.language),
+            "language": force_str(tup.language),
             "code": tup.language.code,
             "total": tup.all,
             "translated": tup.translated,

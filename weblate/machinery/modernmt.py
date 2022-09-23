@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -21,10 +21,12 @@ import json
 
 from django.conf import settings
 
-import weblate.utils.version
-
-from .base import MachineTranslation, MachineTranslationError
-from .forms import ModernMTMachineryForm
+import weblate
+from weblate.machinery.base import (
+    MachineTranslation,
+    MachineTranslationError,
+    MissingConfiguration,
+)
 
 
 class ModernMTTranslation(MachineTranslation):
@@ -32,21 +34,19 @@ class ModernMTTranslation(MachineTranslation):
 
     name = "ModernMT"
     max_score = 90
-    settings_form = ModernMTMachineryForm
 
-    @staticmethod
-    def migrate_settings():
-        return {
-            "key": settings.MT_MODERNMT_KEY,
-            "url": settings.MT_MODERNMT_URL,
-        }
+    def __init__(self):
+        """Check configuration."""
+        super().__init__()
+        if settings.MT_MODERNMT_KEY is None:
+            raise MissingConfiguration("ModernMT requires API key")
 
     def get_authentication(self):
         """Hook for backends to allow add authentication headers to request."""
         return {
-            "MMT-ApiKey": self.settings["key"],
+            "MMT-ApiKey": settings.MT_MODERNMT_KEY,
             "MMT-Platform": "Weblate",
-            "MMT-PlatformVersion": weblate.utils.version.VERSION,
+            "MMT-PlatformVersion": weblate.VERSION,
         }
 
     def is_supported(self, source, language):
@@ -55,26 +55,17 @@ class ModernMTTranslation(MachineTranslation):
 
     def download_languages(self):
         """List of supported languages."""
-        response = self.request("get", self.get_api_url("languages"))
+        response = self.request("get", settings.MT_MODERNMT_URL + "languages")
         payload = response.json()
 
         for source, targets in payload["data"].items():
             yield from ((source, target) for target in targets)
 
-    def download_translations(
-        self,
-        source,
-        language,
-        text: str,
-        unit,
-        user,
-        search: bool,
-        threshold: int = 75,
-    ):
+    def download_translations(self, source, language, text, unit, user, search):
         """Download list of possible translations from a service."""
         response = self.request(
             "get",
-            self.get_api_url("translate"),
+            settings.MT_MODERNMT_URL + "translate",
             params={"q": text, "source": source, "target": language},
         )
         payload = response.json()

@@ -1,7 +1,9 @@
+.. _quick-source:
+
 Installing from sources
 =======================
 
-#. Please follow the installation instructions for your system first up to installing Weblate:
+#. Please follow the installation instructions for your system first:
 
    * :doc:`venv-debian`
    * :doc:`venv-suse`
@@ -40,6 +42,7 @@ Installing from sources
         weblate migrate
         weblate collectstatic
         weblate compress
+        weblate compilemessages
 
    .. note::
 

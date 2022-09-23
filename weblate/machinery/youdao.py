@@ -17,10 +17,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 from django.conf import settings
 
-from .base import MachineTranslation, MachineTranslationError
-from .forms import KeySecretMachineryForm
+from weblate.machinery.base import (
+    MachineTranslation,
+    MachineTranslationError,
+    MissingConfiguration,
+)
 
 YOUDAO_API_ROOT = "https://openapi.youdao.com/api"
 
@@ -33,14 +37,14 @@ class YoudaoTranslation(MachineTranslation):
 
     # Map codes used by Youdao to codes used by Weblate
     language_map = {"zh_Hans": "zh-CHS", "zh": "zh-CHS", "en": "EN"}
-    settings_form = KeySecretMachineryForm
 
-    @staticmethod
-    def migrate_settings():
-        return {
-            "key": settings.MT_YOUDAO_ID,
-            "secret": settings.MT_YOUDAO_SECRET,
-        }
+    def __init__(self):
+        """Check configuration."""
+        super().__init__()
+        if settings.MT_YOUDAO_ID is None:
+            raise MissingConfiguration("Youdao Translate requires app key")
+        if settings.MT_YOUDAO_SECRET is None:
+            raise MissingConfiguration("Youdao Translate requires app secret")
 
     def download_languages(self):
         """List of supported languages."""
@@ -59,19 +63,10 @@ class YoudaoTranslation(MachineTranslation):
             "id",
         ]
 
-    def download_translations(
-        self,
-        source,
-        language,
-        text: str,
-        unit,
-        user,
-        search: bool,
-        threshold: int = 75,
-    ):
+    def download_translations(self, source, language, text, unit, user, search):
         """Download list of possible translations from a service."""
         salt, sign = self.signed_salt(
-            self.settings["key"], self.settings["secret"], text
+            settings.MT_YOUDAO_ID, settings.MT_YOUDAO_SECRET, text
         )
 
         response = self.request(
@@ -81,7 +76,7 @@ class YoudaoTranslation(MachineTranslation):
                 "q": text,
                 "_from": source,
                 "to": language,
-                "appKey": self.settings["key"],
+                "appKey": settings.MT_YOUDAO_ID,
                 "salt": salt,
                 "sign": sign,
             },

@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -24,16 +24,18 @@ import os
 import os.path
 import subprocess
 from datetime import datetime
-from typing import Iterator, List, Optional
+from distutils.version import LooseVersion
+from typing import List, Optional
 
 from dateutil import parser
+from django.conf import settings
 from django.core.cache import cache
 from django.utils.functional import cached_property
-from packaging.version import Version
+from filelock import FileLock
+from pkg_resources import Requirement, resource_filename
+from sentry_sdk import add_breadcrumb
 
 from weblate.trans.util import get_clean_env, path_separator
-from weblate.utils.errors import add_breadcrumb
-from weblate.utils.lock import WeblateLock
 from weblate.vcs.ssh import SSH_WRAPPER
 
 LOGGER = logging.getLogger("weblate.vcs")
@@ -48,7 +50,7 @@ class RepositoryException(Exception):
 
     def get_message(self):
         if self.retcode != 0:
-            return f"{self.args[0]} ({self.retcode})"
+            return "{0} ({1})".format(self.args[0], self.retcode)
         return self.args[0]
 
     def __str__(self):
@@ -76,14 +78,7 @@ class Repository:
     def get_identifier(cls):
         return cls.identifier or cls.name.lower()
 
-    def __init__(
-        self,
-        path: str,
-        branch: Optional[str] = None,
-        component=None,
-        local: bool = False,
-        skip_init: bool = False,
-    ):
+    def __init__(self, path, branch=None, component=None, local=False):
         self.path = path
         if branch is None:
             self.branch = self.default_branch
@@ -91,45 +86,28 @@ class Repository:
             self.branch = branch
         self.component = component
         self.last_output = ""
-        base_path = self.path.rstrip("/").rstrip("\\")
-        self.lock = WeblateLock(
-            lock_path=os.path.dirname(base_path),
-            scope="repo",
-            key=component.pk if component else os.path.basename(base_path),
-            slug=os.path.basename(base_path),
-            file_template="{slug}.lock",
-            timeout=120,
-        )
+        self.lock = FileLock(self.path.rstrip("/").rstrip("\\") + ".lock", timeout=120)
         self.local = local
         if not local:
             # Create ssh wrapper for possible use
             SSH_WRAPPER.create()
-            if not skip_init and not self.is_valid():
+            if not self.is_valid():
                 self.init()
 
     @classmethod
-    def get_remote_branch(cls, repo: str):
-        return cls.default_branch
-
-    @classmethod
     def add_breadcrumb(cls, message, **data):
-        add_breadcrumb(category="vcs", message=message, **data)
+        # Add breadcrumb only if settings are already loaded,
+        # we do not want to force loading settings early
+        if settings.configured and getattr(settings, "SENTRY_DSN", None):
+            add_breadcrumb(category="vcs", message=message, data=data, level="info")
 
     @classmethod
-    def add_response_breadcrumb(cls, response):
-        cls.add_breadcrumb(
-            "http.response",
-            status_code=response.status_code,
-            text=response.text,
-        )
-
-    @classmethod
-    def log(cls, message, level: int = logging.DEBUG):
-        return LOGGER.log(level, "%s: %s", cls._cmd, message)
+    def log(cls, message):
+        return LOGGER.debug("%s: %s", cls._cmd, message)
 
     def ensure_config_updated(self):
         """Ensures the configuration is periodically checked."""
-        cache_key = f"sp-config-check-{self.component.pk}"
+        cache_key = "sp-config-check-{}".format(self.component.pk)
         if cache.get(cache_key) is None:
             self.check_config()
             cache.set(cache_key, True, 86400)
@@ -165,8 +143,7 @@ class Repository:
                 "GIT_SSH": SSH_WRAPPER.filename,
                 "GIT_TERMINAL_PROMPT": "0",
                 "SVN_SSH": SSH_WRAPPER.filename,
-            },
-            extra_path=SSH_WRAPPER.path,
+            }
         )
 
     @classmethod
@@ -178,7 +155,6 @@ class Repository:
         fullcmd: bool = False,
         raw: bool = False,
         local: bool = False,
-        stdin: Optional[str] = None,
     ):
         """Execute the command using popen."""
         if args is None:
@@ -186,21 +162,15 @@ class Repository:
         if not fullcmd:
             args = [cls._cmd] + list(args)
         text_cmd = " ".join(args)
-        kwargs = {}
-        # These are mutually exclusive
-        if stdin is not None:
-            kwargs["input"] = stdin
-        else:
-            kwargs["stdin"] = subprocess.PIPE
         process = subprocess.run(
             args,
             cwd=cwd,
             env={} if local else cls._getenv(),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT if merge_err else subprocess.PIPE,
-            text=not raw,
+            stdin=subprocess.PIPE,
+            universal_newlines=not raw,
             check=False,
-            **kwargs,
         )
         cls.add_breadcrumb(
             text_cmd,
@@ -209,6 +179,7 @@ class Repository:
             stderr=process.stderr,
             cwd=cwd,
         )
+        cls.log("exec {0} [retcode={1}]".format(text_cmd, process.returncode))
         if process.returncode:
             raise RepositoryException(
                 process.returncode, process.stdout + (process.stderr or "")
@@ -221,7 +192,6 @@ class Repository:
         needs_lock: bool = True,
         fullcmd: bool = False,
         merge_err: bool = True,
-        stdin: Optional[str] = None,
     ):
         """Execute command and caches its output."""
         self.log("Executing VCS command: {}".format(" ".join([self._cmd] + list(args))))
@@ -233,22 +203,17 @@ class Repository:
         is_status = args[0] == self._cmd_status[0]
         try:
             self.last_output = self._popen(
-                args,
-                self.path,
-                fullcmd=fullcmd,
-                local=self.local,
-                merge_err=merge_err,
-                stdin=stdin,
+                args, self.path, fullcmd=fullcmd, local=self.local, merge_err=merge_err
             )
         except RepositoryException as error:
-            if not is_status and not self.local:
+            if not is_status:
                 self.log_status(error)
             raise
         return self.last_output
 
     def log_status(self, error):
         try:
-            self.log(f"failure {error}")
+            self.log("failure {}".format(error))
             self.log(self.status())
         except RepositoryException:
             pass
@@ -275,17 +240,16 @@ class Repository:
         )
 
     @classmethod
-    def _clone(cls, source: str, target: str, branch: str):
+    def _clone(cls, source, target, branch=None):
         """Clone repository."""
         raise NotImplementedError()
 
     @classmethod
-    def clone(cls, source: str, target: str, branch: str, component=None):
+    def clone(cls, source, target, branch=None, component=None):
         """Clone repository and return object for cloned repository."""
-        repo = cls(target, branch, component, skip_init=True)
-        with repo.lock:
-            cls._clone(source, target, branch)
-        return repo
+        SSH_WRAPPER.create()
+        cls._clone(source, target, branch)
+        return cls(target, branch, component)
 
     def update_remote(self):
         """Update remote repository."""
@@ -293,7 +257,8 @@ class Repository:
 
     def status(self):
         """Return status of the repository."""
-        return self.execute(self._cmd_status, needs_lock=False)
+        with self.lock:
+            return self.execute(self._cmd_status)
 
     def push(self, branch):
         """Push given branch to remote repository."""
@@ -307,9 +272,7 @@ class Repository:
         """Reset working copy to match remote branch."""
         raise NotImplementedError()
 
-    def merge(
-        self, abort: bool = False, message: Optional[str] = None, no_ff: bool = False
-    ):
+    def merge(self, abort=False, message=None):
         """Merge remote branch or reverts the merge."""
         raise NotImplementedError()
 
@@ -317,7 +280,7 @@ class Repository:
         """Rebase working copy on top of remote branch."""
         raise NotImplementedError()
 
-    def needs_commit(self, filenames: Optional[List[str]] = None):
+    def needs_commit(self, *filenames):
         """Check whether repository needs commit."""
         raise NotImplementedError()
 
@@ -355,7 +318,7 @@ class Repository:
 
     def get_revision_info(self, revision):
         """Return dictionary with detailed revision information."""
-        key = f"rev-info-{self.get_identifier()}-{revision}"
+        key = "rev-info-{}-{}".format(self.get_identifier(), revision)
         result = cache.get(key)
         if not result:
             result = self._get_revision_info(revision)
@@ -380,7 +343,9 @@ class Repository:
             version = cls.get_version()
         except Exception:
             return False
-        return cls.req_version is None or Version(version) >= Version(cls.req_version)
+        return cls.req_version is None or LooseVersion(version) >= LooseVersion(
+            cls.req_version
+        )
 
     @classmethod
     def get_version(cls):
@@ -401,7 +366,7 @@ class Repository:
         return cls._popen(["--version"], merge_err=False)
 
     def set_committer(self, name, mail):
-        """Configure committer name."""
+        """Configure commiter name."""
         raise NotImplementedError()
 
     def commit(
@@ -410,7 +375,7 @@ class Repository:
         author: Optional[str] = None,
         timestamp: Optional[datetime] = None,
         files: Optional[List[str]] = None,
-    ) -> bool:
+    ):
         """Create new revision."""
         raise NotImplementedError()
 
@@ -420,16 +385,11 @@ class Repository:
 
     @staticmethod
     def update_hash(objhash, filename, extra=None):
-        if os.path.islink(filename):
-            objtype = "symlink"
-            data = os.readlink(filename).encode()
-        else:
-            objtype = "blob"
-            with open(filename, "rb") as handle:
-                data = handle.read()
+        with open(filename, "rb") as handle:
+            data = handle.read()
         if extra:
             objhash.update(extra.encode())
-        objhash.update(f"{objtype} {len(data)}\0".encode("ascii"))
+        objhash.update("blob {0}\0".format(len(data)).encode("ascii"))
         objhash.update(data)
 
     def get_object_hash(self, path):
@@ -455,9 +415,7 @@ class Repository:
 
         return objhash.hexdigest()
 
-    def configure_remote(
-        self, pull_url: str, push_url: str, branch: str, fast: bool = True
-    ):
+    def configure_remote(self, pull_url, push_url, branch):
         """Configure remote repository."""
         raise NotImplementedError()
 
@@ -477,6 +435,7 @@ class Repository:
     def get_examples_paths():
         """Generator of possible paths for examples."""
         yield os.path.join(os.path.dirname(os.path.dirname(__file__)), "examples")
+        yield resource_filename(Requirement.parse("weblate"), "examples")
 
     @classmethod
     def find_merge_driver(cls, name):
@@ -506,7 +465,7 @@ class Repository:
         """
         raise NotImplementedError()
 
-    def list_changed_files(self, refspec: str) -> List:
+    def list_changed_files(self, refspec):
         """List changed files for given refspec.
 
         This is not universal as refspec is different per vcs.
@@ -514,20 +473,22 @@ class Repository:
         lines = self.execute(
             self._cmd_list_changed_files + [refspec], needs_lock=False, merge_err=False
         ).splitlines()
-        return list(self.parse_changed_files(lines))
+        return self.parse_changed_files(lines)
 
-    def parse_changed_files(self, lines: List[str]) -> Iterator[str]:
+    def parse_changed_files(self, lines):
         """Parses output with chanaged files."""
         raise NotImplementedError()
 
     def list_upstream_changed_files(self):
         """List files missing upstream."""
-        return self.list_changed_files(
-            self.ref_to_remote.format(self.get_remote_branch_name())
+        return list(
+            self.list_changed_files(
+                self.ref_to_remote.format(self.get_remote_branch_name())
+            )
         )
 
     def get_remote_branch_name(self):
-        return f"origin/{self.branch}"
+        return "origin/{0}".format(self.branch)
 
     def list_remote_branches(self):
         return []

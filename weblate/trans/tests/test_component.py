@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -16,8 +16,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
+
 """Test for translation models."""
+
 import os
+import shutil
 
 from django.core.exceptions import ValidationError
 from django.test.utils import override_settings
@@ -25,11 +28,10 @@ from django.test.utils import override_settings
 from weblate.checks.models import Check
 from weblate.lang.models import Language
 from weblate.trans.exceptions import FileParseError
-from weblate.trans.models import Change, Component, Project, Unit
+from weblate.trans.models import Component, Project, Unit
 from weblate.trans.tests.test_models import RepoTestCase
 from weblate.trans.tests.test_views import ViewTestCase
-from weblate.utils.files import remove_tree
-from weblate.utils.state import STATE_EMPTY, STATE_READONLY, STATE_TRANSLATED
+from weblate.utils.state import STATE_READONLY, STATE_TRANSLATED
 
 
 class ComponentTest(RepoTestCase):
@@ -61,7 +63,7 @@ class ComponentTest(RepoTestCase):
             if units:
                 self.assertTrue(
                     translation.unit_set.filter(source=unit).exists(),
-                    msg="Unit not found, all units: {}".format(
+                    "Unit not found, all units: {}".format(
                         "\n".join(translation.unit_set.values_list("source", flat=True))
                     ),
                 )
@@ -80,15 +82,6 @@ class ComponentTest(RepoTestCase):
         component = self.create_component()
         self.verify_component(component, 4, "cs", 4)
         self.assertTrue(os.path.exists(component.full_path))
-        unit = Unit.objects.get(
-            source="Hello, world!\n", translation__language__code="en"
-        )
-        self.assertEqual(unit.state, STATE_READONLY)
-        self.assertEqual(unit.target, "Hello, world!\n")
-        unit = Unit.objects.get(
-            source="Hello, world!\n", translation__language__code="cs"
-        )
-        self.assertEqual(unit.state, STATE_EMPTY)
 
     def test_create_dot(self):
         component = self._create_component("po", "./po/*.po")
@@ -107,14 +100,14 @@ class ComponentTest(RepoTestCase):
         unit = Unit.objects.get(
             source__startswith="Orangutan", translation__language_code="cs"
         )
-        self.assertTrue(unit.is_plural)
+        self.assertTrue(unit.is_plural())
         self.assertFalse(unit.translated)
         self.assertFalse(unit.fuzzy)
 
         unit = Unit.objects.get(
             source__startswith="Hello", translation__language_code="cs"
         )
-        self.assertFalse(unit.is_plural)
+        self.assertFalse(unit.is_plural())
         self.assertTrue(unit.translated)
         self.assertFalse(unit.fuzzy)
         self.assertEqual(unit.target, "Hello, world!\n")
@@ -122,7 +115,7 @@ class ComponentTest(RepoTestCase):
         unit = Unit.objects.get(
             source__startswith="Thank ", translation__language_code="cs"
         )
-        self.assertFalse(unit.is_plural)
+        self.assertFalse(unit.is_plural())
         self.assertFalse(unit.translated)
         self.assertTrue(unit.fuzzy)
         self.assertEqual(unit.target, "Thanks")
@@ -140,19 +133,14 @@ class ComponentTest(RepoTestCase):
     def test_create_po_pot(self):
         component = self._create_component("po", "po/*.po", new_base="po/project.pot")
         self.verify_component(component, 4, "cs", 4)
-        unit = Unit.objects.get(
-            source="Hello, world!\n", translation__language__code="en"
-        )
-        self.assertEqual(unit.state, STATE_READONLY)
-        self.assertEqual(unit.target, "Hello, world!\n")
-        unit = Unit.objects.get(
-            source="Hello, world!\n", translation__language__code="cs"
-        )
-        self.assertEqual(unit.state, STATE_EMPTY)
 
     def test_create_filtered(self):
         component = self._create_component("po", "po/*.po", language_regex="^cs$")
         self.verify_component(component, 2, "cs", 4)
+
+    def test_create_auto_pot(self):
+        component = self._create_component("po", "po/*.po", new_base="po/project.pot")
+        self.verify_component(component, 4, "cs", 4)
 
     def test_create_po(self):
         component = self.create_po()
@@ -184,10 +172,7 @@ class ComponentTest(RepoTestCase):
 
     def test_create_po_empty(self):
         component = self.create_po_empty()
-        self.verify_component(component, 1, "en", 4)
-        unit = Unit.objects.get(source="Hello, world!\n")
-        self.assertEqual(unit.state, STATE_READONLY)
-        self.assertEqual(unit.target, "Hello, world!\n")
+        self.verify_component(component, 1, "en", 0)
 
     def test_create_po_link(self):
         component = self.create_po_link()
@@ -202,8 +187,8 @@ class ComponentTest(RepoTestCase):
         self.verify_component(component, 2, "cs", 4)
 
     def test_create_android_broken(self):
-        with self.assertRaises(FileParseError):
-            self.create_android(suffix="-broken")
+        component = self.create_android(suffix="-broken")
+        self.verify_component(component, 1, "en", 3)
 
     def test_create_json(self):
         component = self.create_json()
@@ -237,10 +222,6 @@ class ComponentTest(RepoTestCase):
             translation.unit_set.get(context="thanks").source,
             "Thank you for using Weblate.",
         )
-        # Verify source units
-        unit = component.source_translation.unit_set.get(context="hello")
-        self.assertEqual(unit.source, "Hello world!\n")
-        self.assertEqual(unit.target, "Hello, world!\n")
 
     def test_switch_json_intermediate(self):
         component = self._create_component(
@@ -325,19 +306,28 @@ class ComponentTest(RepoTestCase):
 
     def test_create_xliff_dph(self):
         component = self.create_xliff(
-            "DPH", source_language=Language.objects.get(code="cs")
+            "DPH",
+            project=self.create_project(
+                source_language=Language.objects.get(code="cs")
+            ),
         )
         self.verify_component(component, 2, "en", 9, "DPH")
 
     def test_create_xliff_empty(self):
         component = self.create_xliff(
-            "EMPTY", source_language=Language.objects.get(code="cs")
+            "EMPTY",
+            project=self.create_project(
+                source_language=Language.objects.get(code="cs")
+            ),
         )
         self.verify_component(component, 2, "en", 6, "DPH")
 
     def test_create_xliff_resname(self):
         component = self.create_xliff(
-            "Resname", source_language=Language.objects.get(code="cs")
+            "Resname",
+            project=self.create_project(
+                source_language=Language.objects.get(code="cs")
+            ),
         )
         self.verify_component(component, 2, "en", 2, "Hi")
 
@@ -378,14 +368,6 @@ class ComponentTest(RepoTestCase):
     def test_create_odt(self):
         component = self.create_odt()
         self.verify_component(component, 2, "cs", 4, unit="Hello, world!")
-
-    def test_create_winrc(self):
-        component = self.create_winrc()
-        self.verify_component(component, 2, "cs-CZ", 4)
-
-    def test_create_tbx(self):
-        component = self.create_tbx()
-        self.verify_component(component, 2, "cs", 4, unit="address bar")
 
     def test_link(self):
         component = self.create_link()
@@ -433,8 +415,8 @@ class ComponentTest(RepoTestCase):
         component.clean()
         component.save()
         self.verify_component(component, 4, "cs", 4)
-        # Switch back to main branch
-        component.branch = "main"
+        # Switch back to master branch
+        component.branch = "master"
         component.filemask = "po/*.po"
         component.clean()
         component.save()
@@ -449,7 +431,7 @@ class ComponentTest(RepoTestCase):
         component.clean()
         component.save()
         self.verify_component(component, 4, "cs", 4)
-        # Switch back to default branch
+        # Switch back to master branch
         component.branch = "default"
         component.filemask = "po/*.po"
         component.clean()
@@ -461,7 +443,7 @@ class ComponentTest(RepoTestCase):
         component = self.create_component()
         self.assertEqual(Check.objects.count(), 3)
         check = Check.objects.all()[0]
-        component.check_flags = f"ignore-{check.name}"
+        component.check_flags = "ignore-{0}".format(check.check)
         component.save()
         self.assertEqual(Check.objects.count(), 0)
 
@@ -487,25 +469,11 @@ class ComponentTest(RepoTestCase):
         }
     )
     def test_create_autoaddon(self):
-        self.configure_mt()
         component = self.create_idml()
         self.assertEqual(
             set(component.addon_set.values_list("name", flat=True)),
             {"weblate.flags.same_edit", "weblate.autotranslate.autotranslate"},
         )
-
-    @override_settings(
-        DEFAULT_ADDONS={
-            "weblate.gettext.msgmerge": {},
-        }
-    )
-    def test_create_autoaddon_msgmerge(self):
-        component = self.create_po(new_base="po/project.pot")
-        self.assertEqual(
-            set(component.addon_set.values_list("name", flat=True)),
-            {"weblate.gettext.msgmerge"},
-        )
-        self.assertEqual(component.count_repo_outgoing, 1)
 
 
 class ComponentDeleteTest(RepoTestCase):
@@ -516,7 +484,7 @@ class ComponentDeleteTest(RepoTestCase):
         self.assertTrue(os.path.exists(component.full_path))
         component.delete()
         self.assertFalse(os.path.exists(component.full_path))
-        self.assertEqual(1, Component.objects.count())
+        self.assertEqual(0, Component.objects.count())
 
     def test_delete_link(self):
         component = self.create_link()
@@ -536,10 +504,10 @@ class ComponentDeleteTest(RepoTestCase):
         component = self.create_component()
         # Introduce missing source string check. This can happen when adding new check
         # on upgrade or similar situation.
-        unit = Unit.objects.filter(check__isnull=False).first().source_unit
+        unit = Unit.objects.filter(check__isnull=False).first().source_info
         unit.source = "Test..."
         unit.save(update_fields=["source"])
-        unit.check_set.filter(name="ellipisis").delete()
+        unit.check_set.filter(check="ellipisis").delete()
         component.delete()
 
 
@@ -610,7 +578,7 @@ class ComponentChangeTest(RepoTestCase):
         self.assertNotEqual(old_path, new_path)
 
     def test_change_to_mono(self):
-        """Test switching to monolingual format on the fly."""
+        """Test swtiching to monolingual format on the fly."""
         component = self._create_component("po", "po-mono/*.po")
         self.assertEqual(component.translation_set.count(), 4)
         component.file_format = "po-mono"
@@ -626,14 +594,6 @@ class ComponentChangeTest(RepoTestCase):
         self.assertTrue(component.locked)
         # Locked event, alert added
         self.assertEqual(component.change_set.count() - start, 2)
-
-        change = component.change_set.get(action=Change.ACTION_LOCK)
-        self.assertEqual(change.details, {"auto": True})
-        self.assertEqual(change.get_action_display(), "Component locked")
-        self.assertEqual(
-            change.get_details_display(),
-            "The component was automatically locked because of an alert.",
-        )
 
         component.add_alert("UpdateFailure")
         self.assertTrue(component.locked)
@@ -671,7 +631,7 @@ class ComponentValidationTest(RepoTestCase):
         self.component.filemask = "foo/x.po"
         self.assertRaisesMessage(
             ValidationError,
-            "File mask does not contain * as a language placeholder!",
+            "Filemask does not contain * as a language placeholder!",
             self.component.full_clean,
         )
 
@@ -680,7 +640,7 @@ class ComponentValidationTest(RepoTestCase):
         self.component.filemask = "foo/*.po"
         self.assertRaisesMessage(
             ValidationError,
-            "The file mask did not match any files.",
+            "The filemask did not match any files.",
             self.component.full_clean,
         )
 
@@ -708,7 +668,7 @@ class ComponentValidationTest(RepoTestCase):
         self.component.push = ""
         self.assertRaisesMessage(
             ValidationError,
-            "Invalid link to a Weblate project, use weblate://project/component.",
+            "Invalid link to a Weblate project, " "use weblate://project/component.",
             self.component.full_clean,
         )
 
@@ -718,7 +678,7 @@ class ComponentValidationTest(RepoTestCase):
         self.component.push = ""
         self.assertRaisesMessage(
             ValidationError,
-            "Invalid link to a Weblate project, use weblate://project/component.",
+            "Invalid link to a Weblate project, " "use weblate://project/component.",
             self.component.full_clean,
         )
 
@@ -739,8 +699,9 @@ class ComponentValidationTest(RepoTestCase):
         project.full_clean()
         # Not existing file
         project.template = "not-existing"
-        with self.assertRaisesMessage(ValidationError, "File does not exist."):
-            project.full_clean()
+        self.assertRaisesMessage(
+            ValidationError, "Could not find template file.", project.full_clean
+        )
 
     def test_validation_language_re(self):
         self.component.language_regex = "[-"
@@ -780,14 +741,13 @@ class ComponentValidationTest(RepoTestCase):
         self.assertEqual(component.get_lang_code("Solution/Project/Resources.resx"), "")
         # Language aliases
         self.assertEqual(
-            component.get_lang_code("Solution/Project/Resources.xx.resx"), "xx"
+            component.get_lang_code("Solution/Project/Resources.xx.resx"), "cs"
         )
-        self.assertEqual(component.get_language_alias("xx"), "cs")
         self.assertRaisesMessage(
             ValidationError,
             "The language code for "
-            '"Solution/Project/Resources.resx"'
-            " is empty, please check the file mask.",
+            "Solution/Project/Resources.resx"
+            " was empty, please check the filemask.",
             component.clean_lang_codes,
             [
                 "Solution/Project/Resources.resx",
@@ -811,14 +771,6 @@ class ComponentValidationTest(RepoTestCase):
         self.assertEqual(
             component.get_lang_code("path/el/resources/MessagesBundle_el.properties"),
             "el",
-        )
-
-    def test_lang_code_plus(self):
-        component = Component(project=Project())
-        component.filemask = "po/*/master/pages/C_and_C++.po"
-        self.assertEqual(
-            component.get_lang_code("po/cs/master/pages/C_and_C++.po"),
-            "cs",
         )
 
 
@@ -849,12 +801,11 @@ class ComponentErrorTest(RepoTestCase):
 
     def test_failed_reset(self):
         # Corrupt Git database so that reset fails
-        remove_tree(os.path.join(self.component.full_path, ".git", "objects", "pack"))
+        shutil.rmtree(os.path.join(self.component.full_path, ".git", "objects", "pack"))
         self.assertFalse(self.component.do_reset(None))
 
     def test_invalid_templatename(self):
         self.component.template = "foo.bar"
-        self.component.drop_template_store_cache()
 
         with self.assertRaises(FileParseError):
             self.component.template_store
@@ -884,15 +835,9 @@ class ComponentErrorTest(RepoTestCase):
         testfile = os.path.join(self.component.full_path, "ts-mono", "en.ts")
         with open(testfile, "a") as handle:
             handle.write("CHANGE")
-        self.component.drop_template_store_cache()
 
         with self.assertRaises(FileParseError):
             self.component.template_store
-        with self.assertRaises(ValidationError):
-            self.component.clean()
-
-    def test_change_source_language(self):
-        self.component.source_language = Language.objects.get(code="cs")
         with self.assertRaises(ValidationError):
             self.component.clean()
 
@@ -907,7 +852,7 @@ class LinkedEditTest(ViewTestCase):
 
         # Translate all units
         for unit in Unit.objects.iterator():
-            if not unit.is_source:
+            if not unit.translation.is_source:
                 unit.translate(self.user, "test", STATE_TRANSLATED)
 
         # No commit now

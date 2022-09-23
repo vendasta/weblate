@@ -5,10 +5,10 @@ import sys
 if len(sys.argv) != 2:
     raise Exception("Missing argument")
 
-start = f"Weblate {sys.argv[1]}\n"
+start = "Weblate {}\n".format(sys.argv[1])
 display = False
 
-with open("docs/changes.rst") as handle:
+with open("docs/changes.rst", "r") as handle:
     for line in handle:
         if display:
             if line.startswith("Weblate "):

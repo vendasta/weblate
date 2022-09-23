@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,10 +20,8 @@
 
 import os
 from time import mktime
-from typing import Optional
 from zipfile import ZipFile
 
-from django.conf import settings
 from django.core.paginator import EmptyPage, Paginator
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
@@ -31,32 +29,11 @@ from django.utils.http import http_date
 from django.utils.translation import activate
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy, pgettext_lazy
-from django.views.decorators.gzip import gzip_page
 from django.views.generic.edit import FormView
 
-from weblate.formats.models import EXPORTERS, FILE_FORMATS
+from weblate.formats.models import EXPORTERS
 from weblate.trans.models import Component, Project, Translation
 from weblate.utils import messages
-from weblate.utils.errors import report_error
-from weblate.vcs.git import LocalRepository
-
-SORT_KEYS = {
-    "name": lambda x: x.name if hasattr(x, "name") else x.component.name,
-    "translated": lambda x: x.stats.translated_percent,
-    "untranslated": lambda x: x.stats.todo,
-    "untranslated_words": lambda x: x.stats.todo_words,
-    "untranslated_chars": lambda x: x.stats.todo_chars,
-    "nottranslated": lambda x: x.stats.nottranslated,
-    "checks": lambda x: x.stats.allchecks,
-    "suggestions": lambda x: x.stats.suggestions,
-    "comments": lambda x: x.stats.comments,
-}
-
-
-def optional_form(form, perm_user, perm, perm_obj, **kwargs):
-    if not perm_user.has_perm(perm, perm_obj):
-        return None
-    return form(**kwargs)
 
 
 def get_percent_color(percent):
@@ -83,28 +60,10 @@ def get_page_limit(request, default):
     return page, limit
 
 
-def sort_objects(object_list, sort_by: str):
-    if sort_by.startswith("-"):
-        sort_key = sort_by[1:]
-        reverse = True
-    else:
-        sort_key = sort_by
-        reverse = False
-    try:
-        key = SORT_KEYS[sort_key]
-    except KeyError:
-        return object_list, None
-    return sorted(object_list, key=key, reverse=reverse), sort_by
-
-
-def get_paginator(request, object_list, page_limit=None):
+def get_paginator(request, object_list, default_page_limit=100):
     """Return paginator and current page."""
-    page, limit = get_page_limit(request, page_limit or settings.DEFAULT_PAGE_LIMIT)
-    sort_by = request.GET.get("sort_by")
-    if sort_by:
-        object_list, sort_by = sort_objects(object_list, sort_by)
+    page, limit = get_page_limit(request, default_page_limit)
     paginator = Paginator(object_list, limit)
-    paginator.sort_by = sort_by
     try:
         return paginator.page(page)
     except EmptyPage:
@@ -134,9 +93,7 @@ SORT_CHOICES = {
     "position": gettext_lazy("Position"),
     "priority": gettext_lazy("Priority"),
     "labels": gettext_lazy("Labels"),
-    "source": gettext_lazy("Source string"),
-    "target": gettext_lazy("Target string"),
-    "timestamp": gettext_lazy("String age"),
+    "timestamp": gettext_lazy("Age of string"),
     "num_words": gettext_lazy("Number of words"),
     "num_comments": gettext_lazy("Number of comments"),
     "num_failing_checks": gettext_lazy("Number of failing checks"),
@@ -146,19 +103,15 @@ SORT_CHOICES = {
 SORT_LOOKUP = {key.replace("-", ""): value for key, value in SORT_CHOICES.items()}
 
 
-def get_sort_name(request, obj=None):
+def get_sort_name(request):
     """Gets sort name."""
-    if hasattr(obj, "component") and obj.component.is_glossary:
-        default = "source"
-    else:
-        default = "-priority,position"
-    sort_query = request.GET.get("sort_by", default)
-    sort_params = sort_query.replace("-", "")
+    sort_params = request.GET.get("sort_by", "-priority,position").replace("-", "")
     sort_name = SORT_LOOKUP.get(sort_params, _("Position and priority"))
-    return {
-        "query": sort_query,
+    result = {
+        "query": request.GET.get("sort_by", "-priority,position"),
         "name": sort_name,
     }
+    return result
 
 
 def get_translation(request, project, component, lang, skip_acl=False):
@@ -178,13 +131,10 @@ def get_translation(request, project, component, lang, skip_acl=False):
 def get_component(request, project, component, skip_acl=False):
     """Return component matching parameters."""
     component = get_object_or_404(
-        Component.objects.prefetch(),
-        project__slug=project,
-        slug=component,
+        Component.objects.prefetch(), project__slug=project, slug=component,
     )
     if not skip_acl:
         request.user.check_access_component(component)
-    component.acting_user = request.user
     return component
 
 
@@ -193,7 +143,6 @@ def get_project(request, project, skip_acl=False):
     project = get_object_or_404(Project, slug=project)
     if not skip_acl:
         request.user.check_access(project)
-    project.acting_user = request.user
     return project
 
 
@@ -216,57 +165,6 @@ def get_project_translation(request, project=None, component=None, lang=None):
 
     # Return tuple
     return project or None, component or None, translation or None
-
-
-def guess_filemask_from_doc(data):
-    if "filemask" in data:
-        return
-
-    ext = ""
-    if "docfile" in data and hasattr(data["docfile"], "name"):
-        ext = os.path.splitext(os.path.basename(data["docfile"].name))[1]
-
-    if not ext and "file_format" in data and data["file_format"] in FILE_FORMATS:
-        ext = FILE_FORMATS[data["file_format"]].extension()
-
-    data["filemask"] = "{}/{}{}".format(data.get("slug", "translations"), "*", ext)
-
-
-def create_component_from_doc(data):
-    # Calculate filename
-    uploaded = data["docfile"]
-    guess_filemask_from_doc(data)
-    filemask = data["filemask"]
-    filename = filemask.replace(
-        "*",
-        data["source_language"].code
-        if "source_language" in data
-        else settings.DEFAULT_LANGUAGE,
-    )
-    # Create fake component (needed to calculate path)
-    fake = Component(
-        project=data["project"],
-        slug=data["slug"],
-        name=data["name"],
-        template=filename,
-        filemask=filemask,
-    )
-    # Create repository
-    LocalRepository.from_files(fake.full_path, {filename: uploaded.read()})
-    return fake
-
-
-def create_component_from_zip(data):
-    # Create fake component (needed to calculate path)
-    fake = Component(
-        project=data["project"],
-        slug=data["slug"],
-        name=data["name"],
-    )
-
-    # Create repository
-    LocalRepository.from_zip(fake.full_path, data["zipfile"])
-    return fake
 
 
 def try_set_language(lang):
@@ -296,26 +194,17 @@ def iter_files(filenames):
             yield filename
 
 
-def zip_download(root, filenames, name="translations"):
+def zip_download(root, filenames):
     response = HttpResponse(content_type="application/zip")
     with ZipFile(response, "w") as zipfile:
         for filename in iter_files(filenames):
-            try:
-                with open(filename, "rb") as handle:
-                    zipfile.writestr(os.path.relpath(filename, root), handle.read())
-            except FileNotFoundError:
-                continue
-    response["Content-Disposition"] = f'attachment; filename="{name}.zip"'
+            with open(filename, "rb") as handle:
+                zipfile.writestr(os.path.relpath(filename, root), handle.read())
+    response["Content-Disposition"] = 'attachment; filename="translations.zip"'
     return response
 
 
-@gzip_page
-def download_translation_file(
-    request,
-    translation: Translation,
-    fmt: Optional[str] = None,
-    query_string: Optional[str] = None,
-):
+def download_translation_file(translation, fmt=None, units=None):
     if fmt is not None:
         try:
             exporter_cls = EXPORTERS[fmt]
@@ -324,9 +213,8 @@ def download_translation_file(
         if not exporter_cls.supports(translation):
             raise Http404("File format not supported")
         exporter = exporter_cls(translation=translation)
-        units = translation.unit_set.prefetch_full().order_by("position")
-        if query_string:
-            units = units.search(query_string)
+        if units is None:
+            units = translation.unit_set.all()
         exporter.add_units(units)
         response = exporter.get_response(
             "{{project}}-{0}-{{language}}.{{extension}}".format(
@@ -335,42 +223,32 @@ def download_translation_file(
         )
     else:
         # Force flushing pending units
-        try:
-            translation.commit_pending("download", None)
-        except Exception:
-            report_error(cause="Download commit")
+        translation.commit_pending("download", None)
 
         filenames = translation.filenames
 
         if len(filenames) == 1:
-            extension = (
-                os.path.splitext(translation.filename)[1]
-                or f".{translation.component.file_format_cls.extension()}"
-            )
-            if not os.path.exists(filenames[0]):
-                raise Http404("File not found")
+            extension = translation.component.file_format_cls.extension()
             # Create response
             response = FileResponse(
                 open(filenames[0], "rb"),
                 content_type=translation.component.file_format_cls.mimetype(),
             )
         else:
-            extension = ".zip"
-            response = zip_download(
-                translation.get_filename(),
-                filenames,
-                translation.full_slug.replace("/", "-"),
-            )
+            extension = "zip"
+            response = zip_download(translation.get_filename(), filenames)
 
         # Construct filename (do not use real filename as it is usually not
         # that useful)
-        project_slug = translation.component.project.slug
-        component_slug = translation.component.slug
-        language_code = translation.language.code
-        filename = f"{project_slug}-{component_slug}-{language_code}{extension}"
+        filename = "{0}-{1}-{2}.{3}".format(
+            translation.component.project.slug,
+            translation.component.slug,
+            translation.language.code,
+            extension,
+        )
 
         # Fill in response headers
-        response["Content-Disposition"] = f"attachment; filename={filename}"
+        response["Content-Disposition"] = "attachment; filename={0}".format(filename)
 
     if translation.stats.last_changed:
         response["Last-Modified"] = http_date(
@@ -380,21 +258,17 @@ def download_translation_file(
     return response
 
 
-def get_form_errors(form):
-    for error in form.non_field_errors():
-        yield error
-    for field in form:
-        for error in field.errors:
-            yield _("Error in parameter %(field)s: %(error)s") % {
-                "field": field.name,
-                "error": error,
-            }
-
-
 def show_form_errors(request, form):
     """Show all form errors as a message."""
-    for error in get_form_errors(form):
+    for error in form.non_field_errors():
         messages.error(request, error)
+    for field in form:
+        for error in field.errors:
+            messages.error(
+                request,
+                _("Error in parameter %(field)s: %(error)s")
+                % {"field": field.name, "error": error},
+            )
 
 
 class ErrorFormView(FormView):

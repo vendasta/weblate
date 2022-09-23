@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,30 +17,28 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 import re
 from datetime import datetime
 from functools import lru_cache, reduce
-from itertools import chain
-from typing import Dict
 
 from dateutil.parser import ParserError, parse
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext as _
+from jellyfish import damerau_levenshtein_distance
 from pyparsing import (
     CaselessKeyword,
-    OpAssoc,
     Optional,
+    QuotedString,
     Regex,
     Word,
-    infix_notation,
-    one_of,
+    infixNotation,
+    oneOf,
+    opAssoc,
 )
-from rapidfuzz.distance import DamerauLevenshtein
 
-from weblate.checks.parser import RawQuotedString
 from weblate.trans.util import PLURAL_SEPARATOR
-from weblate.utils.db import re_escape, using_postgresql
 from weblate.utils.state import (
     STATE_APPROVED,
     STATE_FUZZY,
@@ -58,7 +56,14 @@ class Comparer:
 
     def similarity(self, first, second):
         """Returns string similarity in range 0 - 100%."""
-        return int(100 * DamerauLevenshtein.normalized_similarity(first, second))
+        try:
+            distance = damerau_levenshtein_distance(first, second)
+            return int(
+                100 * (1.0 - (float(distance) / max(len(first), len(second), 1)))
+            )
+        except MemoryError:
+            # Too long string, mark them as not much similar
+            return 50
 
 
 # Field type definitions
@@ -68,32 +73,27 @@ NONTEXT_FIELDS = {
     "state": "state",
     "pending": "pending",
     "changed": "change__timestamp",
-    "change_time": "change__timestamp",
     "added": "timestamp",
-    "change_action": "change__action",
 }
 STRING_FIELD_MAP = {
     "suggestion": "suggestion__target",
     "comment": "comment__comment",
-    "resolved_comment": "comment__comment",
     "key": "context",
-    "explanation": "source_unit__explanation",
 }
 EXACT_FIELD_MAP = {
-    "check": "check__name",
-    "dismissed_check": "check__name",
+    "check": "check__check",
+    "dismissed_check": "check__check",
     "language": "translation__language__code",
     "component": "translation__component__slug",
     "project": "translation__component__project__slug",
     "changed_by": "change__author__username",
     "suggestion_author": "suggestion__user__username",
     "comment_author": "comment__user__username",
-    "label": "source_unit__labels__name",
-    "screenshot": "source_unit__screenshots__name",
+    "label": "labels__name",
 }
 OPERATOR_MAP = {
     ":": "substring",
-    ":=": "exact",
+    ":=": "iexact",
     ":<": "lt",
     ":<=": "lte",
     ":>": "gt",
@@ -107,9 +107,9 @@ OR = Optional(CaselessKeyword("OR"))
 NOT = CaselessKeyword("NOT")
 
 # Search operator
-OPERATOR = one_of(OPERATOR_MAP.keys())
+OPERATOR = oneOf(OPERATOR_MAP.keys())
 
-# Field name, explicitly exlude URL like patters
+# Field name, explicitely exlude URL like patters
 FIELD = Regex(r"""(?!http|ftp|https|mailto)[a-zA-Z_]+""")
 
 # Match token
@@ -120,33 +120,22 @@ DATE = Word("0123456789:.-T")
 RANGE = "[" + DATE + "to" + DATE + "]"
 
 # Match value
-REGEX_STRING = "r" + RawQuotedString('"')
-STRING = REGEX_STRING | RawQuotedString("'") | RawQuotedString('"') | WORD
+REGEX_STRING = "r" + QuotedString('"', escChar="\\")
+STRING = (
+    REGEX_STRING
+    | QuotedString("'", escChar="\\")
+    | QuotedString('"', escChar="\\")
+    | WORD
+)
 
 # Single term, either field specific or not
 TERM = (FIELD + OPERATOR + (RANGE | STRING)) | STRING
 
 # Multi term with or without operator
 QUERY = Optional(
-    infix_notation(
+    infixNotation(
         TERM,
-        [
-            (
-                NOT,
-                1,
-                OpAssoc.RIGHT,
-            ),
-            (
-                AND,
-                2,
-                OpAssoc.LEFT,
-            ),
-            (
-                OR,
-                2,
-                OpAssoc.LEFT,
-            ),
-        ],
+        [(NOT, 1, opAssoc.RIGHT,), (AND, 2, opAssoc.LEFT,), (OR, 2, opAssoc.LEFT,)],
     )
 )
 
@@ -158,7 +147,7 @@ class RegexExpr:
         self.expr = tokens[1]
 
 
-REGEX_STRING.add_parse_action(RegexExpr)
+REGEX_STRING.addParseAction(RegexExpr)
 
 
 class RangeExpr:
@@ -167,7 +156,7 @@ class RangeExpr:
         self.end = tokens[3]
 
 
-RANGE.add_parse_action(RangeExpr)
+RANGE.addParseAction(RangeExpr)
 
 
 class TermExpr:
@@ -189,7 +178,7 @@ class TermExpr:
             self.match = self.operator[1:] + self.match
             self.operator = ":"
 
-    def is_field(self, text, context: Dict):
+    def is_field(self, text):
         if text in ("read-only", "readonly"):
             return Q(state=STATE_READONLY)
         if text == "approved":
@@ -203,17 +192,13 @@ class TermExpr:
         if text == "pending":
             return Q(pending=True)
 
-        raise ValueError(f"Unsupported is lookup: {text}")
+        raise ValueError("Unsupported is lookup: {}".format(text))
 
-    def has_field(self, text, context: Dict):  # noqa: C901
+    def has_field(self, text):
         if text == "plural":
             return Q(source__contains=PLURAL_SEPARATOR)
         if text == "suggestion":
             return Q(suggestion__isnull=False)
-        if text == "explanation":
-            return ~Q(source_unit__explanation="")
-        if text == "note":
-            return ~Q(note="")
         if text == "comment":
             return Q(comment__resolved=False)
         if text in ("resolved-comment", "resolved_comment"):
@@ -232,39 +217,17 @@ class TermExpr:
         if text in ("variant", "shaping"):
             return Q(variant__isnull=False)
         if text == "label":
-            return Q(source_unit__labels__isnull=False) | Q(labels__isnull=False)
+            return Q(labels__isnull=False)
         if text == "context":
             return ~Q(context="")
         if text == "screenshot":
-            return Q(screenshots__isnull=False) | Q(
-                source_unit__screenshots__isnull=False
-            )
+            return Q(screenshots__isnull=False)
         if text == "flags":
-            return ~Q(source_unit__extra_flags="")
-        if text == "glossary":
-            project = context.get("project")
-            if not project:
-                return Q(source__isnull=True)
-            terms = set(
-                chain.from_iterable(
-                    glossary.glossary_sources for glossary in project.glossaries
-                )
-            )
-            if not terms:
-                return Q(source__isnull=True)
-            if using_postgresql():
-                template = r"[[:<:]]({})[[:>:]]"
-            else:
-                template = r"(^|[ \t\n\r\f\v])({})($|[ \t\n\r\f\v])"
-            return Q(
-                source__iregex=template.format(
-                    "|".join(re_escape(term) for term in terms)
-                )
-            )
+            return ~Q(extra_flags="")
 
-        raise ValueError(f"Unsupported has lookup: {text}")
+        raise ValueError("Unsupported has lookup: {}".format(text))
 
-    def field_extra(self, field, query, match):
+    def field_extra(self, field, query):
         from weblate.trans.models import Change
 
         if field in {"changed", "changed_by"}:
@@ -273,17 +236,6 @@ class TermExpr:
             return query & Q(check__dismissed=False)
         if field == "dismissed_check":
             return query & Q(check__dismissed=True)
-        if field == "component":
-            return query | Q(translation__component__name__icontains=match)
-        if field == "label":
-            return query | Q(labels__name__iexact=match)
-        if field == "screenshot":
-            return query | Q(screenshots__name__iexact=match)
-        if field == "comment":
-            return query & Q(comment__resolved=False)
-        if field == "resolved_comment":
-            return query & Q(comment__resolved=True)
-
         return query
 
     def convert_state(self, text):
@@ -367,17 +319,6 @@ class TermExpr:
             )
         return result
 
-    def convert_change_action(self, text):
-        from weblate.trans.models import Change
-
-        try:
-            return Change.ACTION_NAMES[text]
-        except KeyError:
-            return Change.ACTION_STRINGS[text]
-
-    def convert_change_time(self, text):
-        return self.convert_datetime(text)
-
     def convert_changed(self, text):
         return self.convert_datetime(text)
 
@@ -389,21 +330,21 @@ class TermExpr:
             suffix = OPERATOR_MAP[self.operator]
 
         if field in PLAIN_FIELDS:
-            return f"{field}__{suffix}"
+            return "{}__{}".format(field, suffix)
         if field in STRING_FIELD_MAP:
-            return f"{STRING_FIELD_MAP[field]}__{suffix}"
+            return "{}__{}".format(STRING_FIELD_MAP[field], suffix)
         if field in EXACT_FIELD_MAP:
             # Change contains to exact, do not change other (for example regex)
             if suffix == "substring":
                 suffix = "iexact"
-            return f"{EXACT_FIELD_MAP[field]}__{suffix}"
+            return "{}__{}".format(EXACT_FIELD_MAP[field], suffix)
         if field in NONTEXT_FIELDS:
             if suffix not in ("substring", "iexact"):
-                return f"{NONTEXT_FIELDS[field]}__{suffix}"
+                return "{}__{}".format(NONTEXT_FIELDS[field], suffix)
             return NONTEXT_FIELDS[field]
         raise ValueError(f"Unsupported field: {field}")
 
-    def as_sql(self, context: Dict):
+    def as_sql(self):
         field = self.field
         match = self.match
         # Simple term based search
@@ -417,7 +358,7 @@ class TermExpr:
         # Field specific code
         field_method = getattr(self, f"{field}_field", None)
         if field_method is not None:
-            return field_method(match, context)
+            return field_method(match)
 
         # Field conversion
         convert_method = getattr(self, f"convert_{field}", None)
@@ -451,16 +392,16 @@ class TermExpr:
             # Generic query
             query = Q(**{self.field_name(field): match})
 
-        return self.field_extra(field, query, match)
+        return self.field_extra(field, query)
 
 
-TERM.add_parse_action(TermExpr)
+TERM.addParseAction(TermExpr)
 
 
-def parser_to_query(obj, context: Dict):
+def parser_to_query(obj):
     # Simple lookups
     if isinstance(obj, TermExpr):
-        return obj.as_sql(context)
+        return obj.as_sql()
 
     # Operators
     operator = "AND"
@@ -469,7 +410,7 @@ def parser_to_query(obj, context: Dict):
         if isinstance(item, str) and item.upper() in ("OR", "AND", "NOT"):
             operator = item.upper()
             continue
-        expressions.append(parser_to_query(item, context))
+        expressions.append(parser_to_query(item))
 
     if not expressions:
         return Q()
@@ -482,12 +423,7 @@ def parser_to_query(obj, context: Dict):
 
 
 @lru_cache(maxsize=512)
-def parse_string(text):
+def parse_query(text):
     if "\x00" in text:
         raise ValueError("Invalid query string.")
-    return QUERY.parse_string(text, parse_all=True)
-
-
-def parse_query(text, **context):
-    parsed = parse_string(text)
-    return parser_to_query(parsed, context)
+    return parser_to_query(QUERY.parseString(text, parseAll=True))

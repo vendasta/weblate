@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -23,7 +23,6 @@ from uuid import uuid4
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.utils.functional import cached_property
-from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
 from weblate.addons.base import BaseAddon
@@ -37,11 +36,7 @@ class CDNJSAddon(BaseAddon):
     events = (EVENT_DAILY, EVENT_POST_COMMIT, EVENT_POST_UPDATE)
     name = "weblate.cdn.cdnjs"
     verbose = _("JavaScript localization CDN")
-    description = _(
-        "Publishes translations into content delivery network "
-        "for use in JavaScript or HTML localization."
-    )
-
+    description = _("Adds localization CDN for JavaScript or HTML localization.")
     settings_form = CDNJSForm
     icon = "cloud-upload.svg"
     stay_on_create = True
@@ -98,34 +93,17 @@ class CDNJSAddon(BaseAddon):
                 render_to_string(
                     "addons/js/weblate.js",
                     {
-                        # `mark_safe(json.dumps(` is NOT safe in HTML files. Only JS.
-                        # See `django.utils.html.json_script`
-                        "languages": mark_safe(
-                            json.dumps(
-                                sorted(
-                                    translation.language.code
-                                    for translation in translations
-                                )
+                        "languages": '", "'.join(
+                            sorted(
+                                translation.language.code
+                                for translation in translations
                             )
                         ),
-                        "url": mark_safe(
-                            json.dumps(
-                                os.path.join(
-                                    settings.LOCALIZE_CDN_URL,
-                                    self.instance.state["uuid"],
-                                )
-                            )
+                        "url": os.path.join(
+                            settings.LOCALIZE_CDN_URL, self.instance.state["uuid"]
                         ),
-                        "cookie_name": mark_safe(
-                            json.dumps(
-                                self.instance.configuration["cookie_name"],
-                            )
-                        ),
-                        "css_selector": mark_safe(
-                            json.dumps(
-                                self.instance.configuration["css_selector"],
-                            )
-                        ),
+                        "cookie_name": self.instance.configuration["cookie_name"],
+                        "css_selector": self.instance.configuration["css_selector"],
                     },
                 )
             )
@@ -155,5 +133,5 @@ class CDNJSAddon(BaseAddon):
             component.id,
         )
 
-    def post_update(self, component, previous_head: str, skip_push: bool):
+    def post_update(self, component, previous_head):
         self.daily(component)

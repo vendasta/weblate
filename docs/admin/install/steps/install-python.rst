@@ -11,7 +11,7 @@ Python modules
 
    .. code-block:: sh
 
-        virtualenv ~/weblate-env
+        virtualenv --python=python3 ~/weblate-env
 
 #. Activate the virtualenv for Weblate:
 
@@ -19,27 +19,21 @@ Python modules
 
         . ~/weblate-env/bin/activate
 
-#. Install Weblate including all optional dependencies:
+#. Install Weblate including all dependencies:
 
    .. code-block:: sh
 
-        # Install Weblate with all optional dependencies
-        pip install "Weblate[all]"
+        pip install Weblate
 
-   Please check :ref:`optional-deps` for fine-tuning of optional dependencies.
+#. Install database driver:
 
-   .. note::
+   .. code-block:: sh
 
-      On some Linux distributions running Weblate fails with libffi error:
+        pip install psycopg2-binary
 
-      .. code-block:: text
+#. Install wanted optional dependencies depending on features you intend to use
+   (some might require additional system libraries, check :ref:`optional-deps`):
 
-         ffi_prep_closure(): bad user_data (it seems that the version of the libffi library seen at runtime is different from the 'ffi.h' file seen at compile-time)
+   .. code-block:: sh
 
-      This is caused by incompatibility of binary packages distributed via PyPI
-      with the distribution. To address this, you need to rebuild the package
-      on your system:
-
-      .. code-block:: sh
-
-         pip install --force-reinstall --no-binary :all: cffi
+        pip install ruamel.yaml aeidon boto3 zeep chardet tesserocr

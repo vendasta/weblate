@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -52,19 +52,19 @@ class EnvTest(SimpleTestCase):
 
     def test_bool(self):
         os.environ["TEST_DATA"] = "1"
-        self.assertTrue(get_env_bool("TEST_DATA"))
+        self.assertEqual(get_env_bool("TEST_DATA"), True)
         os.environ["TEST_DATA"] = "True"
-        self.assertTrue(get_env_bool("TEST_DATA"))
+        self.assertEqual(get_env_bool("TEST_DATA"), True)
         os.environ["TEST_DATA"] = "true"
-        self.assertTrue(get_env_bool("TEST_DATA"))
+        self.assertEqual(get_env_bool("TEST_DATA"), True)
         os.environ["TEST_DATA"] = "Yes"
-        self.assertTrue(get_env_bool("TEST_DATA"))
+        self.assertEqual(get_env_bool("TEST_DATA"), True)
         os.environ["TEST_DATA"] = "no"
-        self.assertFalse(get_env_bool("TEST_DATA"))
+        self.assertEqual(get_env_bool("TEST_DATA"), False)
         os.environ["TEST_DATA"] = "0"
-        self.assertFalse(get_env_bool("TEST_DATA"))
+        self.assertEqual(get_env_bool("TEST_DATA"), False)
         del os.environ["TEST_DATA"]
-        self.assertFalse(get_env_bool("TEST_DATA"))
+        self.assertEqual(get_env_bool("TEST_DATA"), False)
 
     def test_int(self):
         os.environ["TEST_DATA"] = "1"

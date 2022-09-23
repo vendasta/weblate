@@ -1,4 +1,3 @@
-.. _memory:
 .. _translation-memory:
 
 Translation Memory
@@ -16,9 +15,9 @@ Content in the translation memory can be applied one of two ways:
 
 * Manually, :ref:`machine-translation` view while translating.
 * Automatically, by translating strings using :ref:`auto-translation`, or
-  :ref:`addon-weblate.autotranslate.autotranslate` add-on.
+  :ref:`addon-weblate.autotranslate.autotranslate` addon.
 
-For installation tips, see :ref:`mt-weblate-translation-memory`, which is
+For installation tips, see :ref:`weblate-translation-memory`, which is
 turned on by default.
 
 
@@ -88,7 +87,7 @@ memories. It can be used to download, wipe or import translation memory.
 
     :ref:`schema-memory`
 
-.. image:: /screenshots/memory.png
+.. image:: /images/memory.png
 
 Management interface
 ++++++++++++++++++++

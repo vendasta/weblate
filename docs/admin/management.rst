@@ -39,7 +39,7 @@ To run it:
 
     python ./manage.py list_versions
 
-If you've installed Weblate using the pip installer, or by using the :file:`./setup.py`
+If you've installed Weblate using the pip or pip3 installer, or by using the :file:`./setup.py`
 script, the :command:`weblate` is installed to your path (or virtualenv path),
 from where you can use it to control Weblate:
 
@@ -69,11 +69,12 @@ In case you need to pass it a file, you can temporary add a volume:
 
 .. seealso::
 
-    :doc:`install/docker`,
+    :ref:`quick-docker`,
     :doc:`install/venv-debian`,
     :doc:`install/venv-suse`,
-    :doc:`install/venv-redhat`,
-    :doc:`install/source`
+    :doc:`install/venv-redhat`
+
+* :ref:`quick-source`, recommended for development.
 
 
 add_suggestions
@@ -104,10 +105,6 @@ auto_translate
 .. django-admin:: auto_translate <project> <component> <language>
 
 .. versionadded:: 2.5
-
-.. versionchanged:: 4.6
-
-    Added parameter for translation mode.
 
 Performs automatic translation based on other component translations.
 
@@ -141,11 +138,6 @@ Performs automatic translation based on other component translations.
 .. django-admin-option:: --threshold THRESHOLD
 
     Similarity threshold for machine translation, defaults to 80.
-
-.. django-admin-option:: --mode MODE
-
-    Specify translation mode, default is ``translate`` but ``fuzzy`` or ``suggest``
-    can be used.
 
 Example:
 
@@ -224,22 +216,6 @@ manually, as the cleanups happen automatically in the background.
 
    :ref:`production-cron`
 
-cleanup_ssh_keys
-----------------
-
-.. django-admin:: cleanup_ssh_keys
-
-.. versionadded:: 4.9.1
-
-Performs cleanup of stored SSH host keys:
-
-* Removes deprecated RSA keys for GitHub which might cause issues connecting to GitHub.
-* Removes duplicate entries in host keys.
-
-.. seealso::
-
-   :ref:`ssh-repos`
-
 createadmin
 -----------
 
@@ -253,7 +229,7 @@ Creates an ``admin`` account with a random password, unless it is specified.
 
 .. django-admin-option:: --no-password
 
-    Do not set password, this can be useful with `--update`.
+    Do not set password, this can be useful with --update.
 
 .. django-admin-option:: --username USERNAME
 
@@ -294,7 +270,7 @@ dumpuserdata
 
 .. django-admin:: dumpuserdata <file.json>
 
-Dumps userdata to a file for later use by :djadmin:`importuserdata`.
+Dumps userdata to a file for later use by :djadmin:`importuserdata`
 
 .. hint::
 
@@ -308,7 +284,6 @@ import_demo
 .. versionadded:: 4.1
 
 Creates a demo project with components based on <https://github.com/WeblateOrg/demo>.
-Make sure the celery tasks are running before running this command.
 
 This can be useful when developing Weblate.
 
@@ -389,10 +364,10 @@ import_project
 .. versionchanged:: 3.0
 
     The import_project command is now based on the
-    :ref:`addon-weblate.discovery.discovery` add-on, leading to some
+    :ref:`addon-weblate.discovery.discovery` addon, leading to some
     changes in behavior and what parameters are accepted.
 
-Batch imports components into project based on the file mask.
+Batch imports components into project based on filemask.
 
 `<project>` names an existing project, into which the components are to
 be imported.
@@ -568,21 +543,21 @@ install_addon
 
 .. django-admin:: install_addon --addon ADDON <project|project/component>
 
-Installs an add-on to a set of components.
+Installs an addon to a set of components.
 
 .. django-admin-option:: --addon ADDON
 
-   Name of the add-on to install. For example ``weblate.gettext.customize``.
+   Name of the addon to install. For example ``weblate.gettext.customize``.
 
 .. django-admin-option:: --configuration CONFIG
 
-   JSON encoded configuration of an add-on.
+   JSON encoded configuration of an addon.
 
 .. django-admin-option:: --update
 
-   Update the existing add-on configuration.
+   Update the existing addon configuration.
 
-You can either define which project or component to install the add-on in (for example
+You can either define which project or component to install the addon in (for example
 ``weblate/application``), or use ``--all`` to include all existing components.
 
 To install :ref:`addon-weblate.gettext.customize` for all components:
@@ -593,7 +568,7 @@ To install :ref:`addon-weblate.gettext.customize` for all components:
 
 .. seealso::
 
-   :doc:`addons`
+   :ref:`addons`
 
 list_languages
 --------------
@@ -603,7 +578,7 @@ list_languages
 Lists supported languages in MediaWiki markup - language codes, English names
 and localized names.
 
-This is used to generate <https://wiki.l10n.cz/Slovn%C3%ADk_s_n%C3%A1zvy_jazyk%C5%AF>.
+This is used to generate <https://wiki.l10n.cz/Jazyky>.
 
 list_translators
 ----------------
@@ -713,7 +688,7 @@ You can either define which project or component to update (for example
 
 .. note::
 
-    Weblate pushes changes automatically if :ref:`component-push_on_commit` in
+    Weblate pushes changes automatically if :guilabel:`Push on commit` in
     :ref:`component` is turned on, which is the default.
 
 unlock_translation

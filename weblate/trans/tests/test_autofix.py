@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -19,7 +19,9 @@
 
 """Tests for automatix fixups."""
 
+
 from django.test import TestCase
+from django.utils.encoding import force_str
 
 from weblate.checks.tests.test_checks import MockUnit
 from weblate.trans.autofixes import fix_target
@@ -78,26 +80,6 @@ class AutoFixTest(TestCase):
             fix.fix_target(['<a href="#" onclick="foo()">link</a>'], unit),
             (['<a href="#">link</a>'], True),
         )
-        self.assertEqual(
-            fix.fix_target(["<https://weblate.org>"], unit),
-            (["&lt;https://weblate.org&gt;"], True),
-        )
-
-    def test_html_markdown(self):
-        fix = BleachHTML()
-        unit = MockUnit(
-            source='<a href="script:foo()">link</a>', flags="safe-html,md-text"
-        )
-        self.assertEqual(
-            fix.fix_target(
-                ['<a href="script:foo()">link</a><https://weblate.org>'], unit
-            ),
-            (["<a>link</a><https://weblate.org>"], True),
-        )
-        self.assertEqual(
-            fix.fix_target(["<https://weblate.org>"], unit),
-            (["<https://weblate.org>"], False),
-        )
 
     def test_zerospace(self):
         unit = MockUnit(source="Foo\u200b")
@@ -130,7 +112,7 @@ class AutoFixTest(TestCase):
         fixed, fixups = fix_target(["Bar..."], unit)
         self.assertEqual(fixed, ["Bar…"])
         self.assertEqual(len(fixups), 1)
-        self.assertEqual(str(fixups[0]), "Trailing ellipsis")
+        self.assertEqual(force_str(fixups[0]), "Trailing ellipsis")
 
     def test_apostrophes(self):
         unit = MockUnit(source="Foo")
@@ -138,7 +120,7 @@ class AutoFixTest(TestCase):
         # No flags
         self.assertEqual(fix.fix_target(["Bar"], unit), (["Bar"], False))
         # No format string, but forced
-        unit.flags = "java-format"
+        unit.flags = "java-messageformat"
         self.assertEqual(fix.fix_target(["Bar"], unit), (["Bar"], False))
         # No format string
         unit.flags = "auto-java-messageformat"
@@ -161,5 +143,5 @@ class AutoFixTest(TestCase):
         # Quoted format
         self.assertEqual(fix.fix_target(["'r''' {0}"], unit), (["''r'' {0}"], True))
         unit.source = "foo"
-        unit.flags = "java-format"
+        unit.flags = "java-messageformat"
         self.assertEqual(fix.fix_target(["bar'"], unit), (["bar''"], True))

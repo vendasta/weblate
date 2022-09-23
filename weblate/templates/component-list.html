@@ -2,8 +2,6 @@
 {% load i18n %}
 {% load translations %}
 {% load crispy_forms_tags %}
-{% load humanize %}
-{% load metrics %}
 
 {% block breadcrumbs %}
 <li><a href="{{ object.get_absolute_url }}">{{ object }}</a></li>
@@ -31,7 +29,22 @@
 </div>
 
 <div class="tab-pane" id="information">
-  {% include "snippets/info.html" with componentlist=object stats=object.stats metrics=object|metrics show_source=True %}
+
+<table class="table table-striped">
+<tr>
+<th>{% trans "Number of components" %}</th>
+<td colspan="2">{{ object.components.all|length }}</td>
+</tr>
+{% include "project_stats.html" with stats=object.stats %}
+{% for auto in object.autocomponentlist_set.all %}
+<tr>
+<th>{%if forloop.first%}{% trans "Automatic component list assignment" %}{% endif %}</th>
+<td><code>project ~= {{ auto.project_match }}</code></td>
+<td><code>component ~= {{ auto.component_match }}</code></td>
+</tr>
+{% endfor %}
+</table>
+
 </div>
 
 </div>

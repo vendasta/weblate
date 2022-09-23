@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,24 +17,23 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 from django.conf import settings
 from django.core.cache import cache
-from django.core.exceptions import ImproperlyConfigured
 from django.db.models import Count
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import translation
-from django.utils.html import format_html
+from django.utils.html import escape
+from django.utils.safestring import mark_safe
 from django.utils.translation import gettext as _
+from django.utils.translation.trans_real import parse_accept_lang_header
 from django.views.decorators.cache import never_cache
 
 from weblate.accounts.models import Profile
 from weblate.lang.models import Language
-from weblate.metrics.models import Metric
 from weblate.trans.forms import ReportsForm, SearchForm
 from weblate.trans.models import Component, ComponentList, Project, Translation
-from weblate.trans.models.component import prefetch_tasks
-from weblate.trans.models.project import prefetch_project_flags
 from weblate.trans.models.translation import GhostTranslation
 from weblate.trans.util import render
 from weblate.utils import messages
@@ -42,15 +41,10 @@ from weblate.utils.stats import prefetch_stats
 from weblate.utils.views import get_paginator
 
 
-def translation_prefetch_tasks(translations):
-    prefetch_tasks([translation.component for translation in translations])
-    return translations
-
-
 def get_untranslated(base, limit=None):
     """Filter untranslated."""
     result = []
-    for item in base:
+    for item in prefetch_stats(base):
         if item.stats.translated != item.stats.all:
             result.append(item)
             if limit and len(result) >= limit:
@@ -70,14 +64,11 @@ def get_suggestions(request, user, user_has_languages, base, filtered=False):
     if user_has_languages:
         # Remove user subscriptions
         result = get_untranslated(
-            prefetch_stats(
-                base.exclude(component__project__in=user.profile.watched.all())
-            ),
-            10,
+            base.exclude(component__project__in=user.profile.watched.all()), 10
         )
         if result:
             return result
-    return get_untranslated(prefetch_stats(base), 10)
+    return get_untranslated(base, 10)
 
 
 def guess_user_language(request, translations):
@@ -97,10 +88,17 @@ def guess_user_language(request, translations):
         except Language.DoesNotExist:
             pass
 
-    # Try getting from Accept-Language
-    language = Language.objects.get_request_language(request)
-    if language is not None:
-        return language
+    # Accept-Language HTTP header, for most browser it consists of browser
+    # language with higher rank and OS language with lower rank so it still
+    # might be usable guess
+    accept = request.META.get("HTTP_ACCEPT_LANGUAGE", "")
+    for accept_lang, _unused in parse_accept_lang_header(accept):
+        if accept_lang == "en":
+            continue
+        try:
+            return Language.objects.get(code=accept_lang)
+        except Language.DoesNotExist:
+            continue
 
     # Random language from existing translations, we do not want to list all
     # languages by default
@@ -116,10 +114,14 @@ def get_user_translations(request, user, user_has_languages):
 
     Works also for anonymous users based on current UI language.
     """
-    result = Translation.objects.prefetch().filter_access(user).order()
+    result = (
+        Translation.objects.prefetch()
+        .filter_access(user)
+        .order_by("component__priority", "component__project__name", "component__name")
+    )
 
     if user_has_languages:
-        result = result.filter(language__in=user.profile.all_languages)
+        result = result.filter(language__in=user.profile.languages.all())
     else:
         # Filter based on session language
         tmp = result.filter(language=guess_user_language(request, result))
@@ -127,22 +129,6 @@ def get_user_translations(request, user, user_has_languages):
             return tmp
 
     return result
-
-
-def redirect_single_project(user):
-    if isinstance(settings.SINGLE_PROJECT, str):
-        target = project = Project.objects.get(slug=settings.SINGLE_PROJECT)
-    elif Component.objects.filter(is_glossary=False).count() == 1:
-        target = Component.objects.filter(is_glossary=False).get()
-        project = target.project
-    elif Project.objects.count() == 1:
-        target = project = Project.objects.get()
-    else:
-        raise ImproperlyConfigured("SINGLE_PROJECT enabled, but no project found")
-
-    if not user.is_authenticated and not user.can_access_project(project):
-        return redirect(f"{settings.LOGIN_URL}?next={target.get_absolute_url()}")
-    return redirect(target)
 
 
 @never_cache
@@ -171,21 +157,28 @@ def home(request):
         )
         return redirect("password")
 
-    # Warn about not filled in username, this is usually caused by migration of
+    # Warn about not filled in username (usually caused by migration of
     # users from older system
     if user.is_authenticated and (not user.full_name or not user.email):
         messages.warning(
             request,
-            format_html(
-                '<a href="{}">{}</a>',
-                reverse("profile") + "#account",
-                _("Please set your full name and e-mail in your profile."),
+            mark_safe(
+                '<a href="{0}">{1}</a>'.format(
+                    reverse("profile") + "#account",
+                    escape(_("Please set your full name and e-mail in your profile.")),
+                )
             ),
         )
 
     # Redirect to single project or component
+    if isinstance(settings.SINGLE_PROJECT, str):
+        return redirect(Project.objects.get(slug=settings.SINGLE_PROJECT))
     if settings.SINGLE_PROJECT:
-        return redirect_single_project(user)
+        if Component.objects.count() == 1:
+            return redirect(Component.objects.first())
+
+        if Project.objects.count() == 1:
+            return redirect(Project.objects.first())
 
     if not user.is_authenticated:
         return dashboard_anonymous(request)
@@ -196,8 +189,7 @@ def home(request):
 def fetch_componentlists(user, user_translations):
     componentlists = list(
         ComponentList.objects.filter(
-            show_dashboard=True,
-            components__project_id__in=user.allowed_project_ids,
+            show_dashboard=True, components__project_id__in=user.allowed_project_ids,
         )
         .distinct()
         .order()
@@ -207,8 +199,8 @@ def fetch_componentlists(user, user_translations):
         # Force fetching the query now
         list(components)
 
-        translations = translation_prefetch_tasks(
-            prefetch_stats(list(user_translations.filter(component__in=components)))
+        translations = prefetch_stats(
+            list(user_translations.filter(component__in=components))
         )
 
         # Show ghost translations for user languages
@@ -216,13 +208,13 @@ def fetch_componentlists(user, user_translations):
             (translation.component.slug, translation.language.code)
             for translation in translations
         }
-        languages = user.profile.all_languages
+        languages = user.profile.languages.all()
         for component in components:
             for language in languages:
                 if (
                     component.slug,
                     language.code,
-                ) in existing or not component.can_add_new_language(user, fast=True):
+                ) in existing or not component.can_add_new_language(user):
                     continue
                 translations.append(GhostTranslation(component, language))
 
@@ -237,7 +229,7 @@ def dashboard_user(request):
     """Home page of Weblate for authenticated user."""
     user = request.user
 
-    user_has_languages = user.is_authenticated and user.profile.all_languages
+    user_has_languages = user.is_authenticated and user.profile.languages.exists()
 
     user_translations = get_user_translations(request, user, user_has_languages)
 
@@ -256,21 +248,17 @@ def dashboard_user(request):
         active_tab_slug = user.profile.dashboard_component_list.tab_slug()
 
     if user.is_authenticated:
-        usersubscriptions = prefetch_stats(
-            user_translations.filter_access(user).filter(
-                component__project__in=user.watched_projects
-            )
+        usersubscriptions = user_translations.filter_access(user).filter(
+            component__project__in=user.watched_projects
         )
 
         if user.profile.hide_completed:
             usersubscriptions = get_untranslated(usersubscriptions)
             for componentlist in componentlists:
                 componentlist.translations = get_untranslated(
-                    prefetch_stats(componentlist.translations)
+                    componentlist.translations
                 )
-
-        usersubscriptions = get_paginator(request, usersubscriptions)
-        usersubscriptions = translation_prefetch_tasks(usersubscriptions)
+        usersubscriptions = prefetch_stats(usersubscriptions)
 
     return render(
         request,
@@ -279,7 +267,7 @@ def dashboard_user(request):
             "allow_index": True,
             "suggestions": suggestions,
             "search_form": SearchForm(request.user),
-            "usersubscriptions": usersubscriptions,
+            "usersubscriptions": get_paginator(request, usersubscriptions),
             "componentlists": componentlists,
             "all_componentlists": prefetch_stats(
                 ComponentList.objects.filter(
@@ -302,17 +290,19 @@ def dashboard_anonymous(request):
             prefetch_stats(request.user.allowed_projects),
             key=lambda prj: -prj.stats.monthly_changes,
         )[:20]
-        top_project_ids = {p.id for p in top_projects}
-        cache.set("dashboard-anonymous-projects", top_project_ids, 3600)
-    top_projects = request.user.allowed_projects.filter(id__in=top_project_ids)
+        cache.set("dashboard-anonymous-projects", {p.id for p in top_projects}, 3600)
+    else:
+        # The allowed_projects is already fetched, so filter it in Python
+        # instead of doing additional query
+        top_projects = [
+            p for p in request.user.allowed_projects if p.id in top_project_ids
+        ]
 
     return render(
         request,
         "dashboard/anonymous.html",
         {
-            "top_projects": prefetch_stats(prefetch_project_flags(top_projects)),
-            "all_projects": Metric.objects.get_current(
-                None, Metric.SCOPE_GLOBAL, 0, name="projects"
-            )["projects"],
+            "top_projects": top_projects,
+            "all_projects": len(request.user.allowed_projects),
         },
     )

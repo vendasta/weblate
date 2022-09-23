@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -73,6 +73,7 @@ class Comment(models.Model, UserDisplayMixin):
     userdetails = JSONField()
 
     objects = CommentManager.from_queryset(CommentQuerySet)()
+    weblate_unsafe_delete = True
 
     class Meta:
         app_label = "trans"
@@ -80,7 +81,7 @@ class Comment(models.Model, UserDisplayMixin):
         verbose_name_plural = "string comments"
 
     def __str__(self):
-        return "comment for {} by {}".format(
+        return "comment for {0} by {1}".format(
             self.unit, self.user.username if self.user else "unknown"
         )
 

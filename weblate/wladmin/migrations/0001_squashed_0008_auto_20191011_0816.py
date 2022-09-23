@@ -59,10 +59,7 @@ class Migration(migrations.Migration):
                 (
                     "repository",
                     models.CharField(
-                        default="",
-                        max_length=500,
-                        verbose_name="Backup repository URL",
-                        help_text="Use /path/to/repo for local backups or user@host:/path/to/repo for remote SSH backups.",
+                        default="", max_length=500, verbose_name="Backup repository"
                     ),
                 ),
                 ("enabled", models.BooleanField(default=True)),

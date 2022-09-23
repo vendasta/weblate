@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -21,7 +21,6 @@ from django.contrib.sitemaps import Sitemap
 from django.urls import reverse
 
 from weblate.trans.models import Change, Component, Project, Translation
-from weblate.utils.stats import prefetch_stats
 
 
 class PagesSitemap(Sitemap):
@@ -51,6 +50,7 @@ class PagesSitemap(Sitemap):
 class WeblateSitemap(Sitemap):
     priority = 0.0
     changefreq = None
+    limit = 1000
 
     def items(self):
         raise NotImplementedError()
@@ -63,18 +63,16 @@ class ProjectSitemap(WeblateSitemap):
     priority = 0.8
 
     def items(self):
-        return prefetch_stats(
-            Project.objects.filter(access_control__lt=Project.ACCESS_PRIVATE).order_by(
-                "id"
-            )
-        )
+        return Project.objects.filter(
+            access_control__lt=Project.ACCESS_PRIVATE
+        ).order_by("id")
 
 
 class ComponentSitemap(WeblateSitemap):
     priority = 0.6
 
     def items(self):
-        return prefetch_stats(
+        return (
             Component.objects.prefetch_related("project")
             .filter(project__access_control__lt=Project.ACCESS_PRIVATE)
             .order_by("id")
@@ -85,11 +83,9 @@ class TranslationSitemap(WeblateSitemap):
     priority = 0.2
 
     def items(self):
-        return prefetch_stats(
+        return (
             Translation.objects.prefetch_related(
-                "component",
-                "component__project",
-                "language",
+                "component", "component__project", "language",
             )
             .filter(component__project__access_control__lt=Project.ACCESS_PRIVATE)
             .order_by("id")
@@ -112,10 +108,14 @@ class EngageLangSitemap(Sitemap):
 
     def items(self):
         """Return list of existing project, language tuples."""
+        ret = []
         projects = Project.objects.filter(
             access_control__lt=Project.ACCESS_PRIVATE
         ).order_by("id")
-        return [(project, lang) for project in projects for lang in project.languages]
+        for project in projects:
+            for lang in project.languages:
+                ret.append((project, lang))
+        return ret
 
     def location(self, obj):
         return reverse("engage", kwargs={"project": obj[0].slug, "lang": obj[1].code})

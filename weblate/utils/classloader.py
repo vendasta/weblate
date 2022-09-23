@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -30,54 +30,44 @@ def load_class(name, setting):
         module, attr = name.rsplit(".", 1)
     except ValueError as error:
         raise ImproperlyConfigured(
-            f'Error importing class {name} in {setting}: "{error}"'
+            'Error importing class {0} in {1}: "{2}"'.format(name, setting, error)
         )
     try:
         mod = import_module(module)
     except ImportError as error:
         raise ImproperlyConfigured(
-            f'Error importing module {module} in {setting}: "{error}"'
+            'Error importing module {0} in {1}: "{2}"'.format(module, setting, error)
         )
     try:
         return getattr(mod, attr)
     except AttributeError:
         raise ImproperlyConfigured(
-            f'Module "{module}" does not define a "{attr}" class in {setting}'
+            'Module "{0}" does not define a "{1}" class in {2}'.format(
+                module, attr, setting
+            )
         )
 
 
 class ClassLoader:
     """Dict like object to lazy load list of classes."""
 
-    def __init__(self, name: str, construct: bool = True, collect_errors: bool = False):
+    def __init__(self, name, construct=True):
         self.name = name
         self.construct = construct
-        self.collect_errors = collect_errors
-        self.errors = {}
-
-    def get_settings(self):
-        result = getattr(settings, self.name)
-        if result is None:
-            # Special case to disable all checks/...
-            result = []
-        elif not isinstance(result, (list, tuple)):
-            raise ImproperlyConfigured(f"Setting {self.name} must be list or tuple!")
-        return result
 
     def load_data(self):
         result = {}
-        value = self.get_settings()
-        for path in value:
-            try:
+        value = getattr(settings, self.name)
+        if value:
+            if not isinstance(value, (list, tuple)):
+                raise ImproperlyConfigured(
+                    f"Setting {self.name} must be list or tuple!"
+                )
+            for path in value:
                 obj = load_class(path, self.name)
-            except ImproperlyConfigured as error:
-                self.errors[path] = error
-                if self.collect_errors:
-                    continue
-                raise
-            if self.construct:
-                obj = obj()
-            result[obj.get_identifier()] = obj
+                if self.construct:
+                    obj = obj()
+                result[obj.get_identifier()] = obj
         return result
 
     @cached_property

@@ -38,8 +38,7 @@ The simple execution can look like:
    ./ci/run-migrate
    ./ci/run-test
    ./ci/run-docs
-
-.. _local-tests:
+   ./ci/run-setup
 
 Local testing
 +++++++++++++
