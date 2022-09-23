@@ -15,7 +15,7 @@ django-crispy-forms==1.8.1
 django-redis==4.11.0
 django_compressor==2.4
 djangorestframework>=3.9,<3.12
-hiredis==1.0.1
+hiredis==2.0.0
 httpretty==0.9.7
 jellyfish==0.7.2
 kombu==4.6.8
