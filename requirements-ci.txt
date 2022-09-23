@@ -4,7 +4,7 @@ akismet==1.1
 bleach==3.1.1
 boto3==1.12.19
 celery==4.4.0
-celery-batches==0.3
+celery-batches==0.7
 # For Azure Tenant auth
 cryptography==2.8
 defusedxml==0.6.0
