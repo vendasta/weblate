@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,28 +18,9 @@
 #
 
 
-class WeblateError(Exception):
-    """Base class for Weblate errors."""
-
-    def __init__(self, message=None):
-        super().__init__(message or self.__doc__)
+class FileParseError(Exception):
+    """Generic error for parsing."""
 
 
-class FileParseError(WeblateError):
-    """File parse error."""
-
-
-class PluralFormsMismatch(WeblateError):
+class PluralFormsMismatch(Exception):
     """Plural forms do not match the language."""
-
-
-class InvalidTemplate(WeblateError):
-    """Template file can not be parsed."""
-
-    def __init__(self, nested, message=None):
-        super().__init__(message or f"Template file can not be parsed: {nested}")
-        self.nested = nested
-
-
-class FailedCommitError(WeblateError):
-    """Failed to commit file."""

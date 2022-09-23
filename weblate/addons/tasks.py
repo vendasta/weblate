@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,20 +20,16 @@
 import os
 from typing import List
 
-from django.db import Error as DjangoDatabaseError
 from django.db import transaction
-from django.db.models import Q
 from lxml import html
 
 from weblate.addons.events import EVENT_DAILY
-from weblate.addons.models import Addon, handle_addon_error
+from weblate.addons.models import Addon
 from weblate.lang.models import Language
 from weblate.trans.models import Component, Project
 from weblate.utils.celery import app
 from weblate.utils.hash import calculate_checksum
 from weblate.utils.requests import request
-
-IGNORED_TAGS = {"script", "style"}
 
 
 @app.task(trail=False)
@@ -49,11 +45,11 @@ def cdn_parse_html(files: str, selector: str, component_id: int):
         try:
             if filename.startswith("http://") or filename.startswith("https://"):
                 with request("get", filename) as handle:
-                    content = handle.text
-            else:
-                with open(os.path.join(component.full_path, filename)) as handle:
                     content = handle.read()
-        except OSError as error:
+            else:
+                with open(os.path.join(component.full_path, filename), "r") as handle:
+                    content = handle.read()
+        except IOError as error:
             errors.append({"filename": filename, "error": str(error)})
             continue
 
@@ -63,9 +59,7 @@ def cdn_parse_html(files: str, selector: str, component_id: int):
             text = element.text
             if (
                 element.getchildren()
-                or element.tag in IGNORED_TAGS
                 or not text
-                or not text.strip()
                 or text in source_units
                 or text in units
             ):
@@ -73,8 +67,13 @@ def cdn_parse_html(files: str, selector: str, component_id: int):
             units.append(text)
 
     # Actually create units
-    for text in units:
-        source_translation.add_unit(None, calculate_checksum(text), text, None)
+    if units:
+        source_translation.new_unit(
+            request=None,
+            key=None,
+            value=None,
+            batch={calculate_checksum(text): text for text in units},
+        )
 
     if errors:
         component.add_alert("CDNAddonError", occurrences=errors)
@@ -88,20 +87,9 @@ def language_consistency(project_id: int, language_ids: List[int]):
     languages = Language.objects.filter(id__in=language_ids)
 
     for component in project.component_set.iterator():
-        missing = languages.exclude(
-            Q(translation__component=component) | Q(component=component)
-        )
-        if not missing:
-            continue
-        component.commit_pending("language consistency", None)
+        missing = languages.exclude(translation__component=component)
         for language in missing:
-            component.add_new_language(
-                language,
-                None,
-                send_signal=False,
-                create_translations=False,
-            )
-        component.create_translations()
+            component.add_new_language(language, None, send_signal=False)
 
 
 @app.task(trail=False)
@@ -110,13 +98,7 @@ def daily_addons():
         "component"
     ):
         with transaction.atomic():
-            addon.component.log_debug("running daily add-on: %s", addon.name)
-            try:
-                addon.addon.daily(addon.component)
-            except DjangoDatabaseError:
-                raise
-            except Exception:
-                handle_addon_error(addon, addon.component)
+            addon.addon.daily(addon.component)
 
 
 @app.on_after_finalize.connect

@@ -30,7 +30,6 @@
             $(".zen tfoot").before(data);
 
             this.init();
-            initHighlight(document);
           }
         );
       }
@@ -136,10 +135,8 @@
     var $row = $this.closest("tr");
     var checksum = $row.find("[name=checksum]").val();
 
-    var statusdiv = $("#status-" + checksum);
-
     /* Wait until previous operation on this field is completed */
-    if (statusdiv.hasClass("unit-state-saving")) {
+    if ($("#loading-" + checksum).is(":visible")) {
       setTimeout(function () {
         $this.trigger("change");
       }, 100);
@@ -149,25 +146,27 @@
     $row.addClass("translation-modified");
 
     var form = $row.find("form");
-    statusdiv.addClass("unit-state-saving");
-    var payload = form.serialize();
-    if (payload == statusdiv.data("last-payload")) {
-      return;
-    }
-    statusdiv.data("last-payload", payload);
+    var statusdiv = $("#status-" + checksum).hide();
+    var loadingdiv = $("#loading-" + checksum).show();
     $.ajax({
       type: "POST",
       url: form.attr("action"),
-      data: payload,
+      data: form.serialize(),
       dataType: "json",
       error: function (jqXHR, textStatus, errorThrown) {
         addAlert(errorThrown);
       },
       success: function (data) {
-        statusdiv.attr("class", "unit-state-cell " + data.unit_state_class);
-        statusdiv.attr("title", data.unit_state_title);
+        loadingdiv.hide();
+        statusdiv.show();
+        if (data.unit_flags.length > 0) {
+          $(statusdiv.children()[0]).attr(
+            "class",
+            "state-icon " + data.unit_flags.join(" ")
+          );
+        }
         $.each(data.messages, function (i, val) {
-          addAlert(val.text, val.kind);
+          addAlert(val.text);
         });
         $row.removeClass("translation-modified").addClass("translation-saved");
         if (data.translationsum !== "") {

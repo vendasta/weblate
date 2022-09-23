@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -16,8 +16,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
+
 import os
 import re
+import shutil
 import tempfile
 
 from django.conf import settings
@@ -29,7 +31,6 @@ from weblate.logger import LOGGER
 from weblate.trans.discovery import ComponentDiscovery
 from weblate.trans.models import Component, Project
 from weblate.trans.util import is_repo_link
-from weblate.utils.files import remove_tree
 from weblate.utils.management.base import BaseCommand
 from weblate.vcs.base import RepositoryException
 from weblate.vcs.models import VCS_REGISTRY
@@ -45,13 +46,15 @@ class Command(BaseCommand):
         parser.add_argument(
             "--name-template",
             default="{{ component }}",
-            help="Template string, transforming the file mask match to a project name",
+            help=(
+                "Template string, transforming the filemask " "match to a project name"
+            ),
         )
         parser.add_argument(
             "--base-file-template",
             default="",
             help=(
-                "Template string, transforming the file mask "
+                "Template string, transforming the filemask "
                 "match to a monolingual base filename"
             ),
         )
@@ -59,7 +62,7 @@ class Command(BaseCommand):
             "--new-base-template",
             default="",
             help=(
-                "Template string, transforming the file mask "
+                "Template string, transforming the filemask "
                 "match to a base filename for new translations"
             ),
         )
@@ -116,11 +119,6 @@ class Command(BaseCommand):
                 " VCS repository"
             ),
         )
-        parser.add_argument(
-            "--source-language",
-            default=settings.DEFAULT_LANGUAGE,
-            help="Source language code",
-        )
         parser.add_argument("project", help="Existing project slug")
         parser.add_argument("repo", help="VCS repository URL")
         parser.add_argument("branch", help="VCS repository branch")
@@ -135,7 +133,6 @@ class Command(BaseCommand):
         self.license = None
         self.main_component = None
         self.name_template = None
-        self.source_language = None
         self.base_file_template = None
         self.new_base_template = None
         self.vcs = None
@@ -154,9 +151,9 @@ class Command(BaseCommand):
         # Initialize git repository
         self.logger.info("Cloning git repository...")
         try:
-            gitrepo = VCS_REGISTRY[self.vcs].clone(repo, workdir, branch)
+            gitrepo = VCS_REGISTRY[self.vcs].clone(repo, workdir)
         except RepositoryException as error:
-            raise CommandError(f"Failed clone: {error}")
+            raise CommandError("Failed clone: {}".format(error))
         self.logger.info("Updating working copy in git repository...")
         with gitrepo.lock:
             gitrepo.configure_branch(branch)
@@ -175,7 +172,6 @@ class Command(BaseCommand):
         self.language_regex = options["language_regex"]
         self.main_component = options["main_component"]
         self.name_template = options["name_template"]
-        self.source_language = Language.objects.get(code=options["source_language"])
         if "%s" in self.name_template:
             self.name_template = self.name_template.replace("%s", "{{ component }}")
         self.license = options["license"]
@@ -189,11 +185,13 @@ class Command(BaseCommand):
 
         # Is file format supported?
         if self.file_format not in FILE_FORMATS:
-            raise CommandError("Invalid file format: {}".format(options["file_format"]))
+            raise CommandError(
+                "Invalid file format: {0}".format(options["file_format"])
+            )
 
         # Is vcs supported?
         if self.vcs not in VCS_REGISTRY:
-            raise CommandError("Invalid vcs: {}".format(options["vcs"]))
+            raise CommandError("Invalid vcs: {0}".format(options["vcs"]))
 
         # Do we have correct mask?
         # - if there is **, then it's simple mask (it's invalid in regexp)
@@ -211,7 +209,9 @@ class Command(BaseCommand):
                 compiled = re.compile(self.filemask)
             except re.error as error:
                 raise CommandError(
-                    f'Failed to compile regular expression "{self.filemask}": {error}'
+                    'Failed to compile regular expression "{0}": {1}'.format(
+                        self.filemask, error
+                    )
                 )
             if (
                 "component" not in compiled.groupindex
@@ -234,7 +234,7 @@ class Command(BaseCommand):
             project = Project.objects.get(slug=options["project"])
         except Project.DoesNotExist:
             raise CommandError(
-                'Project "{}" not found, please create it first!'.format(
+                'Project "{0}" not found, please create it first!'.format(
                     options["project"]
                 )
             )
@@ -248,7 +248,7 @@ class Command(BaseCommand):
                     component = component.linked_component
             except Component.DoesNotExist:
                 raise CommandError(
-                    f'Component "{repo}" not found, please create it first!'
+                    'Component "{0}" not found, ' "please create it first!".format(repo)
                 )
         else:
             component = self.import_initial(project, repo, branch)
@@ -287,7 +287,7 @@ class Command(BaseCommand):
             self.logger.info("Found %d languages", len(langs))
 
             # Do some basic sanity check on languages
-            if not Language.objects.filter(code__in=langs).exists():
+            if Language.objects.filter(code__in=langs).count() == 0:
                 raise CommandError(
                     "None of matched languages exists, maybe you have "
                     "mixed * and ** in the mask?"
@@ -334,7 +334,7 @@ class Command(BaseCommand):
                 "as a main component",
                 match["slug"],
             )
-            remove_tree(workdir)
+            shutil.rmtree(workdir)
         except Component.DoesNotExist:
             self.logger.info("Creating component %s as main one", match["slug"])
 
@@ -346,7 +346,6 @@ class Command(BaseCommand):
                 None,
                 match,
                 project=project,
-                source_language=self.source_language,
                 repo=repo,
                 branch=branch,
                 vcs=self.vcs,

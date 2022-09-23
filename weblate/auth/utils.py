@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,8 +17,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-from typing import Set
-
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
 
@@ -29,20 +27,6 @@ from weblate.auth.data import (
     ROLES,
     SELECTION_ALL,
 )
-
-
-def is_django_permission(permission: str):
-    """
-    Checks whether permission looks like a Django one.
-
-    Django permissions are <app>.<action>_<model>, while
-    Weblate ones are <scope>.<action> where action lacks underscores
-    with single exception of "add_more".
-    """
-    parts = permission.split(".", 1)
-    if len(parts) != 2:
-        return False
-    return "_" in parts[1] and parts[1] != "add_more"
 
 
 def migrate_permissions_list(model, permissions):
@@ -70,13 +54,12 @@ def migrate_permissions(model):
     model.objects.exclude(id__in=ids).delete()
 
 
-def migrate_roles(model, perm_model) -> Set[str]:
+def migrate_roles(model, perm_model):
     """Create roles as defined in the data."""
-    result = set()
+    result = False
     for role, permissions in ROLES:
         instance, created = model.objects.get_or_create(name=role)
-        if created:
-            result.add(role)
+        result |= created
         instance.permissions.set(
             perm_model.objects.filter(codename__in=permissions), clear=True
         )
@@ -86,14 +69,18 @@ def migrate_roles(model, perm_model) -> Set[str]:
 def migrate_groups(model, role_model, update=False):
     """Create groups as defined in the data."""
     for group, roles, selection in GROUPS:
-        instance, created = model.objects.get_or_create(
-            name=group,
-            internal=True,
-            project_selection=selection,
-            language_selection=SELECTION_ALL,
-        )
+        defaults = {
+            "internal": True,
+            "project_selection": selection,
+            "language_selection": SELECTION_ALL,
+        }
+        instance, created = model.objects.get_or_create(name=group, defaults=defaults)
         if created or update:
             instance.roles.set(role_model.objects.filter(name__in=roles), clear=True)
+        if update:
+            for key, value in defaults.items():
+                setattr(instance, key, value)
+            instance.save()
 
 
 def create_anonymous(model, group_model, update=True):
@@ -108,9 +95,10 @@ def create_anonymous(model, group_model, update=True):
     )
     if user.is_active:
         raise ValueError(
-            f"Anonymous user ({settings.ANONYMOUS_USER_NAME}) already exists and is "
-            "active, please change the ANONYMOUS_USER_NAME setting or mark the user "
-            "as not active in the admin interface."
+            "Anonymous user ({}) already exists and enabled, "
+            "please change ANONYMOUS_USER_NAME setting.".format(
+                settings.ANONYMOUS_USER_NAME
+            )
         )
 
     if created or update:

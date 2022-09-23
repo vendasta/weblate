@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,14 +17,16 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 import user_agents
+from django.utils.encoding import force_str
 
 
 def get_request_meta(request, name: str):
     """Returns request meta if request is set and meta available."""
     if not request:
         return ""
-    return request.META.get(name, "")
+    return force_str(request.META.get(name, ""), errors="replace")
 
 
 def get_ip_address(request):
@@ -40,4 +42,4 @@ def get_user_agent_raw(request):
 def get_user_agent(request, max_length: int = 200):
     """Return formatted user agent for request."""
     uaobj = user_agents.parse(get_user_agent_raw(request))
-    return str(uaobj)[:max_length]
+    return force_str(uaobj)[:max_length]

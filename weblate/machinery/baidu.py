@@ -17,10 +17,15 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 from django.conf import settings
 
-from .base import MachineryRateLimit, MachineTranslation, MachineTranslationError
-from .forms import KeySecretMachineryForm
+from weblate.machinery.base import (
+    MachineryRateLimit,
+    MachineTranslation,
+    MachineTranslationError,
+    MissingConfiguration,
+)
 
 BAIDU_API = "http://api.fanyi.baidu.com/api/trans/vip/translate"
 
@@ -50,14 +55,14 @@ class BaiduTranslation(MachineTranslation):
         "zh_Hant": "cht",
         "vi": "vie",
     }
-    settings_form = KeySecretMachineryForm
 
-    @staticmethod
-    def migrate_settings():
-        return {
-            "key": settings.MT_BAIDU_ID,
-            "secret": settings.MT_BAIDU_SECRET,
-        }
+    def __init__(self):
+        """Check configuration."""
+        super().__init__()
+        if settings.MT_BAIDU_ID is None:
+            raise MissingConfiguration("Baidu Translate requires app key")
+        if settings.MT_BAIDU_SECRET is None:
+            raise MissingConfiguration("Baidu Translate requires app secret")
 
     def download_languages(self):
         """List of supported languages."""
@@ -92,25 +97,16 @@ class BaiduTranslation(MachineTranslation):
             "vie",
         ]
 
-    def download_translations(
-        self,
-        source,
-        language,
-        text: str,
-        unit,
-        user,
-        search: bool,
-        threshold: int = 75,
-    ):
+    def download_translations(self, source, language, text, unit, user, search):
         """Download list of possible translations from a service."""
         salt, sign = self.signed_salt(
-            self.settings["key"], self.settings["secret"], text
+            settings.MT_BAIDU_ID, settings.MT_BAIDU_SECRET, text
         )
         args = {
             "q": text,
             "from": source,
             "to": language,
-            "appid": self.settings["key"],
+            "appid": settings.MT_BAIDU_ID,
             "salt": salt,
             "sign": sign,
         }

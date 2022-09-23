@@ -3,9 +3,7 @@
 import django.db.models.deletion
 from django.db import migrations, models
 
-from weblate.trans.defines import PROJECT_NAME_LENGTH
-
-GLOSSARY_LENGTH = 190
+from weblate.trans.defines import GLOSSARY_LENGTH, PROJECT_NAME_LENGTH
 
 
 class Migration(migrations.Migration):

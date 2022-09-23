@@ -1,6 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
-# Copyright © 2022 WofWca <wofwca@protonmail.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -18,9 +17,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
-from django.utils.html import conditional_escape, format_html, format_html_join
 from django.views.decorators.http import require_POST
 
 from weblate.lang.models import Language
@@ -33,16 +32,6 @@ from weblate.utils.views import get_component, get_project, show_form_errors
 RST_HEADING = " ".join(["=" * 40] * 2 + ["=" * 24] * 20)
 
 HTML_HEADING = "<table>\n<tr>{0}</tr>"
-
-
-def format_plaintext(format_string, *args, **kwargs):
-    """Same as `format_html` in syntax, but performs no escaping."""
-    return format_string.format(*args, **kwargs)
-
-
-def format_plaintext_join(sep, format_string, args_generator):
-    """Same as `format_html_join` in syntax, but performs no escaping."""
-    return sep.join(format_plaintext(format_string, *args) for args in args_generator)
 
 
 def generate_credits(user, start_date, end_date, **kwargs):
@@ -88,56 +77,53 @@ def get_credits(request, project=None, component=None):
         None if request.user.has_perm("reports.view", obj) else request.user,
         form.cleaned_data["start_date"],
         form.cleaned_data["end_date"],
-        **kwargs,
+        **kwargs
     )
 
     if form.cleaned_data["style"] == "json":
         return JsonResponse(data=data, safe=False)
 
     if form.cleaned_data["style"] == "html":
-        wrap_format = "<table><tbody>{}</tbody></table>"
-        language_format = """
-        <tr>
-            <th>{language}</th>
-            <td><ul>{translators}</ul></td>
-        </tr>
-        """
+        start = "<table>"
+        row_start = "<tr>"
+        language_format = "<th>{0}</th>"
+        translator_start = "<td><ul>"
         translator_format = '<li><a href="mailto:{0}">{1}</a> ({2})</li>'
+        translator_end = "</ul></td>"
+        row_end = "</tr>"
         mime = "text/html"
-        format_html_or_plain = format_html
-        format_html_or_plain_join = format_html_join
+        end = "</table>"
     else:
-        wrap_format = "{}"
-        language_format = "* {language}\n\n{translators}\n"
+        start = ""
+        row_start = ""
+        language_format = "* {0}\n"
+        translator_start = ""
         translator_format = "    * {1} <{0}> ({2})"
+        translator_end = ""
+        row_end = ""
         mime = "text/plain"
-        format_html_or_plain = format_plaintext
-        format_html_or_plain_join = format_plaintext_join
+        end = ""
 
-    language_outputs = []
+    result = []
+
+    result.append(start)
+
     for language in data:
         name, translators = language.popitem()
-        language_outputs.append(
-            format_html_or_plain(
-                language_format,
-                language=name,
-                translators=format_html_or_plain_join(
-                    "\n",
-                    translator_format,
-                    ((t[0], t[1], t[2]) for t in translators),
-                ),
-            )
+        result.append(row_start)
+        result.append(language_format.format(name))
+        result.append(
+            translator_start
+            + "\n".join(translator_format.format(*t) for t in translators)
+            + translator_end
         )
+        result.append(row_end)
 
-    body = format_html_or_plain(
-        wrap_format,
-        format_html_or_plain_join("\n\n", "{}", ((v,) for v in language_outputs)),
+    result.append(end)
+
+    return HttpResponse(
+        "\n".join(result), content_type="{0}; charset=utf-8".format(mime)
     )
-    # Just in case someone messes something up.
-    # Also consider simply using `html.unescape` instead.
-    if mime != "text/plain":
-        body = conditional_escape(body)
-    return HttpResponse(body, content_type=f"{mime}; charset=utf-8")
 
 
 COUNT_DEFAULTS = {
@@ -243,7 +229,7 @@ def get_counts(request, project=None, component=None):
         None if request.user.has_perm("reports.view", obj) else request.user,
         form.cleaned_data["start_date"],
         form.cleaned_data["end_date"],
-        **kwargs,
+        **kwargs
     )
 
     if form.cleaned_data["style"] == "json":
@@ -279,22 +265,17 @@ def get_counts(request, project=None, component=None):
     )
 
     if form.cleaned_data["style"] == "html":
-        start = format_html(
-            HTML_HEADING,
-            format_html_join("", "<th>{}</th>", ((header,) for header in headers)),
-        )
+        start = HTML_HEADING.format("".join("<th>{0}</th>".format(h) for h in headers))
         row_start = "<tr>"
         cell_name = cell_count = "<td>{0}</td>\n"
         row_end = "</tr>"
         mime = "text/html"
         end = "</table>"
-        format_html_or_plain = format_html
-        format_html_or_plain_join = format_html_join
     else:
         start = "{0}\n{1} {2}\n{0}".format(
             RST_HEADING,
-            " ".join(f"{h:40}" for h in headers[:2]),
-            " ".join(f"{h:24}" for h in headers[2:]),
+            " ".join("{0:40}".format(h) for h in headers[:2]),
+            " ".join("{0:24}".format(h) for h in headers[2:]),
         )
         row_start = ""
         cell_name = "{0:40} "
@@ -302,46 +283,44 @@ def get_counts(request, project=None, component=None):
         row_end = ""
         mime = "text/plain"
         end = RST_HEADING
-        format_html_or_plain = format_plaintext
-        format_html_or_plain_join = format_plaintext_join
 
-    result = [start]
+    result = []
+
+    result.append(start)
 
     for item in data:
         if row_start:
             result.append(row_start)
         result.append(
-            format_html_or_plain_join(
-                "",
-                "{}",
+            "".join(
                 (
-                    (format_html_or_plain(cell_name, item["name"] or "Anonymous"),),
-                    (format_html_or_plain(cell_name, item["email"] or ""),),
-                    (format_html_or_plain(cell_count, item["count"]),),
-                    (format_html_or_plain(cell_count, item["edits"]),),
-                    (format_html_or_plain(cell_count, item["words"]),),
-                    (format_html_or_plain(cell_count, item["chars"]),),
-                    (format_html_or_plain(cell_count, item["t_words"]),),
-                    (format_html_or_plain(cell_count, item["t_chars"]),),
-                    (format_html_or_plain(cell_count, item["count_new"]),),
-                    (format_html_or_plain(cell_count, item["edits_new"]),),
-                    (format_html_or_plain(cell_count, item["words_new"]),),
-                    (format_html_or_plain(cell_count, item["chars_new"]),),
-                    (format_html_or_plain(cell_count, item["t_words_new"]),),
-                    (format_html_or_plain(cell_count, item["t_chars_new"]),),
-                    (format_html_or_plain(cell_count, item["count_approve"]),),
-                    (format_html_or_plain(cell_count, item["edits_approve"]),),
-                    (format_html_or_plain(cell_count, item["words_approve"]),),
-                    (format_html_or_plain(cell_count, item["chars_approve"]),),
-                    (format_html_or_plain(cell_count, item["t_words_approve"]),),
-                    (format_html_or_plain(cell_count, item["t_chars_approve"]),),
-                    (format_html_or_plain(cell_count, item["count_edit"]),),
-                    (format_html_or_plain(cell_count, item["edits_edit"]),),
-                    (format_html_or_plain(cell_count, item["words_edit"]),),
-                    (format_html_or_plain(cell_count, item["chars_edit"]),),
-                    (format_html_or_plain(cell_count, item["t_words_edit"]),),
-                    (format_html_or_plain(cell_count, item["t_chars_edit"]),),
-                ),
+                    cell_name.format(item["name"] or "Anonymous"),
+                    cell_name.format(item["email"] or ""),
+                    cell_count.format(item["count"]),
+                    cell_count.format(item["edits"]),
+                    cell_count.format(item["words"]),
+                    cell_count.format(item["chars"]),
+                    cell_count.format(item["t_words"]),
+                    cell_count.format(item["t_chars"]),
+                    cell_count.format(item["count_new"]),
+                    cell_count.format(item["edits_new"]),
+                    cell_count.format(item["words_new"]),
+                    cell_count.format(item["chars_new"]),
+                    cell_count.format(item["t_words_new"]),
+                    cell_count.format(item["t_chars_new"]),
+                    cell_count.format(item["count_approve"]),
+                    cell_count.format(item["edits_approve"]),
+                    cell_count.format(item["words_approve"]),
+                    cell_count.format(item["chars_approve"]),
+                    cell_count.format(item["t_words_approve"]),
+                    cell_count.format(item["t_chars_approve"]),
+                    cell_count.format(item["count_edit"]),
+                    cell_count.format(item["edits_edit"]),
+                    cell_count.format(item["words_edit"]),
+                    cell_count.format(item["chars_edit"]),
+                    cell_count.format(item["t_words_edit"]),
+                    cell_count.format(item["t_chars_edit"]),
+                )
             )
         )
         if row_end:
@@ -349,4 +328,6 @@ def get_counts(request, project=None, component=None):
 
     result.append(end)
 
-    return HttpResponse("\n".join(result), content_type=f"{mime}; charset=utf-8")
+    return HttpResponse(
+        "\n".join(result), content_type="{0}; charset=utf-8".format(mime)
+    )

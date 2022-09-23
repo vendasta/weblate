@@ -111,7 +111,7 @@ class Migration(migrations.Migration):
                 (
                     "internal",
                     models.BooleanField(
-                        default=False, verbose_name="Internal Weblate group"
+                        default=False, verbose_name="Weblate internal group"
                     ),
                 ),
                 (
@@ -200,9 +200,9 @@ class Migration(migrations.Migration):
                     "match",
                     weblate.trans.fields.RegexField(
                         default="^.*$",
-                        help_text="Users with e-mail addresses found to match will be added to this group.",
+                        help_text="Regular expression used to match user e-mail.",
                         max_length=200,
-                        verbose_name="Regular expression for e-mail address",
+                        verbose_name="E-mail regular expression",
                     ),
                 ),
                 (

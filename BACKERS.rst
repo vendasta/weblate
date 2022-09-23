@@ -1,5 +1,5 @@
-Supporters who have funded Weblate
-++++++++++++++++++++++++++++++++++
+Backers who have funded Weblate
++++++++++++++++++++++++++++++++
 
 List of Weblate supporters:
 
@@ -10,9 +10,6 @@ List of Weblate supporters:
 * Loic Dachary
 * Marozed
 * https://freedombox.org/
-* `GNU Solidario (GNU Health) <https://www.gnuhealth.org/>`_
-* `BallotReady <https://www.ballotready.org>`_
-* Richard Nespithal
-* MyExpenses.Mobi
+* GNU Solidario (GNU Health)
 
 Do you want to be in the list? Please see options on the `Donate to Weblate <https://weblate.org/donate/>`_.

@@ -10,14 +10,8 @@
     }
   },
   "orangutan": {
-    "message": "Orangutan has $coUnT$ bananas",
-    "description": "Description",
-    "placeholders": {
-      "count": {
-        "content": "$1",
-        "example": "5"
-      }
-    }
+    "message": "",
+    "description": "Description"
   },
   "try": {
     "message": "",

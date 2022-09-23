@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -22,18 +22,15 @@ from django.urls import include, path
 
 from weblate.api.routers import WeblateRouter
 from weblate.api.views import (
-    AddonViewSet,
     ChangeViewSet,
     ComponentListViewSet,
     ComponentViewSet,
     GroupViewSet,
     LanguageViewSet,
-    MemoryViewSet,
     Metrics,
     ProjectViewSet,
     RoleViewSet,
     ScreenshotViewSet,
-    TasksViewSet,
     TranslationViewSet,
     UnitViewSet,
     UserViewSet,
@@ -45,16 +42,14 @@ router.register("users", UserViewSet)
 router.register("groups", GroupViewSet)
 router.register("roles", RoleViewSet)
 router.register("projects", ProjectViewSet)
-router.register("components", ComponentViewSet)
+router.register("components", ComponentViewSet, "component")
 router.register("translations", TranslationViewSet)
-router.register("memory", MemoryViewSet)
 router.register("languages", LanguageViewSet)
 router.register("component-lists", ComponentListViewSet)
 router.register("changes", ChangeViewSet)
 router.register("units", UnitViewSet)
 router.register("screenshots", ScreenshotViewSet)
-router.register("tasks", TasksViewSet, "task")
-router.register("addons", AddonViewSet)
+
 
 # Wire up our API using automatic URL routing.
 # Additionally, we include login URLs for the browsable API.

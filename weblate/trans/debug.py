@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -36,15 +36,7 @@ class WeblateExceptionReporterFilter(SafeExceptionReporterFilter):
             else:
                 meta["WEBLATE_LANGUAGE"] = ""
 
-            try:
-                for name, _url, version in get_versions_list():
-                    meta[f"WEBLATE_VERSION:{name}"] = version
-            except FileNotFoundError:
-                # Can happen during upgrade - the module is installed
-                # in newer version and different path
-                pass
-            except OSError:
-                # Out of memory or too many open files
-                pass
+            for version in get_versions_list():
+                meta["WEBLATE_VERSION:{0}".format(version[0])] = version[2]
 
         return super().get_post_parameters(request)

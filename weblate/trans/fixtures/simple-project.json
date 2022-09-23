@@ -6,10 +6,12 @@
       "name": "Test",
       "slug": "test",
       "web": "https://weblate.org/",
+      "mail": "",
       "instructions": "",
       "set_language_team": true,
       "access_control": 0,
-      "enable_hooks": true
+      "enable_hooks": true,
+      "source_language": 63
     }
   },
   {
@@ -17,7 +19,7 @@
     "pk": 1,
     "fields": {
       "unit": 3,
-      "name": "same",
+      "check": "same",
       "dismissed": false
     }
   },
@@ -26,7 +28,7 @@
     "pk": 2,
     "fields": {
       "unit": 7,
-      "name": "same",
+      "check": "same",
       "dismissed": false
     }
   },
@@ -35,7 +37,7 @@
     "pk": 3,
     "fields": {
       "unit": 15,
-      "name": "multiple_failures",
+      "check": "multiple_failures",
       "dismissed": false
     }
   },
@@ -176,13 +178,13 @@
     "fields": {
       "translation": 1,
       "id_hash": -2012431413508206962,
+      "content_hash": -2012431413508206962,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:11",
       "context": "",
       "note": "",
       "flags": "c-format",
       "source": "Hello, world!\n",
-      "source_unit": 13,
       "previous_source": "",
       "target": "",
       "state": 0,
@@ -197,13 +199,13 @@
     "fields": {
       "translation": 1,
       "id_hash": 2097404709965985808,
+      "content_hash": 2097404709965985808,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:12",
       "context": "",
       "note": "",
       "flags": "c-format",
       "source": "Orangutan has %d banana.\n\u001e\u001eOrangutan has %d bananas.\n",
-      "source_unit": 14,
       "previous_source": "",
       "target": "\u001e\u001e\u001e\u001e",
       "state": 0,
@@ -218,13 +220,13 @@
     "fields": {
       "translation": 1,
       "id_hash": 7590565419956117013,
+      "content_hash": 7590565419956117013,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:13",
       "context": "",
       "note": "",
       "flags": "c-format",
       "source": "Try Weblate at <https://demo.weblate.org/>!\n",
-      "source_unit": 15,
       "previous_source": "",
       "target": "",
       "state": 0,
@@ -239,13 +241,13 @@
     "fields": {
       "translation": 1,
       "id_hash": -3793118914799002855,
+      "content_hash": -3793118914799002855,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:14",
       "context": "",
       "note": "",
       "flags": "",
       "source": "Thank you for using Weblate.",
-      "source_unit": 16,
       "previous_source": "",
       "target": "",
       "state": 0,
@@ -260,13 +262,13 @@
     "fields": {
       "translation": 2,
       "id_hash": -2012431413508206962,
+      "content_hash": -2012431413508206962,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:11",
       "context": "",
       "note": "",
       "flags": "c-format",
       "source": "Hello, world!\n",
-      "source_unit": 13,
       "previous_source": "",
       "target": "",
       "state": 0,
@@ -281,13 +283,13 @@
     "fields": {
       "translation": 2,
       "id_hash": 2097404709965985808,
+      "content_hash": 2097404709965985808,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:12",
       "context": "",
       "note": "",
       "flags": "c-format",
       "source": "Orangutan has %d banana.\n\u001e\u001eOrangutan has %d bananas.\n",
-      "source_unit": 14,
       "previous_source": "",
       "target": "\u001e\u001e",
       "state": 0,
@@ -302,13 +304,13 @@
     "fields": {
       "translation": 2,
       "id_hash": 7590565419956117013,
+      "content_hash": 7590565419956117013,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:13",
       "context": "",
       "note": "",
       "flags": "c-format",
       "source": "Try Weblate at <https://demo.weblate.org/>!\n",
-      "source_unit": 15,
       "previous_source": "",
       "target": "Try Weblate at <https://demo.weblate.org/>!\n",
       "state": 20,
@@ -323,13 +325,13 @@
     "fields": {
       "translation": 2,
       "id_hash": -3793118914799002855,
+      "content_hash": -3793118914799002855,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:14",
       "context": "",
       "note": "",
       "flags": "",
       "source": "Thank you for using Weblate.",
-      "source_unit": 16,
       "previous_source": "",
       "target": "",
       "state": 0,
@@ -344,13 +346,13 @@
     "fields": {
       "translation": 3,
       "id_hash": -2012431413508206962,
+      "content_hash": -2012431413508206962,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:11",
       "context": "",
       "note": "",
       "flags": "c-format",
       "source": "Hello, world!\n",
-      "source_unit": 13,
       "previous_source": "",
       "target": "",
       "state": 0,
@@ -365,13 +367,13 @@
     "fields": {
       "translation": 3,
       "id_hash": 2097404709965985808,
+      "content_hash": 2097404709965985808,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:12",
       "context": "",
       "note": "",
       "flags": "c-format",
       "source": "Orangutan has %d banana.\n\u001e\u001eOrangutan has %d bananas.\n",
-      "source_unit": 14,
       "previous_source": "",
       "target": "\u001e\u001e",
       "state": 0,
@@ -386,13 +388,13 @@
     "fields": {
       "translation": 3,
       "id_hash": 7590565419956117013,
+      "content_hash": 7590565419956117013,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:13",
       "context": "",
       "note": "",
       "flags": "c-format",
       "source": "Try Weblate at <https://demo.weblate.org/>!\n",
-      "source_unit": 15,
       "previous_source": "",
       "target": "Try Weblate at <https://demo.weblate.org/>!\n",
       "state": 20,
@@ -407,13 +409,13 @@
     "fields": {
       "translation": 3,
       "id_hash": -3793118914799002855,
+      "content_hash": -3793118914799002855,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:14",
       "context": "",
       "note": "",
       "flags": "",
       "source": "Thank you for using Weblate.",
-      "source_unit": 16,
       "previous_source": "",
       "target": "",
       "state": 0,
@@ -426,9 +428,9 @@
     "model": "trans.unit",
     "pk": 13,
     "fields": {
-      "source_unit": 13,
       "translation": 4,
       "id_hash": -2012431413508206962,
+      "content_hash": -2012431413508206962,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:11",
       "context": "",
@@ -437,7 +439,7 @@
       "source": "Hello, world!\n",
       "target": "Hello, world!\n",
       "previous_source": "",
-      "state": 100,
+      "state": 1000,
       "position": 1,
       "num_words": 2,
       "priority": 100
@@ -447,9 +449,9 @@
     "model": "trans.unit",
     "pk": 14,
     "fields": {
-      "source_unit": 14,
       "translation": 4,
       "id_hash": 2097404709965985808,
+      "content_hash": 2097404709965985808,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:12",
       "context": "",
@@ -468,9 +470,9 @@
     "model": "trans.unit",
     "pk": 15,
     "fields": {
-      "source_unit": 15,
       "translation": 4,
       "id_hash": 7590565419956117013,
+      "content_hash": 7590565419956117013,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:13",
       "context": "",
@@ -489,9 +491,9 @@
     "model": "trans.unit",
     "pk": 16,
     "fields": {
-      "source_unit": 16,
       "translation": 4,
       "id_hash": -3793118914799002855,
+      "content_hash": -3793118914799002855,
       "timestamp": "2017-06-15T11:30:47.359Z",
       "location": "main.c:14",
       "context": "",
@@ -560,7 +562,6 @@
     "fields": {
       "name": "Test",
       "slug": "test",
-      "source_language": 63,
       "project": 1,
       "vcs": "git",
       "repo": "file:///home/nijel/work/weblate/data-test/test-repo.git",
@@ -568,7 +569,7 @@
       "repoweb": "",
       "git_export": "http://example.com/git/test/test/",
       "report_source_bugs": "",
-      "branch": "main",
+      "branch": "master",
       "filemask": "po/*.po",
       "template": "",
       "edit_template": true,
@@ -587,6 +588,8 @@
       "commit_message": "Translated using Weblate (%(language_name)s)\n\nCurrently translated at %(translated_percent)s%% (%(translated)s of %(total)s strings)\n\nTranslation: %(project)s/%(component)s\nTranslate-URL: %(url)s",
       "add_message": "Added translation using Weblate (%(language_name)s)\n\n",
       "delete_message": "Deleted translation using Weblate (%(language_name)s)\n\n",
+      "committer_name": "Weblate",
+      "committer_email": "noreply@weblate.org",
       "language_regex": "^[^.]+$",
       "priority": 100
     }
@@ -1919,7 +1922,7 @@
     "pk": 148,
     "fields": {
       "code": "ckb",
-      "name": "Central Kurdish",
+      "name": "Sorani",
       "direction": "rtl"
     }
   },
@@ -3152,7 +3155,7 @@
     "pk": 289,
     "fields": {
       "code": "kmr",
-      "name": "Northern Kurdish",
+      "name": "Kurmanji",
       "direction": "ltr"
     }
   },

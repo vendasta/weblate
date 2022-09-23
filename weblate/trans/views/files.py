@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -21,12 +21,13 @@ import os
 
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect
+from django.utils.encoding import force_str
 from django.utils.translation import gettext as _
 from django.utils.translation import ngettext
 from django.views.decorators.http import require_POST
 
 from weblate.lang.models import Language
-from weblate.trans.exceptions import FailedCommitError, PluralFormsMismatch
+from weblate.trans.exceptions import PluralFormsMismatch
 from weblate.trans.forms import DownloadForm, get_upload_form
 from weblate.trans.models import ComponentList, Translation
 from weblate.utils import messages
@@ -42,15 +43,9 @@ from weblate.utils.views import (
 )
 
 
-def download_multi(translations, commit_objs, fmt=None, name="translations"):
+def download_multi(translations, fmt=None):
     filenames = set()
     components = set()
-
-    for obj in commit_objs:
-        try:
-            obj.commit_pending("download", None)
-        except Exception:
-            report_error(cause="Download commit")
 
     for translation in translations:
         # Add translation files
@@ -60,88 +55,68 @@ def download_multi(translations, commit_objs, fmt=None, name="translations"):
         if translation.component_id in components:
             continue
         components.add(translation.component_id)
-        for filename in (
+        for name in (
             translation.component.template,
             translation.component.new_base,
             translation.component.intermediate,
         ):
-            if filename:
-                fullname = os.path.join(translation.component.full_path, filename)
+            if name:
+                fullname = os.path.join(translation.component.full_path, name)
                 if os.path.exists(fullname):
                     filenames.add(fullname)
 
-    return zip_download(data_dir("vcs"), sorted(filenames), name)
+    return zip_download(data_dir("vcs"), sorted(filenames))
 
 
 def download_component_list(request, name):
     obj = get_object_or_404(ComponentList, slug__iexact=name)
-    if not request.user.has_perm("translation.download", obj):
-        raise PermissionDenied()
     components = obj.components.filter_access(request.user)
+    for component in components:
+        component.commit_pending("download", None)
     return download_multi(
-        Translation.objects.filter(component__in=components),
-        components,
-        request.GET.get("format"),
-        name=obj.slug,
+        Translation.objects.filter(component__in=components), request.GET.get("format")
     )
 
 
 def download_component(request, project, component):
     obj = get_component(request, project, component)
-    if not request.user.has_perm("translation.download", obj):
-        raise PermissionDenied()
-    return download_multi(
-        obj.translation_set.all(),
-        [obj],
-        request.GET.get("format"),
-        name=obj.full_slug.replace("/", "-"),
-    )
+    obj.commit_pending("download", None)
+    return download_multi(obj.translation_set.all(), request.GET.get("format"))
 
 
 def download_project(request, project):
     obj = get_project(request, project)
-    if not request.user.has_perm("translation.download", obj):
-        raise PermissionDenied()
-    components = obj.component_set.filter_access(request.user)
+    obj.commit_pending("download", None)
     return download_multi(
-        Translation.objects.filter(component__in=components),
-        [obj],
-        request.GET.get("format"),
-        name=obj.slug,
+        Translation.objects.filter(component__project=obj), request.GET.get("format")
     )
 
 
 def download_lang_project(request, lang, project):
     obj = get_project(request, project)
-    if not request.user.has_perm("translation.download", obj):
-        raise PermissionDenied()
+    obj.commit_pending("download", None)
     langobj = get_object_or_404(Language, code=lang)
-    components = obj.component_set.filter_access(request.user)
     return download_multi(
-        Translation.objects.filter(component__in=components, language=langobj),
-        [obj],
+        Translation.objects.filter(component__project=obj, language=langobj),
         request.GET.get("format"),
-        name=f"{obj.slug}-{langobj.code}",
     )
 
 
 def download_translation(request, project, component, lang):
     obj = get_translation(request, project, component, lang)
-    if not request.user.has_perm("translation.download", obj):
-        raise PermissionDenied()
 
     kwargs = {}
 
     if "format" in request.GET or "q" in request.GET:
-        form = DownloadForm(obj, request.GET)
+        form = DownloadForm(request.GET)
         if not form.is_valid():
             show_form_errors(request, form)
             return redirect(obj)
 
-        kwargs["query_string"] = form.cleaned_data.get("q", "")
+        kwargs["units"] = obj.unit_set.search(form.cleaned_data.get("q", "")).distinct()
         kwargs["fmt"] = form.cleaned_data["format"]
 
-    return download_translation_file(request, obj, **kwargs)
+    return download_translation_file(obj, **kwargs)
 
 
 @require_POST
@@ -180,7 +155,7 @@ def upload_translation(request, project, component, lang):
 
     # Do actual import
     try:
-        not_found, skipped, accepted, total = obj.handle_upload(
+        not_found, skipped, accepted, total = obj.merge_upload(
             request,
             request.FILES["file"],
             conflicts,
@@ -208,14 +183,11 @@ def upload_translation(request, project, component, lang):
             request,
             _("Plural forms in the uploaded file do not match current translation."),
         )
-    except FailedCommitError as error:
-        messages.error(request, str(error))
-        report_error(cause="Upload error")
     except Exception as error:
         messages.error(
             request,
             _("File upload has failed: %s")
-            % str(error).replace(obj.component.full_path, ""),
+            % force_str(error).replace(obj.component.full_path, ""),
         )
         report_error(cause="Upload error")
 

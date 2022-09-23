@@ -5,5 +5,3 @@ rules:
     max: 500
     level: error
   document-start: disable
-  indentation:
-    indent-sequences: false

@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,31 +20,32 @@
 import requests
 from django.conf import settings
 
-import weblate.utils.version
+import weblate
 from weblate.utils.management.base import BaseCommand
 
 TAGS_API = "https://api.github.com/repos/WeblateOrg/weblate/git/ref/tags/{}"
-RELEASES_API = "https://sentry.weblate.org/api/0/organizations/weblate/releases/"
+RELEASES_API = "https://sentry.io/api/0/organizations/{}/releases/"
 
 
 class Command(BaseCommand):
     help = "records a release on Sentry"
 
     def handle(self, *args, **options):
-        if weblate.utils.version.GIT_REVISION:
+        if weblate.GIT_REVISION:
             # Get release from Git
-            version = ref = weblate.utils.version.GIT_REVISION
+            version = ref = weblate.GIT_REVISION
         else:
             # Get commit hash from GitHub
-            version = weblate.utils.version.TAG_NAME
+            version = weblate.TAG_NAME
             response = requests.get(TAGS_API.format(version))
             response.raise_for_status()
             response = requests.get(response.json()["object"]["url"])
             response.raise_for_status()
             ref = response.json()["object"]["sha"]
 
-        sentry_auth = {"Authorization": f"Bearer {settings.SENTRY_TOKEN}"}
-        release_url = RELEASES_API + version + "/"
+        sentry_auth = {"Authorization": "Bearer {}".format(settings.SENTRY_TOKEN)}
+        sentry_base = RELEASES_API.format(settings.SENTRY_ORGANIZATION)
+        release_url = sentry_base + version + "/"
 
         # Ensure the release is tracked on Sentry
         response = requests.get(release_url, headers=sentry_auth)
@@ -55,8 +56,8 @@ class Command(BaseCommand):
                 "ref": ref,
                 "refs": [{"repository": "WeblateOrg/weblate", "commit": ref}],
             }
-            response = requests.post(RELEASES_API, json=data, headers=sentry_auth)
-            self.stdout.write(f"Created new release {version}")
+            response = requests.post(sentry_base, json=data, headers=sentry_auth)
+            self.stdout.write("Created new release {}".format(version))
         response.raise_for_status()
 
         # Track the deploy

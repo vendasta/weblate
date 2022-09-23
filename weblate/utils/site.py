@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -30,8 +30,9 @@ def get_site_domain():
 
 def get_site_url(url=""):
     """Return root url of current site with domain."""
-    protocol = "https" if settings.ENABLE_HTTPS else "http"
-    return f"{protocol}://{get_site_domain()}{url}"
+    return "{0}://{1}{2}".format(
+        "https" if settings.ENABLE_HTTPS else "http", get_site_domain(), url
+    )
 
 
 def check_domain(domain):

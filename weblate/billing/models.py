@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -20,38 +20,22 @@
 import os.path
 from datetime import timedelta
 
-from appconf import AppConf
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Prefetch, Q
+from django.db.models import Q
 from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
-from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
-from django.utils.translation import ngettext
 
 from weblate.auth.models import User
 from weblate.trans.models import Component, Project
 from weblate.utils.decorators import disable_for_loaddata
 from weblate.utils.fields import JSONField
 from weblate.utils.stats import prefetch_stats
-
-
-class LibreCheck:
-    def __init__(self, result, message, component=None):
-        self.result = result
-        self.message = message
-        self.component = component
-
-    def __bool__(self):
-        return self.result
-
-    def __str__(self):
-        return self.message
 
 
 class PlanQuerySet(models.QuerySet):
@@ -82,10 +66,6 @@ class Plan(models.Model):
 
     objects = PlanQuerySet.as_manager()
 
-    class Meta:
-        verbose_name = "Billing plan"
-        verbose_name_plural = "Billing plans"
-
     def __str__(self):
         return self.name
 
@@ -103,9 +83,9 @@ class Plan(models.Model):
 
 
 class BillingManager(models.Manager):
-    def check_limits(self):
+    def check_limits(self, grace=30):
         for bill in self.iterator():
-            bill.check_limits()
+            bill.check_limits(grace)
 
 
 class BillingQuerySet(models.QuerySet):
@@ -135,22 +115,11 @@ class BillingQuerySet(models.QuerySet):
             .order_by("state")
         )
 
-    def prefetch(self):
-        return self.prefetch_related(
-            "owners",
-            "owners__profile",
-            "plan",
-            Prefetch(
-                "projects",
-                queryset=Project.objects.order(),
-                to_attr="ordered_projects",
-            ),
-        )
-
 
 class Billing(models.Model):
     STATE_ACTIVE = 0
     STATE_TRIAL = 1
+    STATE_EXPIRED = 2
     STATE_TERMINATED = 3
 
     EXPIRING_STATES = (STATE_TRIAL,)
@@ -166,6 +135,7 @@ class Billing(models.Model):
         choices=(
             (STATE_ACTIVE, _("Active")),
             (STATE_TRIAL, _("Trial")),
+            (STATE_EXPIRED, _("Expired")),
             (STATE_TERMINATED, _("Terminated")),
         ),
         default=STATE_ACTIVE,
@@ -190,27 +160,25 @@ class Billing(models.Model):
     in_limits = models.BooleanField(
         default=True, verbose_name=_("In limits"), editable=False
     )
+    grace_period = models.IntegerField(
+        default=0, verbose_name=_("Grace period for payments")
+    )
     # Payment detailed information, used for integration
     # with payment processor
-    payment = JSONField(editable=False, default=dict)
+    payment = JSONField(editable=False, default={})
 
     objects = BillingManager.from_queryset(BillingQuerySet)()
 
-    class Meta:
-        verbose_name = "Customer billing"
-        verbose_name_plural = "Customer billings"
-
     def __str__(self):
-        projects = self.projects_display
+        projects = self.projects.order()
         owners = self.owners.order()
         if projects:
-            base = projects
+            base = ", ".join(str(x) for x in projects)
         elif owners:
-            base = ", ".join(x.get_visible_name() for x in owners)
+            base = ", ".join(x.get_author_name(False) for x in owners)
         else:
             base = "Unassigned"
-        trial = ", trial" if self.is_trial else ""
-        return f"{base} ({self.plan}{trial})"
+        return "{0} ({1})".format(base, self.plan)
 
     def save(
         self,
@@ -221,12 +189,7 @@ class Billing(models.Model):
         skip_limits=False,
     ):
         if not skip_limits and self.pk:
-            if self.check_limits(save=False) and update_fields:
-                update_fields = set(update_fields)
-                update_fields.update(
-                    ("state", "expiry", "removal", "paid", "in_limits")
-                )
-
+            self.check_limits(save=False)
         super().save(
             force_insert=force_insert,
             force_update=force_update,
@@ -235,31 +198,11 @@ class Billing(models.Model):
         )
 
     def get_absolute_url(self):
-        return reverse("billing-detail", kwargs={"pk": self.pk})
-
-    @cached_property
-    def ordered_projects(self):
-        return self.projects.order()
+        return "{}#billing-{}".format(reverse("billing"), self.pk)
 
     @cached_property
     def all_projects(self):
-        return prefetch_stats(self.ordered_projects)
-
-    @cached_property
-    def projects_display(self):
-        return ", ".join(str(x) for x in self.all_projects)
-
-    @property
-    def is_trial(self):
-        return self.state == Billing.STATE_TRIAL
-
-    @property
-    def is_terminated(self):
-        return self.state == Billing.STATE_TERMINATED
-
-    @property
-    def is_libre_trial(self):
-        return self.is_trial and self.plan.price == 0
+        return prefetch_stats(self.projects.all())
 
     @cached_property
     def can_be_paid(self):
@@ -284,7 +227,7 @@ class Billing(models.Model):
         return len(self.all_projects)
 
     def display_projects(self):
-        return f"{self.count_projects} / {self.plan.display_limit_projects}"
+        return "{0} / {1}".format(self.count_projects, self.plan.display_limit_projects)
 
     display_projects.short_description = _("Projects")
 
@@ -293,7 +236,7 @@ class Billing(models.Model):
         return sum(p.stats.source_strings for p in self.all_projects)
 
     def display_strings(self):
-        return f"{self.count_strings} / {self.plan.display_limit_strings}"
+        return "{0} / {1}".format(self.count_strings, self.plan.display_limit_strings)
 
     display_strings.short_description = _("Source strings")
 
@@ -301,12 +244,8 @@ class Billing(models.Model):
     def count_words(self):
         return sum(p.stats.source_words for p in self.all_projects)
 
-    @cached_property
-    def hosted_words(self):
-        return sum(p.stats.all_words for p in self.all_projects)
-
     def display_words(self):
-        return f"{self.count_words}"
+        return "{0}".format(self.count_words)
 
     display_words.short_description = _("Source words")
 
@@ -317,7 +256,9 @@ class Billing(models.Model):
         return max(p.stats.languages for p in self.all_projects)
 
     def display_languages(self):
-        return f"{self.count_languages} / {self.plan.display_limit_languages}"
+        return "{0} / {1}".format(
+            self.count_languages, self.plan.display_limit_languages
+        )
 
     display_languages.short_description = _("Languages")
 
@@ -354,7 +295,7 @@ class Billing(models.Model):
     def last_invoice(self):
         try:
             invoice = self.invoice_set.order_by("-start")[0]
-            return f"{invoice.start} - {invoice.end}"
+            return "{0} - {1}".format(invoice.start, invoice.end)
         except IndexError:
             return _("N/A")
 
@@ -382,31 +323,28 @@ class Billing(models.Model):
     # Translators: Whether the package is inside displayed (soft) limits
     in_display_limits.short_description = _("In display limits")
 
-    def check_payment_status(self, now: bool = False):
+    def check_payment_status(self, grace=None):
         """Check current payment status.
 
         Compared to paid attribute, this does not include grace period.
         """
-        end = timezone.now()
-        if not now:
-            end -= timedelta(days=settings.BILLING_GRACE_PERIOD)
+        end = timezone.now() - timedelta(days=grace or self.grace_period)
         return (
-            (self.plan.is_free and self.state == Billing.STATE_ACTIVE)
+            self.plan.is_free
             or self.invoice_set.filter(end__gte=end).exists()
             or self.state == Billing.STATE_TRIAL
         )
 
-    def check_limits(self, save=True):
+    def check_limits(self, grace=30, save=True):
         self.flush_cache()
         in_limits = self.check_in_limits()
-        paid = self.check_payment_status()
+        paid = self.check_payment_status(grace)
         modified = False
 
         if self.check_expiry():
+            self.state = Billing.STATE_EXPIRED
             self.expiry = None
-            self.removal = timezone.now() + timedelta(
-                days=settings.BILLING_REMOVAL_PERIOD
-            )
+            self.removal = timezone.now() + timedelta(days=30)
             modified = True
 
         if self.state not in Billing.EXPIRING_STATES and self.expiry:
@@ -421,8 +359,6 @@ class Billing(models.Model):
         if save and modified:
             self.save(skip_limits=True)
 
-        return modified
-
     def is_active(self):
         return self.state in (Billing.STATE_ACTIVE, Billing.STATE_TRIAL)
 
@@ -430,61 +366,7 @@ class Billing(models.Model):
         users = self.owners.distinct()
         for project in self.projects.iterator():
             users |= User.objects.having_perm("billing.view", project)
-        return users.exclude(is_superuser=True)
-
-    def _get_libre_checklist(self):
-        message = ngettext(
-            "Contains %d project", "Contains %d projects", self.count_projects
-        )
-        try:
-            message = message % self.count_projects
-        except TypeError:
-            pass
-        yield LibreCheck(self.count_projects == 1, message)
-        for project in self.all_projects:
-            yield LibreCheck(
-                bool(project.web),
-                format_html(
-                    '<a href="{0}">{1}</a>, <a href="{2}">{2}</a>',
-                    project.get_absolute_url(),
-                    project,
-                    project.web,
-                ),
-            )
-        components = Component.objects.filter(
-            project__in=self.all_projects
-        ).prefetch_related("project")
-        yield LibreCheck(
-            len(components) > 0,
-            ngettext("Contains %d component", "Contains %d components", len(components))
-            % len(components),
-        )
-        for component in components:
-            yield LibreCheck(
-                component.libre_license,
-                format_html(
-                    """
-                    <a href="{0}">{1}</a>,
-                    <a href="{2}">{3}</a>,
-                    <a href="{4}">{4}</a>,
-                    {5}""",
-                    component.get_absolute_url(),
-                    component.name,
-                    component.license_url or "#",
-                    component.get_license_display() or _("Missing license"),
-                    component.repo,
-                    component.get_file_format_display(),
-                ),
-                component=component,
-            )
-
-    @cached_property
-    def libre_checklist(self):
-        return list(self._get_libre_checklist())
-
-    @property
-    def valid_libre(self):
-        return all(self.libre_checklist)
+        return users
 
 
 class InvoiceQuerySet(models.QuerySet):
@@ -515,23 +397,19 @@ class Invoice(models.Model):
     note = models.TextField(blank=True)
     # Payment detailed information, used for integration
     # with payment processor
-    payment = JSONField(editable=False, default=dict)
+    payment = JSONField(editable=False, default={})
 
     objects = InvoiceQuerySet.as_manager()
 
-    class Meta:
-        verbose_name = "Invoice"
-        verbose_name_plural = "Invoices"
-
     def __str__(self):
-        return "{} - {}: {}".format(
+        return "{0} - {1}: {2}".format(
             self.start, self.end, self.billing if self.billing_id else None
         )
 
     @cached_property
     def filename(self):
         if self.ref:
-            return f"{self.ref}.pdf"
+            return "{0}.pdf".format(self.ref)
         return None
 
     @cached_property
@@ -562,7 +440,7 @@ class Invoice(models.Model):
 
         if overlapping.exists():
             raise ValidationError(
-                "Overlapping invoices exist: {}".format(
+                "Overlapping invoices exist: {0}".format(
                     ", ".join(str(x) for x in overlapping)
                 )
             )
@@ -591,11 +469,3 @@ def change_billing_projects(sender, instance, action, **kwargs):
     if not action.startswith("post_"):
         return
     instance.check_limits()
-
-
-class WeblateConf(AppConf):
-    GRACE_PERIOD = 15
-    REMOVAL_PERIOD = 15
-
-    class Meta:
-        prefix = "BILLING"

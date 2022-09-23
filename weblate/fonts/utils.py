@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -28,7 +28,7 @@ import cairo
 import gi
 from django.conf import settings
 from django.core.cache import cache
-from django.utils.html import format_html
+from django.utils.html import escape
 from PIL import ImageFont
 
 from weblate.utils.checks import weblate_check
@@ -46,32 +46,11 @@ FONTCONFIG_CONFIG = """<?xml version="1.0"?>
     <dir>{}</dir>
     <dir>{}</dir>
     <dir>{}</dir>
-    <dir>{}</dir>
     <config>
         <rescan>
             <int>30</int>
         </rescan>
     </config>
-
-    <alias>
-        <family>sans-serif</family>
-        <prefer>
-            <family>Source Sans 3</family>
-            <family>DejaVu Sans</family>
-            <family>Noto Sans</family>
-            <family>Droid Sans Fallback</family>
-        </prefer>
-    </alias>
-
-    <alias>
-        <family>Source Sans 3</family>
-        <default><family>sans-serif</family></default>
-    </alias>
-
-    <alias>
-        <family>DejaVu Sans</family>
-        <default><family>sans-serif</family></default>
-    </alias>
 
     <!--
      Synthetic emboldening for fonts that do not have bold face available
@@ -90,6 +69,7 @@ FONTCONFIG_CONFIG = """<?xml version="1.0"?>
             <const>bold</const>
         </edit>
     </match>
+
 </fontconfig>
 """
 
@@ -118,9 +98,8 @@ def configure_fontconfig():
             FONTCONFIG_CONFIG.format(
                 data_dir("cache", "fonts"),
                 fonts_dir,
-                os.path.join(settings.STATIC_ROOT, "vendor", "font-source", "TTF"),
-                os.path.join(settings.STATIC_ROOT, "vendor", "font-dejavu"),
-                os.path.join(settings.STATIC_ROOT, "font-noto"),
+                os.path.join(settings.STATIC_ROOT, "font-source", "TTF"),
+                os.path.join(settings.STATIC_ROOT, "font-dejavu"),
                 os.path.join(settings.STATIC_ROOT, "font-droid"),
             )
         )
@@ -147,7 +126,7 @@ def render_size(font, weight, size, spacing, text, width=1000, lines=1, cache_ke
 
     # Load and configure font
     fontdesc = Pango.FontDescription.from_string(font)
-    fontdesc.set_absolute_size(size * Pango.SCALE)
+    fontdesc.set_size(size * Pango.SCALE)
     if weight:
         fontdesc.set_weight(weight)
     layout.set_font_description(fontdesc)
@@ -155,11 +134,7 @@ def render_size(font, weight, size, spacing, text, width=1000, lines=1, cache_ke
     # This seems to be only way to set letter spacing
     # See https://stackoverflow.com/q/55533312/225718
     layout.set_markup(
-        format_html(
-            '<span letter_spacing="{}">{}</span>',
-            spacing,
-            text,
-        )
+        '<span letter_spacing="{}">{}</span>'.format(spacing, escape(text))
     )
 
     # Set width and line wrapping
@@ -238,4 +213,4 @@ def check_fonts(app_configs=None, **kwargs):
         render_size("DejaVu Sans", Pango.Weight.NORMAL, 11, 0, "test")
         return []
     except Exception as error:
-        return [weblate_check("weblate.C024", f"Failed to use Pango: {error}")]
+        return [weblate_check("weblate.C024", "Failed to use Pango: {}".format(error))]

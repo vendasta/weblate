@@ -10,7 +10,7 @@ All settings are stored in :file:`settings.py` (as is usual for Django).
     After changing any of these settings, you need to restart Weblate - both
     WSGI and Celery processes.
 
-    In case it is run as ``mod_wsgi``, you need to restart Apache to reload the
+    In case it is run as mod_wsgi, you need to restart Apache to reload the
     configuration.
 
 .. seealso::
@@ -36,7 +36,7 @@ Username of users that are not signed in.
 
 .. seealso::
 
-    :ref:`access-control`
+    :ref:`privileges`
 
 .. setting:: AUDITLOG_EXPIRY
 
@@ -61,16 +61,16 @@ Maximum number of failed authentication attempts before rate limiting is applied
 
 This is currently applied in the following locations:
 
-* Sign in. Deletes the account password, preventing the user from signing in
+* Logins. Deletes the account password, preventing the user from signing in
   without requesting a new password.
-* Password reset. Prevents new e-mails from being sent, avoiding spamming
+* Password resets. Prevents new e-mails from being sent, avoiding spamming
   users with too many password reset attempts.
 
 Defaults to 10.
 
 .. seealso::
 
-    :ref:`rate-limit`
+    :ref:`rate-limit`,
 
 .. setting:: AUTO_UPDATE
 
@@ -167,7 +167,7 @@ Available fixes:
 ``weblate.trans.autofixes.whitespace.SameBookendingWhitespace``
     Matches whitespace at the start and end of the string to the source.
 ``weblate.trans.autofixes.chars.ReplaceTrailingDotsWithEllipsis``
-    Replaces trailing dots (...) if the source string has a corresponding ellipsis (…).
+    Replaces trailing dots (...) if the source string has ellipsis (…).
 ``weblate.trans.autofixes.chars.RemoveZeroSpace``
     Removes zero-width space characters if the source does not contain any.
 ``weblate.trans.autofixes.chars.RemoveControlChars``
@@ -180,89 +180,25 @@ You can select which ones to use:
 .. code-block:: python
 
     AUTOFIX_LIST = (
-        "weblate.trans.autofixes.whitespace.SameBookendingWhitespace",
-        "weblate.trans.autofixes.chars.ReplaceTrailingDotsWithEllipsis",
+        'weblate.trans.autofixes.whitespace.SameBookendingWhitespace',
+        'weblate.trans.autofixes.chars.ReplaceTrailingDotsWithEllipsis',
     )
 
 .. seealso::
 
    :ref:`autofix`, :ref:`custom-autofix`
 
-.. setting:: BACKGROUND_TASKS
+.. setting:: BASE_DIR
 
-BACKGROUND_TASKS
-----------------
+BASE_DIR
+--------
 
-.. versionadded:: 4.5.2
+Base directory where Weblate sources are located.
+Used to derive several other paths by default:
 
-Defines how often lengthy maintenance tasks should be triggered for a
-component.
+- :setting:`DATA_DIR`
 
-Right now this controls:
-
-* :ref:`addon-weblate.autotranslate.autotranslate` add-on
-* :doc:`checks` recalculation
-
-Possible choices:
-
-* ``monthly`` (this is the default)
-* ``weekly``
-* ``daily``
-* ``never``
-
-.. note::
-
-   Increasing the frequency is not recommended when Weblate contains thousands
-   of components.
-
-.. setting:: BASIC_LANGUAGES
-
-BASIC_LANGUAGES
----------------
-
-.. versionadded:: 4.4
-
-List of languages to offer users for starting new translation. When not
-specified built-in list is used which includes all commonly used languages, but
-without country specific variants.
-
-This only limits non privileged users to add unwanted languages. The project
-admins are still presented with full selection of languages defined in Weblate.
-
-.. note::
-
-   This does not define new languages for Weblate, it only filters existing ones
-   in the database.
-
-**Example:**
-
-.. code-block:: python
-
-   BASIC_LANGUAGES = {"cs", "it", "ja", "en"}
-
-.. seealso::
-
-    :ref:`languages`
-
-.. setting:: BORG_EXTRA_ARGS
-
-BORG_EXTRA_ARGS
----------------
-
-.. versionadded:: 4.9
-
-You can pass additional arguments to :command:`borg create` when built-in backups are triggered.
-
-**Example:**
-
-.. code-block:: python
-
-   BORG_EXTRA_ARGS = ["--exclude", "vcs/"]
-
-.. seealso::
-
-   :ref:`backup`,
-   :doc:`borg:usage/create`
+Default value: Top level directory of Weblate sources.
 
 .. setting:: CSP_SCRIPT_SRC
 .. setting:: CSP_IMG_SRC
@@ -275,11 +211,11 @@ CSP_SCRIPT_SRC, CSP_IMG_SRC, CSP_CONNECT_SRC, CSP_STYLE_SRC, CSP_FONT_SRC
 
 Customize ``Content-Security-Policy`` header for Weblate. The header is
 automatically generated based on enabled integrations with third-party services
-(Matomo, Google Analytics, Sentry, …).
+(Matomo, Google Analytics, Sentry, ...).
 
 All these default to empty list.
 
-**Example:**
+** Example:: **
 
 .. code-block:: python
 
@@ -320,9 +256,9 @@ You can turn on only a few:
 .. code-block:: python
 
     CHECK_LIST = (
-        "weblate.checks.chars.BeginNewlineCheck",
-        "weblate.checks.chars.EndNewlineCheck",
-        "weblate.checks.chars.MaxLengthCheck",
+        'weblate.checks.chars.BeginNewlineCheck',
+        'weblate.checks.chars.EndNewlineCheck',
+        'weblate.checks.chars.MaxLengthCheck',
     )
 
 .. note::
@@ -361,23 +297,6 @@ Number of hours between committing pending changes by way of the background task
    :ref:`production-cron`,
    :djadmin:`commit_pending`
 
-
-.. setting:: CONTACT_FORM
-
-CONTACT_FORM
-------------
-
-.. versionadded:: 4.6
-
-Configures how e-mail from the contact form is being sent. Choose a
-configuration that matches your mail server configuration.
-
-``"reply-to"``
-   The sender is used in as :mailheader:`Reply-To`, this is the default behaviour.
-``"from"``
-   The sender is used in as :mailheader:`From`. Your mail server needs to allow
-   sending such e-mails.
-
 .. setting:: DATA_DIR
 
 DATA_DIR
@@ -393,19 +312,13 @@ The following subdirectories usually exist:
 :file:`ssh`
     SSH keys and configuration.
 :file:`static`
-    Default location for static Django files, specified by :setting:`django:STATIC_ROOT`. See :ref:`static-files`.
-
-    The Docker container uses a separate volume for this, see :ref:`docker-volume`.
+    Default location for static Django files, specified by ``STATIC_ROOT``.
 :file:`media`
-    Default location for Django media files, specified by :setting:`django:MEDIA_ROOT`. Contains uploaded screenshots, see :ref:`screenshots`.
+    Default location for Django media files, specified by ``MEDIA_ROOT``.
 :file:`vcs`
-    Version control repositories for translations.
+    Version control repositories.
 :file:`backups`
     Daily backup data, please check :ref:`backup-dumps` for details.
-:file:`celery`
-    Celery scheduler data, see :ref:`celery`.
-:file:`fonts`:
-    User-uploaded  fonts, see :ref:`fonts`.
 
 .. note::
 
@@ -418,11 +331,11 @@ The following subdirectories usually exist:
 
         sudo chown www-data:www-data -R $DATA_DIR
 
-Defaults to ``/home/weblate/data``, but it is expected to be configured.
+Defaults to ``$BASE_DIR/data``.
 
 .. seealso::
 
-    :ref:`file-permissions`,
+    :setting:`BASE_DIR`,
     :doc:`backup`
 
 .. setting:: DATABASE_BACKUP
@@ -467,21 +380,8 @@ on the internal Weblate management.
 .. seealso::
 
    :ref:`acl`,
-   :ref:`project-access_control`
-
-.. setting:: DEFAULT_AUTO_WATCH
-
-DEFAULT_AUTO_WATCH
-------------------
-
-.. versionadded:: 4.5
-
-Configures whether :guilabel:`Automatically watch projects on contribution`
-should be turned on for new users. Defaults to ``True``.
-
-.. seealso::
-
-   :ref:`subscriptions`
+   :ref:`project-access_control`,
+   :ref:`privileges`
 
 .. setting:: DEFAULT_RESTRICTED_COMPONENT
 
@@ -494,8 +394,9 @@ The default value for component restriction.
 
 .. seealso::
 
+   :ref:`acl`,
    :ref:`component-restricted`,
-   :ref:`perm-check`
+   :ref:`privileges`
 
 .. setting:: DEFAULT_COMMIT_MESSAGE
 .. setting:: DEFAULT_ADD_MESSAGE
@@ -521,7 +422,7 @@ Default commit messages for different operations, please check :ref:`component` 
 DEFAULT_ADDONS
 --------------
 
-Default add-ons to install on every created component.
+Default addons to install on every created component.
 
 .. note::
 
@@ -532,24 +433,23 @@ Example:
 .. code-block:: python
 
    DEFAULT_ADDONS = {
-       # Add-on with no parameters
-       "weblate.flags.target_edit": {},
-       # Add-on with parameters
-       "weblate.autotranslate.autotranslate": {
-           "mode": "suggest",
-           "filter_type": "todo",
-           "auto_source": "mt",
-           "component": "",
-           "engines": ["weblate-translation-memory"],
-           "threshold": "80",
-       },
+        # Addon with no parameters
+        "weblate.flags.target_edit": {},
+
+        # Addon with parameters
+        "weblate.autotranslate.autotranslate": {
+            "mode": "suggest",
+            "filter_type": "todo",
+            "auto_source": "mt",
+            "component": "",
+            "engines": ["weblate-translation-memory"],
+            "threshold": "80",
+        }
    }
 
 .. seealso::
 
-   :djadmin:`install_addon`,
-   :doc:`addons`,
-   :setting:`WEBLATE_ADDONS`
+   :djadmin:`install_addon`
 
 .. setting:: DEFAULT_COMMITER_EMAIL
 
@@ -558,11 +458,13 @@ DEFAULT_COMMITER_EMAIL
 
 .. versionadded:: 2.4
 
-Committer e-mail address defaulting to ``noreply@weblate.org``.
+Committer e-mail address for created translation components defaulting to ``noreply@weblate.org``.
 
 .. seealso::
 
-   :setting:`DEFAULT_COMMITER_NAME`
+   :setting:`DEFAULT_COMMITER_NAME`,
+   :ref:`component`,
+   :ref:`component-committer_email`
 
 .. setting:: DEFAULT_COMMITER_NAME
 
@@ -571,27 +473,13 @@ DEFAULT_COMMITER_NAME
 
 .. versionadded:: 2.4
 
-Committer name defaulting to ``Weblate``.
+Committer name for created translation components defaulting to ``Weblate``.
 
 .. seealso::
 
-   :setting:`DEFAULT_COMMITER_EMAIL`
-
-.. setting:: DEFAULT_LANGUAGE
-
-DEFAULT_LANGUAGE
-----------------
-
-.. versionadded:: 4.3.2
-
-Default source language to use for example in :ref:`component-source_language`.
-
-Defaults to `en`. The matching language object needs to exist in the database.
-
-.. seealso::
-
-   :ref:`languages`,
-   :ref:`component-source_language`
+   :setting:`DEFAULT_COMMITER_EMAIL`,
+   :ref:`component`,
+   :ref:`component-committer_name`
 
 .. setting:: DEFAULT_MERGE_STYLE
 
@@ -610,15 +498,6 @@ Merge style for any new components.
    :ref:`component`,
    :ref:`component-merge_style`
 
-.. setting:: DEFAULT_SHARED_TM
-
-DEFAULT_SHARED_TM
------------------
-
-.. versionadded:: 3.2
-
-Configures default value of :ref:`project-use_shared_tm` and :ref:`project-contribute_shared_tm`.
-
 .. setting:: DEFAULT_TRANSLATION_PROPAGATION
 
 DEFAULT_TRANSLATION_PROPAGATION
@@ -635,12 +514,11 @@ Default setting for translation propagation, defaults to ``True``.
 
 .. setting:: DEFAULT_PULL_MESSAGE
 
-.. _config-pull-message:
-
 DEFAULT_PULL_MESSAGE
 --------------------
 
-Configures the default title and message for pull requests.
+Title for new pull requests,
+defaulting to ``'Update from Weblate'``.
 
 .. setting:: ENABLE_AVATARS
 
@@ -677,23 +555,16 @@ ENABLE_HTTPS
 Whether to send links to Weblate as HTTPS or HTTP. This setting affects sent
 e-mails and generated absolute URLs.
 
-In the default configuration this is also used for several Django settings
-related to HTTPS - it enables secure cookies, toggles HSTS or enables
-redirection to HTTPS URL.
+.. hint::
 
-The HTTPS redirection might be problematic in some cases and you might hit
-issue with infinite redirection in case you are using a reverse proxy doing SSL
-termination which does not correctly pass protocol headers to Django. Please
-tweak your reverse proxy configuration to emit ``X-Forwarded-Proto`` or
-``Forwarded`` headers or configure :setting:`django:SECURE_PROXY_SSL_HEADER` to
-let Django correctly detect the SSL status.
+   In the default configuration this is also used for several Django settings
+   related to HTTPS.
 
 .. seealso::
 
     :setting:`django:SESSION_COOKIE_SECURE`,
     :setting:`django:CSRF_COOKIE_SECURE`,
     :setting:`django:SECURE_SSL_REDIRECT`,
-    :setting:`django:SECURE_PROXY_SSL_HEADER`
     :ref:`production-site`
 
 .. setting:: ENABLE_SHARING
@@ -702,102 +573,6 @@ ENABLE_SHARING
 --------------
 
 Turn on/off the :guilabel:`Share` menu so users can share translation progress on social networks.
-
-.. setting:: GET_HELP_URL
-
-GET_HELP_URL
-------------
-
-.. versionadded:: 4.5.2
-
-URL where support for your Weblate instance can be found.
-
-.. setting:: GITEA_CREDENTIALS
-
-GITEA_CREDENTIALS
------------------
-
-.. versionadded:: 4.12
-
-List for credentials for Gitea servers.
-
-.. hint::
-
-    Use this in case you want Weblate to interact with more of them, for single
-    Gitea endpoint stick with :setting:`GITEA_USERNAME` and :setting:`GITEA_TOKEN`.
-
-.. code-block:: python
-
-    GITEA_CREDENTIALS = {
-        "try.gitea.io": {
-            "username": "weblate",
-            "token": "your-api-token",
-        },
-        "gitea.example.com": {
-            "username": "weblate",
-            "token": "another-api-token",
-        },
-    }
-
-.. setting:: GITEA_USERNAME
-
-GITEA_USERNAME
---------------
-
-.. versionadded:: 4.12
-
-Gitea username used to send pull requests for translation updates.
-
-.. seealso::
-
-   :setting:`GITEA_CREDENTIALS`,
-   :ref:`vcs-gitea`
-
-.. setting:: GITEA_TOKEN
-
-GITEA_TOKEN
------------
-
-.. versionadded:: 4.12
-
-Gitea personal access token used to make API calls to send pull requests for
-translation updates.
-
-.. seealso::
-
-   :setting:`GITEA_CREDENTIALS`,
-   :ref:`vcs-gitea`,
-   `Creating a Gitea personal access token`_
-
-.. _Creating a Gitea personal access token: https://docs.gitea.io/en-us/api-usage
-
-.. setting:: GITLAB_CREDENTIALS
-
-GITLAB_CREDENTIALS
-------------------
-
-.. versionadded:: 4.3
-
-List for credentials for GitLab servers.
-
-.. hint::
-
-    Use this in case you want Weblate to interact with more of them, for single
-    GitLab endpoint stick with :setting:`GITLAB_USERNAME` and :setting:`GITLAB_TOKEN`.
-
-.. code-block:: python
-
-    GITLAB_CREDENTIALS = {
-        "gitlab.com": {
-            "username": "weblate",
-            "token": "your-api-token",
-        },
-        "gitlab.example.com": {
-            "username": "weblate",
-            "token": "another-api-token",
-        },
-    }
-
 
 .. setting:: GITLAB_USERNAME
 
@@ -808,51 +583,8 @@ GitLab username used to send merge requests for translation updates.
 
 .. seealso::
 
-   :setting:`GITLAB_CREDENTIALS`,
-   :ref:`vcs-gitlab`
-
-.. setting:: GITLAB_TOKEN
-
-GITLAB_TOKEN
-------------
-
-.. versionadded:: 4.3
-
-GitLab personal access token used to make API calls to send merge requests for
-translation updates.
-
-.. seealso::
-
-   :setting:`GITLAB_CREDENTIALS`,
    :ref:`vcs-gitlab`,
-   `GitLab: Personal access token <https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html>`_
-
-.. setting:: GITHUB_CREDENTIALS
-
-GITHUB_CREDENTIALS
-------------------
-
-.. versionadded:: 4.3
-
-List for credentials for GitHub servers.
-
-.. hint::
-
-    Use this in case you want Weblate to interact with more of them, for single
-    GitHub endpoint stick with :setting:`GITHUB_USERNAME` and :setting:`GITHUB_TOKEN`.
-
-.. code-block:: python
-
-    GITHUB_CREDENTIALS = {
-        "api.github.com": {
-            "username": "weblate",
-            "token": "your-api-token",
-        },
-        "github.example.com": {
-            "username": "weblate",
-            "token": "another-api-token",
-        },
-    }
+   :ref:`lab-setup`
 
 .. setting:: GITHUB_USERNAME
 
@@ -863,26 +595,8 @@ GitHub username used to send pull requests for translation updates.
 
 .. seealso::
 
-   :setting:`GITHUB_CREDENTIALS`,
-   :ref:`vcs-github`
-
-.. setting:: GITHUB_TOKEN
-
-GITHUB_TOKEN
-------------
-
-.. versionadded:: 4.3
-
-GitHub personal access token used to make API calls to send pull requests for
-translation updates.
-
-.. seealso::
-
-   :setting:`GITHUB_CREDENTIALS`,
    :ref:`vcs-github`,
-   `Creating a GitHub personal access token`_
-
-.. _Creating a GitHub personal access token: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token
+   :ref:`hub-setup`
 
 .. setting:: GOOGLE_ANALYTICS_ID
 
@@ -896,9 +610,9 @@ Google Analytics ID to turn on monitoring of Weblate using Google Analytics.
 HIDE_REPO_CREDENTIALS
 ---------------------
 
-Hide repository credentials from the web interface. In case you have repository
-URL with user and password, Weblate will hide it when related info is shown to
-users.
+Hide repository credentials from appearing in the web interface.
+In case you have repository URL with user and password, Weblate will hide it
+when related info is shown to users.
 
 For example instead of ``https://user:password@git.example.com/repo.git`` it
 will show just ``https://git.example.com/repo.git``. It tries to clean up VCS
@@ -907,42 +621,6 @@ error messages too in a similar manner.
 .. note::
 
     This is turned on by default.
-
-.. setting:: HIDE_VERSION
-
-HIDE_VERSION
-------------
-
-.. versionadded:: 4.3.1
-
-Hides version information from unauthenticated users. This also makes all
-documentation links point to latest version instead of the documentation
-matching currently installed version.
-
-Hiding version is recommended security practice in some corporations, but it
-doesn't prevent attacker to figure out version by probing the behavior.
-
-.. note::
-
-    This is turned off by default.
-
-.. setting:: INTERLEDGER_PAYMENT_POINTERS
-
-INTERLEDGER_PAYMENT_POINTERS
-----------------------------
-
-.. versionadded:: 4.12.1
-
-List of Interledger Payment Pointers (ILPs) for Web Monetization.
-
-If multiple are specified, probabilistic revenue sharing is achieved by
-selecting one randomly.
-
-Please check <https://webmonetization.org/> for more details.
-
-.. hint::
-
-   The default value lets users fund Weblate itself.
 
 .. setting:: IP_BEHIND_REVERSE_PROXY
 
@@ -1041,10 +719,6 @@ Example:
 
     LEGAL_URL = "https://weblate.org/terms/"
 
-.. seealso::
-
-   :setting:`PRIVACY_URL`
-
 .. setting:: LICENSE_EXTRA
 
 LICENSE_EXTRA
@@ -1073,12 +747,7 @@ For example:
 LICENSE_FILTER
 --------------
 
-.. versionchanged:: 4.3
-
-    Setting this to blank value now disables license alert.
-
-Filter list of licenses to show. This also disables the license alert when set
-to empty.
+Optional addition of licenses to show.
 
 .. note::
 
@@ -1089,16 +758,6 @@ For example:
 .. code-block:: python
 
     LICENSE_FILTER = {"AGPL-3.0", "GPL-3.0-or-later"}
-
-Following disables the license alert:
-
-.. code-block:: python
-
-    LICENSE_FILTER = set()
-
-.. seealso::
-
-    :ref:`alerts`
 
 .. setting:: LICENSE_REQUIRED
 
@@ -1117,11 +776,11 @@ LIMIT_TRANSLATION_LENGTH_BY_SOURCE_LENGTH
 -----------------------------------------
 
 Whether the length of a given translation should be limited.
-The restriction is the length of the source string × 10 characters.
+The restriction is the length of the source string * 10 characters.
 
 .. hint::
 
-    Set this to ``False`` to allow longer translations (up to 10,000 characters) irrespective of source string length.
+    Set this to ``False`` to allow longer translations (up to 10.000 characters) irrespective of source string length.
 
 .. note::
 
@@ -1133,7 +792,7 @@ The restriction is the length of the source string × 10 characters.
 LOCALIZE_CDN_URL and LOCALIZE_CDN_PATH
 --------------------------------------
 
-These settings configure the :ref:`addon-weblate.cdn.cdnjs` add-on.
+These settings configure the :ref:`addon-weblate.cdn.cdnjs` addon.
 :setting:`LOCALIZE_CDN_URL` defines root URL where the localization CDN is
 available and :setting:`LOCALIZE_CDN_PATH` defines path where Weblate should
 store generated files which will be served at the :setting:`LOCALIZE_CDN_URL`.
@@ -1151,7 +810,7 @@ store generated files which will be served at the :setting:`LOCALIZE_CDN_URL`.
 LOGIN_REQUIRED_URLS
 -------------------
 
-A list of URLs you want to require signing in. (Besides the standard rules built into Weblate).
+A list of URLs you want to require logging into. (Besides the standard rules built into Weblate).
 
 .. hint::
 
@@ -1159,7 +818,9 @@ A list of URLs you want to require signing in. (Besides the standard rules built
 
     .. code-block:: python
 
-        LOGIN_REQUIRED_URLS = (r"/(.*)$",)
+        LOGIN_REQUIRED_URLS = (
+            r'/(.*)$',
+        )
         REST_FRAMEWORK["DEFAULT_PERMISSION_CLASSES"] = [
             "rest_framework.permissions.IsAuthenticated"
         ]
@@ -1168,30 +829,26 @@ A list of URLs you want to require signing in. (Besides the standard rules built
 
    It is desirable to lock down API access as well, as shown in the above example.
 
-.. seealso::
-
-   :setting:`REQUIRE_LOGIN`
-
 .. setting:: LOGIN_REQUIRED_URLS_EXCEPTIONS
 
 LOGIN_REQUIRED_URLS_EXCEPTIONS
 ------------------------------
 
 List of exceptions for :setting:`LOGIN_REQUIRED_URLS`.
-If not specified, users are allowed to access the sign in page.
+If not specified, users are allowed to access the login page.
 
 Some of exceptions you might want to include:
 
 .. code-block:: python
 
     LOGIN_REQUIRED_URLS_EXCEPTIONS = (
-        r"/accounts/(.*)$",  # Required for sign in
-        r"/static/(.*)$",  # Required for development mode
-        r"/widgets/(.*)$",  # Allowing public access to widgets
-        r"/data/(.*)$",  # Allowing public access to data exports
-        r"/hooks/(.*)$",  # Allowing public access to notification hooks
-        r"/api/(.*)$",  # Allowing access to API
-        r"/js/i18n/$",  # JavaScript localization
+        r'/accounts/(.*)$', # Required for login
+        r'/static/(.*)$',   # Required for development mode
+        r'/widgets/(.*)$',  # Allowing public access to widgets
+        r'/data/(.*)$',     # Allowing public access to data exports
+        r'/hooks/(.*)$',    # Allowing public access to notification hooks
+        r'/api/(.*)$',      # Allowing access to API
+        r'/js/i18n/$',      # JavaScript localization
     )
 
 .. setting:: PIWIK_SITE_ID
@@ -1234,129 +891,420 @@ For example:
 
    :setting:`MATOMO_SITE_ID`
 
+
+.. setting:: MT_SERVICES
+.. setting:: MACHINE_TRANSLATION_SERVICES
+
+MT_SERVICES
+-----------
+
+.. versionchanged:: 3.0
+
+    The setting was renamed from ``MACHINE_TRANSLATION_SERVICES`` to
+    ``MT_SERVICES`` to be consistent with other machine translation settings.
+
+List of enabled machine translation services to use.
+
+.. note::
+
+    Many of the services need additional configuration like API keys, please check
+    their documentation ref: `machine` for more details.
+
+.. code-block:: python
+
+    MT_SERVICES = (
+        'weblate.machinery.apertium.ApertiumAPYTranslation',
+        'weblate.machinery.deepl.DeepLTranslation',
+        'weblate.machinery.glosbe.GlosbeTranslation',
+        'weblate.machinery.google.GoogleTranslation',
+        'weblate.machinery.microsoft.MicrosoftCognitiveTranslation',
+        'weblate.machinery.microsoftterminology.MicrosoftTerminologyService',
+        'weblate.machinery.mymemory.MyMemoryTranslation',
+        'weblate.machinery.tmserver.AmagamaTranslation',
+        'weblate.machinery.tmserver.TMServerTranslation',
+        'weblate.machinery.yandex.YandexTranslation',
+        'weblate.machinery.weblatetm.WeblateTranslation',
+        'weblate.machinery.saptranslationhub.SAPTranslationHub',
+        'weblate.memory.machine.WeblateMemory',
+    )
+
+.. seealso::
+
+   :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+
+.. setting:: MT_APERTIUM_APY
+
+MT_APERTIUM_APY
+---------------
+
+URL of the Apertium-APy server, https://wiki.apertium.org/wiki/Apertium-apy
+
+.. seealso::
+
+   :ref:`apertium`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_AWS_ACCESS_KEY_ID
+
+MT_AWS_ACCESS_KEY_ID
+--------------------
+
+Access key ID for Amazon Translate.
+
+.. seealso::
+
+    :ref:`aws`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_AWS_SECRET_ACCESS_KEY
+
+MT_AWS_SECRET_ACCESS_KEY
+------------------------
+
+API secret key for Amazon Translate.
+
+.. seealso::
+
+    :ref:`aws`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_AWS_REGION
+
+MT_AWS_REGION
+-------------
+
+Region name to use for Amazon Translate.
+
+.. seealso::
+
+    :ref:`aws`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_BAIDU_ID
+
+MT_BAIDU_ID
+------------
+
+Client ID for the Baidu Zhiyun API, you can register at https://api.fanyi.baidu.com/api/trans/product/index
+
+.. seealso::
+
+   :ref:`baidu-translate`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_BAIDU_SECRET
+
+MT_BAIDU_SECRET
+----------------
+
+Client secret for the Baidu Zhiyun API, you can register at https://api.fanyi.baidu.com/api/trans/product/index
+
+.. seealso::
+
+   :ref:`baidu-translate`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_DEEPL_API_VERSION
+
+MT_DEEPL_API_VERSION
+--------------------
+
+.. versionadded:: 4.1.1
+
+API version to use with DeepL service. The version limits scope of usage:
+
+v1
+    Is meant for CAT tools and is usable with user-based subscription.
+v2
+    Is meant for API usage and the subscription is usage based.
+
+Previously Weblate was classified as a CAT tool by DeepL, so it was supposed to
+use the v1 API, but now is supposed to use the v2 API.
+Therefore it defaults to v2, and you can change it to v1 in case you have
+an existing CAT subscription and want Weblate to use that.
+
+.. seealso::
+
+   :ref:`deepl`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_DEEPL_KEY
+
+MT_DEEPL_KEY
+------------
+
+API key for the DeepL API, you can register at https://www.deepl.com/pro.html
+
+.. seealso::
+
+   :ref:`deepl`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_GOOGLE_KEY
+
+MT_GOOGLE_KEY
+-------------
+
+API key for Google Translate API v2, you can register at https://cloud.google.com/translate/docs
+
+.. seealso::
+
+   :ref:`google-translate`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_GOOGLE_CREDENTIALS
+
+MT_GOOGLE_CREDENTIALS
+---------------------
+
+API v3 JSON credentials file obtained in the Google cloud console. Please provide a full OS path.
+Credentials are per service-account affiliated with certain project.
+Please check https://cloud.google.com/docs/authentication/getting-started for more details.
+
+.. setting:: MT_GOOGLE_PROJECT
+
+MT_GOOGLE_PROJECT
+-----------------
+
+API v3 Google cloud `project id` with activated translation service and billing activated.
+Please check https://cloud.google.com/appengine/docs/standard/nodejs/building-app/creating-project for more details
+
+.. setting:: MT_GOOGLE_LOCATION
+
+MT_GOOGLE_LOCATION
+------------------
+
+API v3 Google Cloud Application Engine may be specific to a location.
+Change accordingly if the default ``global`` fallback does not work for you.
+
+Please check https://cloud.google.com/appengine/docs/locations for more details
+
+.. seealso::
+
+   :ref:`google-translate-api3`
+
+.. setting:: MT_MICROSOFT_BASE_URL
+
+MT_MICROSOFT_BASE_URL
+---------------------
+
+Region base URL domain as defined in the `"Base URLs" section
+<https://docs.microsoft.com/en-us/azure/cognitive-services/translator/reference/v3-0-reference#base-urls>`_.
+
+Defaults to ``api.cognitive.microsofttranslator.com`` for Azure Global.
+
+For Azure China, please use ``api.translator.azure.cn``.
+
+.. setting:: MT_MICROSOFT_COGNITIVE_KEY
+
+MT_MICROSOFT_COGNITIVE_KEY
+--------------------------
+
+Client key for the Microsoft Cognitive Services Translator API.
+
+.. seealso::
+    :ref:`ms-cognitive-translate`, :ref:`machine-translation-setup`, :ref:`machine-translation`,
+    `Cognitive Services - Text Translation API <https://azure.microsoft.com/services/cognitive-services/translator-text-api/>`_,
+    `Microsoft Azure Portal <https://portal.azure.com/>`_
+
+.. setting:: MT_MICROSOFT_REGION
+
+MT_MICROSOFT_REGION
+-------------------
+
+Region prefix as defined in `"Multi service subscription" <https://docs.microsoft.com/en-us/azure/cognitive-services/translator/reference/v3-0-reference#authenticating-with-a-multi-service-resource>`_.
+
+.. setting:: MT_MICROSOFT_ENDPOINT_URL
+
+MT_MICROSOFT_ENDPOINT_URL
+-------------------------
+
+Region endpoint URL domain for access token as defined in the `"Authenticating with an access token" section
+<https://docs.microsoft.com/en-us/azure/cognitive-services/translator/reference/v3-0-reference#authenticating-with-an-access-token>`_.
+
+Defaults to ``api.cognitive.microsoft.com`` for Azure Global.
+
+For Azure China, please use your endpoint from the Azure Portal.
+
+
+.. setting:: MT_MODERNMT_KEY
+
+MT_MODERNMT_KEY
+---------------
+
+API key for the ModernMT machine translation engine.
+
+.. seealso::
+
+    :ref:`modernmt`
+    :setting:`MT_MODERNMT_URL`
+
+.. setting:: MT_MODERNMT_URL
+
+MT_MODERNMT_URL
+---------------
+
+URL of ModernMT. It defaults to ``https://api.modernmt.com/`` for the cloud
+service.
+
+.. seealso::
+
+    :ref:`modernmt`
+    :setting:`MT_MODERNMT_KEY`
+
+
+.. setting:: MT_MYMEMORY_EMAIL
+
+MT_MYMEMORY_EMAIL
+-----------------
+
+MyMemory identification e-mail address. It permits 1000 requests per day.
+
+.. seealso::
+
+   :ref:`mymemory`, :ref:`machine-translation-setup`, :ref:`machine-translation`,
+   `MyMemory: API technical specifications <https://mymemory.translated.net/doc/spec.php>`_
+
+.. setting:: MT_MYMEMORY_KEY
+
+MT_MYMEMORY_KEY
+---------------
+
+MyMemory access key for private translation memory, use it with :setting:`MT_MYMEMORY_USER`.
+
+.. seealso::
+
+   :ref:`mymemory`, :ref:`machine-translation-setup`, :ref:`machine-translation`,
+   `MyMemory: API key generator <https://mymemory.translated.net/doc/keygen.php>`_
+
+.. setting:: MT_MYMEMORY_USER
+
+MT_MYMEMORY_USER
+----------------
+
+MyMemory user ID for private translation memory, use it with :setting:`MT_MYMEMORY_KEY`.
+
+.. seealso::
+
+   :ref:`mymemory`, :ref:`machine-translation-setup`, :ref:`machine-translation`,
+   `MyMemory: API key generator <https://mymemory.translated.net/doc/keygen.php>`_
+
+.. setting:: MT_NETEASE_KEY
+
+MT_NETEASE_KEY
+--------------
+
+App key for NetEase Sight API, you can register at https://sight.netease.com/
+
+.. seealso::
+
+   :ref:`netease-translate`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_NETEASE_SECRET
+
+MT_NETEASE_SECRET
+-----------------
+
+App secret for the NetEase Sight API, you can register at https://sight.netease.com/
+
+.. seealso::
+
+   :ref:`netease-translate`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_TMSERVER
+
+MT_TMSERVER
+-----------
+
+URL where tmserver is running.
+
+.. seealso::
+
+   :ref:`tmserver`, :ref:`machine-translation-setup`, :ref:`machine-translation`,
+   :doc:`tt:commands/tmserver`
+
+.. setting:: MT_YANDEX_KEY
+
+MT_YANDEX_KEY
+-------------
+
+API key for the Yandex Translate API, you can register at https://tech.yandex.com/translate/
+
+.. seealso::
+
+   :ref:`yandex-translate`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_YOUDAO_ID
+
+MT_YOUDAO_ID
+------------
+
+Client ID for the Youdao Zhiyun API, you can register at https://ai.youdao.com/product-fanyi-text.s.
+
+.. seealso::
+
+   :ref:`youdao-translate`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_YOUDAO_SECRET
+
+MT_YOUDAO_SECRET
+----------------
+
+Client secret for the Youdao Zhiyun API, you can register at https://ai.youdao.com/product-fanyi-text.s.
+
+.. seealso::
+
+   :ref:`youdao-translate`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_SAP_BASE_URL
+
+MT_SAP_BASE_URL
+---------------
+
+API URL to the SAP Translation Hub service.
+
+.. seealso::
+    :ref:`saptranslationhub`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_SAP_SANDBOX_APIKEY
+
+MT_SAP_SANDBOX_APIKEY
+---------------------
+
+API key for sandbox API usage
+
+.. seealso::
+    :ref:`saptranslationhub`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_SAP_USERNAME
+
+MT_SAP_USERNAME
+---------------
+
+Your SAP username
+
+.. seealso::
+    :ref:`saptranslationhub`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_SAP_PASSWORD
+
+MT_SAP_PASSWORD
+---------------
+
+Your SAP password
+
+.. seealso::
+    :ref:`saptranslationhub`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
+.. setting:: MT_SAP_USE_MT
+
+MT_SAP_USE_MT
+-------------
+
+Whether to also use machine translation services, in addition to the term database.
+Possible values: ``True`` or ``False``
+
+.. seealso::
+    :ref:`saptranslationhub`, :ref:`machine-translation-setup`, :ref:`machine-translation`
+
 .. setting:: NEARBY_MESSAGES
 
 NEARBY_MESSAGES
 ---------------
 
 How many strings to show around the currently translated string. This is just a default value, users can adjust this in :ref:`user-profile`.
-
-.. setting:: DEFAULT_PAGE_LIMIT
-
-DEFAULT_PAGE_LIMIT
-------------------
-
-.. versionadded:: 4.7
-
-Default number of elements to display when pagination is active.
-
-.. setting:: PAGURE_CREDENTIALS
-
-PAGURE_CREDENTIALS
-------------------
-
-.. versionadded:: 4.3.2
-
-List for credentials for Pagure servers.
-
-.. hint::
-
-    Use this in case you want Weblate to interact with more of them, for single
-    Pagure endpoint stick with :setting:`PAGURE_USERNAME` and :setting:`PAGURE_TOKEN`.
-
-.. code-block:: python
-
-    PAGURE_CREDENTIALS = {
-        "pagure.io": {
-            "username": "weblate",
-            "token": "your-api-token",
-        },
-        "pagure.example.com": {
-            "username": "weblate",
-            "token": "another-api-token",
-        },
-    }
-
-.. setting:: PAGURE_USERNAME
-
-PAGURE_USERNAME
----------------
-
-.. versionadded:: 4.3.2
-
-Pagure username used to send merge requests for translation updates.
-
-.. seealso::
-
-   :setting:`PAGURE_CREDENTIALS`,
-   :ref:`vcs-pagure`
-
-.. setting:: PAGURE_TOKEN
-
-PAGURE_TOKEN
-------------
-
-.. versionadded:: 4.3.2
-
-Pagure personal access token used to make API calls to send merge requests for
-translation updates.
-
-.. seealso::
-
-   :setting:`PAGURE_CREDENTIALS`,
-   :ref:`vcs-pagure`,
-   `Pagure API <https://pagure.io/api/0/>`_
-
-
-.. setting:: PRIVACY_URL
-
-PRIVACY_URL
------------
-
-.. versionadded:: 4.8.1
-
-URL where your Weblate instance shows its privacy policy.
-
-.. hint::
-
-    Useful if you host your legal documents outside Weblate for embedding them inside Weblate,
-    please check :ref:`legal` for details.
-
-Example:
-
-.. code-block:: python
-
-    PRIVACY_URL = "https://weblate.org/terms/"
-
-.. seealso::
-
-   :setting:`LEGAL_URL`
-
-.. setting:: PROJECT_BACKUP_KEEP_COUNT
-
-PROJECT_BACKUP_KEEP_COUNT
--------------------------
-
-.. versionadded:: 4.14
-
-Defines how many backups per project are kept on the server. It defaults to 3.
-
-.. seealso::
-
-   :ref:`projectbackup`
-
-.. setting:: PROJECT_BACKUP_KEEP_DAYS
-
-PROJECT_BACKUP_KEEP_DAYS
-------------------------
-
-.. versionadded:: 4.14
-
-Defines how long the project backups will be kept on the server. Defaults to 30 days.
-
-.. seealso::
-
-   :ref:`projectbackup`
 
 .. setting:: RATELIMIT_ATTEMPTS
 
@@ -1416,13 +1364,8 @@ REGISTRATION_ALLOW_BACKENDS
 
 .. versionadded:: 4.1
 
-List of authentication backends to allow registration from. This only limits
-new registrations, users can still authenticate and add authentication using
-all configured authentication backends.
-
-It is recommended to keep :setting:`REGISTRATION_OPEN` enabled while limiting
-registration backends, otherwise users will be able to register, but Weblate
-will not show links to register in the user interface.
+List of authentication backends to allow registration from in case it is otherwise disabled by
+:setting:`REGISTRATION_OPEN`.
 
 Example:
 
@@ -1436,8 +1379,7 @@ Example:
 
 .. seealso::
 
-    :setting:`REGISTRATION_OPEN`,
-    :doc:`auth`
+    :setting:`REGISTRATION_OPEN`
 
 .. setting:: REGISTRATION_CAPTCHA
 
@@ -1470,7 +1412,7 @@ You can use it to restrict registration to a single e-mail domain:
 
 .. code-block:: python
 
-    REGISTRATION_EMAIL_MATCH = r"^.*@weblate\.org$"
+    REGISTRATION_EMAIL_MATCH = r'^.*@weblate\.org$'
 
 .. setting:: REGISTRATION_OPEN
 
@@ -1493,8 +1435,7 @@ Python Social Auth (you can whitelist certain back-ends using
 .. seealso::
 
     :setting:`REGISTRATION_ALLOW_BACKENDS`,
-    :setting:`REGISTRATION_EMAIL_MATCH`,
-    :doc:`auth`
+    :setting:`REGISTRATION_EMAIL_MATCH`
 
 .. setting:: REPOSITORY_ALERT_THRESHOLD
 
@@ -1510,21 +1451,6 @@ contain too many changes. Defaults to 25.
 
    :ref:`alerts`
 
-.. setting:: REQUIRE_LOGIN
-
-REQUIRE_LOGIN
--------------
-
-.. versionadded:: 4.1
-
-This enables :setting:`LOGIN_REQUIRED_URLS` and configures REST framework to
-require authentication for all API endpoints.
-
-.. note::
-
-    This is implemented in the :ref:`sample-configuration`. For Docker, use
-    :envvar:`WEBLATE_REQUIRE_LOGIN`.
-
 .. setting:: SENTRY_DSN
 
 SENTRY_DSN
@@ -1536,21 +1462,7 @@ Sentry DSN to use for :ref:`collecting-errors`.
 
 .. seealso::
 
-   `Django integration for Sentry <https://docs.sentry.io/platforms/python/guides/django/>`_
-
-.. setting:: SESSION_COOKIE_AGE_AUTHENTICATED
-
-SESSION_COOKIE_AGE_AUTHENTICATED
---------------------------------
-
-.. versionadded:: 4.3
-
-Set session expiry for authenticated users. This complements
-:setting:`django:SESSION_COOKIE_AGE` which is used for unauthenticated users.
-
-.. seealso::
-
-    :setting:`django:SESSION_COOKIE_AGE`
+   `Django integration for Sentry <https://docs.sentry.io/platforms/python/django/>`_
 
 .. setting:: SIMPLIFY_LANGUAGES
 
@@ -1621,7 +1533,7 @@ The default value is:
 
 .. code-block:: python
 
-    SPECIAL_CHARS = ("\t", "\n", "\u00a0", "…")
+    SPECIAL_CHARS = ('\t', '\n', '…')
 
 .. setting:: SINGLE_PROJECT
 
@@ -1646,32 +1558,6 @@ Example:
 
     SINGLE_PROJECT = "test"
 
-.. setting:: SSH_EXTRA_ARGS
-
-SSH_EXTRA_ARGS
---------------
-
-.. versionadded:: 4.9
-
-Allows to add custom parameters when Weblate is invoking SSH. This is useful
-when connecting to servers using legacy encryption or other non-standard features.
-
-For example when SSH connection in Weblate fails with `Unable to negotiate with legacyhost: no matching key exchange method found.
-Their offer: diffie-hellman-group1-sha1`, you can enable that using:
-
-.. code-block:: python
-
-   SSH_EXTRA_ARGS = "-oKexAlgorithms=+diffie-hellman-group1-sha1"
-
-.. hint::
-
-   The string is evaluated by shell, so make sure to quote any whitespace and
-   special characters.
-
-.. seealso::
-
-   `OpenSSH Legacy Options <https://www.openssh.com/legacy.html>`_
-
 .. setting:: STATUS_URL
 
 STATUS_URL
@@ -1688,27 +1574,6 @@ SUGGESTION_CLEANUP_DAYS
 
 Automatically deletes suggestions after a given number of days.
 Defaults to ``None``, meaning no deletions.
-
-.. setting:: UPDATE_LANGUAGES
-
-UPDATE_LANGUAGES
-----------------
-
-.. versionadded:: 4.3.2
-
-Controls whether languages database should be updated when running database
-migration and is enabled by default. This setting has no effect on invocation
-of :djadmin:`setuplang`.
-
-.. warning::
-
-   The languages display might become inconsistent with this. Weblate language
-   definitions extend over time and it will not display language code for
-   the defined languages.
-
-.. seealso::
-
-    :ref:`included-languages`
 
 .. setting:: URL_PREFIX
 
@@ -1731,7 +1596,7 @@ Example:
 
 .. code-block:: python
 
-   URL_PREFIX = "/translations"
+   URL_PREFIX = '/translations'
 
 .. note::
 
@@ -1755,7 +1620,9 @@ Configuration of available VCS backends.
 
 .. code-block:: python
 
-   VCS_BACKENDS = ("weblate.vcs.git.GitRepository",)
+   VCS_BACKENDS = (
+      'weblate.vcs.git.GitRepository',
+   )
 
 .. seealso::
 
@@ -1791,8 +1658,8 @@ Configures how deep cloning of repositories Weblate should do.
 WEBLATE_ADDONS
 --------------
 
-List of add-ons available for use. To use them, they have to be enabled for
-a given translation component. By default this includes all built-in add-ons, when
+List of addons available for use. To use them, they have to be enabled for
+a given translation component. By default this includes all built-in addons, when
 extending the list you will probably want to keep existing ones enabled, for
 example:
 
@@ -1800,7 +1667,7 @@ example:
 .. code-block:: python
 
     WEBLATE_ADDONS = (
-        # Built-in add-ons
+        # Built-in addons
         "weblate.addons.gettext.GenerateMoAddon",
         "weblate.addons.gettext.UpdateLinguasAddon",
         "weblate.addons.gettext.UpdateConfigureAddon",
@@ -1824,20 +1691,14 @@ example:
         "weblate.addons.autotranslate.AutoTranslateAddon",
         "weblate.addons.yaml.YAMLCustomizeAddon",
         "weblate.addons.cdn.CDNJSAddon",
-        # Add-on you want to include
+
+        # Addon you want to include
         "weblate.addons.example.ExampleAddon",
     )
 
-.. note::
-
-    Removing the add-on from the list does not uninstall it from the components.
-    Weblate will crash in that case. Please uninstall add-on from all components
-    prior to removing it from this list.
-
 .. seealso::
 
-    :ref:`addons`,
-    :setting:`DEFAULT_ADDONS`
+    :ref:`addons`
 
 .. setting:: WEBLATE_EXPORTERS
 
@@ -1870,20 +1731,6 @@ List of file formats available for use.
 
     :ref:`formats`
 
-
-.. setting:: WEBLATE_MACHINERY
-
-WEBLATE_MACHINERY
------------------
-
-.. versionadded:: 4.13
-
-List of machinery services available for use.
-
-.. seealso::
-
-   :doc:`/admin/machine`
-
 .. setting:: WEBLATE_GPG_IDENTITY
 
 WEBLATE_GPG_IDENTITY
@@ -1895,7 +1742,7 @@ Identity used by Weblate to sign Git commits, for example:
 
 .. code-block:: python
 
-    WEBLATE_GPG_IDENTITY = "Weblate <weblate@example.com>"
+    WEBLATE_GPG_IDENTITY = 'Weblate <weblate@example.com>'
 
 The Weblate GPG keyring is searched for a matching key (:file:`home/.gnupg` under
 :setting:`DATA_DIR`). If not found, a key is generated, please check
@@ -1904,11 +1751,3 @@ The Weblate GPG keyring is searched for a matching key (:file:`home/.gnupg` unde
 .. seealso::
 
     :ref:`gpg-sign`
-
-.. setting:: WEBSITE_REQUIRED
-
-WEBSITE_REQUIRED
-----------------
-
-Defines whether :ref:`project-web` has to be specified when creating a project.
-Turned on by default as that suits public server setups.

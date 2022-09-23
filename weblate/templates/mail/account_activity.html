@@ -4,7 +4,7 @@
 
 {% block content %}
 <p>
-{% blocktrans %}The following activity has occurred on your account at {{ site_title }}:{% endblocktrans %}
+{% blocktrans %}There has been a change in your account at {{ site_title }}:{% endblocktrans %}
 </p>
 
 <p>
@@ -17,6 +17,23 @@
 </p>
 {% endif %}
 
-{% include "mail/shared-activity.html" %}
+<table>
+<tr>
+<td>{% trans "IP address" %}</td>
+<td>{{ address }}</td>
+</tr>
+<tr>
+<td>{% trans "User agent" %}</td>
+<td>{{ user_agent }}</td>
+</tr>
+</table>
+
+<p>
+{% blocktrans %}If you did not request this change, please report it as soon as possible.{% endblocktrans %}
+</p>
+
+<div class="line buttons">
+<a class="button" href="{% url 'contact' %}?t=account">{% trans "Report suspicious activity" %}</a>
+</p>
 
 {% endblock %}

@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -17,6 +17,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+import shutil
 import subprocess
 import tempfile
 from base64 import b64encode
@@ -39,7 +40,7 @@ class GitExportTest(ViewTestCase):
         self.client.logout()
 
     def get_auth_string(self, code):
-        encoded = b64encode(f"{self.user.username}:{code}".encode())
+        encoded = b64encode("{0}:{1}".format(self.user.username, code).encode())
         return "basic " + encoded.decode("ascii")
 
     def test_authenticate_invalid(self):
@@ -77,18 +78,18 @@ class GitExportTest(ViewTestCase):
         )
 
     def get_git_url(self, path, component=None):
-        kwargs = {"path": ""}
+        kwargs = {"path": path}
         if component is None:
             component = self.kw_component
         kwargs.update(component)
-        return reverse("git-export", kwargs=kwargs) + path
+        return reverse("git-export", kwargs=kwargs)
 
     def test_git_root(self):
         response = self.client.get(self.get_git_url(""))
         self.assertEqual(302, response.status_code)
 
     def test_git_info(self):
-        response = self.client.get(self.get_git_url("info"), follow=True)
+        response = self.client.get(self.get_git_url("info"))
         self.assertEqual(404, response.status_code)
 
     def git_receive(self, **kwargs):
@@ -96,7 +97,7 @@ class GitExportTest(ViewTestCase):
             self.get_git_url("info/refs"),
             QUERY_STRING="?service=git-upload-pack",
             CONTENT_TYPE="application/x-git-upload-pack-advertisement",
-            **kwargs,
+            **kwargs
         )
 
     def test_redirect_link(self):
@@ -124,7 +125,7 @@ class GitExportTest(ViewTestCase):
 
     def test_git_receive(self):
         response = self.git_receive()
-        self.assertContains(response, "refs/heads/main")
+        self.assertContains(response, "refs/heads/master")
 
     def enable_acl(self):
         self.project.access_control = Project.ACCESS_PRIVATE
@@ -137,11 +138,11 @@ class GitExportTest(ViewTestCase):
 
     def test_git_receive_acl_auth(self):
         self.enable_acl()
-        self.project.add_user(self.user, "VCS")
+        self.project.add_user(self.user, "@VCS")
         response = self.git_receive(
             HTTP_AUTHORIZATION=self.get_auth_string(self.user.auth_token.key)
         )
-        self.assertContains(response, "refs/heads/main")
+        self.assertContains(response, "refs/heads/master")
 
     def test_git_receive_acl_auth_denied(self):
         self.enable_acl()
@@ -170,15 +171,18 @@ class GitCloneTest(BaseLiveServerTestCase, RepoTestMixin):
         self.user = create_test_user()
 
     def test_clone(self):
-        with tempfile.TemporaryDirectory() as testdir:
-            if self.acl:
-                self.component.project.add_user(self.user, "VCS")
+        testdir = tempfile.mkdtemp()
+        if self.acl:
+            self.component.project.add_user(self.user, "@VCS")
+        try:
             url = (
                 get_export_url(self.component)
                 .replace("http://example.com", self.live_server_url)
                 .replace(
                     "http://",
-                    f"http://{self.user.username}:{self.user.auth_token.key}@",
+                    "http://{0}:{1}@".format(
+                        self.user.username, self.user.auth_token.key
+                    ),
                 )
             )
             process = subprocess.Popen(
@@ -190,9 +194,11 @@ class GitCloneTest(BaseLiveServerTestCase, RepoTestMixin):
             )
             output = process.communicate()[0]
             retcode = process.poll()
+        finally:
+            shutil.rmtree(testdir)
 
         check = self.assertEqual if self.acl else self.assertNotEqual
-        check(retcode, 0, f"Failed: {output}")
+        check(retcode, 0, "Failed: {0}".format(output))
 
 
 class GitCloneFailTest(GitCloneTest):

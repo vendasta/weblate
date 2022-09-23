@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -32,9 +32,7 @@ from weblate.lang.models import Language
 class AnnouncementManager(models.Manager):
     def context_filter(self, project=None, component=None, language=None):
         """Filter announcements by context."""
-        base = self.filter(
-            Q(expiry__isnull=True) | Q(expiry__gte=timezone.now())
-        ).order()
+        base = self.filter(Q(expiry__isnull=True) | Q(expiry__gte=timezone.now()))
 
         if language and project is None and component is None:
             return base.filter(project=None, component=None, language=language)
@@ -73,11 +71,6 @@ class AnnouncementManager(models.Manager):
             user=user,
         )
         return result
-
-
-class AnnouncementQuerySet(models.QuerySet):
-    def order(self):
-        return self.order_by("id")
 
 
 class Announcement(models.Model):
@@ -130,17 +123,15 @@ class Announcement(models.Model):
         ),
     )
     notify = models.BooleanField(
-        blank=True,
-        default=True,
-        verbose_name=gettext_lazy("Notify users"),
+        blank=True, default=True, verbose_name=gettext_lazy("Notify users"),
     )
 
-    objects = AnnouncementManager.from_queryset(AnnouncementQuerySet)()
+    objects = AnnouncementManager()
 
     class Meta:
         app_label = "trans"
-        verbose_name = "Announcement"
-        verbose_name_plural = "Announcements"
+        verbose_name = gettext_lazy("Announcement")
+        verbose_name_plural = gettext_lazy("Announcements")
 
     def __str__(self):
         return self.message

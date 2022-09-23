@@ -1,5 +1,5 @@
 #
-# Copyright © 2012–2022 Michal Čihař <michal@cihar.com>
+# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
 #
 # This file is part of Weblate <https://weblate.org/>
 #
@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
+
 import os.path
 import shutil
 import sys
@@ -33,16 +34,15 @@ from django.utils import timezone
 from django.utils.functional import cached_property
 
 from weblate.auth.models import User
-from weblate.configuration.models import Setting
 from weblate.formats.models import FILE_FORMATS
 from weblate.trans.models import Component, Project
-from weblate.utils.files import remove_tree
+from weblate.utils.files import remove_readonly
 from weblate.vcs.models import VCS_REGISTRY
 
 # Directory holding test data
 TEST_DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
-REPOWEB_URL = "https://nonexisting.weblate.org/blob/main/{{filename}}#L{{line}}"
+REPOWEB_URL = "https://nonexisting.weblate.org/blob/master/{{filename}}#L{{line}}"
 
 TESTPASSWORD = make_password("testpassword")
 
@@ -95,7 +95,7 @@ class RepoTestMixin:
 
             # Remove directory if outdated
             if os.path.exists(output):
-                remove_tree(output)
+                shutil.rmtree(output, onerror=remove_readonly)
 
             # Extract new content
             tar = TarFile(tarname)
@@ -155,7 +155,7 @@ class RepoTestMixin:
         for name in dirs:
             path = self.get_repo_path(name)
             if os.path.exists(path):
-                remove_tree(path)
+                shutil.rmtree(path, onerror=remove_readonly)
 
         # Remove cached paths
         keys = ["git_repo_path", "mercurial_repo_path", "subversion_repo_path"]
@@ -163,24 +163,23 @@ class RepoTestMixin:
             if key in self.__dict__:
                 del self.__dict__[key]
 
-        # Remove possibly existing project directories
-        test_repo_path = os.path.join(settings.DATA_DIR, "vcs")
+        # Remove possibly existing project directory
+        test_repo_path = os.path.join(settings.DATA_DIR, "vcs", "test")
         if os.path.exists(test_repo_path):
-            remove_tree(test_repo_path)
-        os.makedirs(test_repo_path)
+            shutil.rmtree(test_repo_path, onerror=remove_readonly)
 
     def create_project(self, **kwargs):
         """Create test project."""
         project = Project.objects.create(
             name="Test", slug="test", web="https://nonexisting.weblate.org/", **kwargs
         )
-        self.addCleanup(remove_tree, project.full_path, True)
+        self.addCleanup(shutil.rmtree, project.full_path, True)
         return project
 
     def format_local_path(self, path):
         """Format path for local access to the repository."""
         if sys.platform != "win32":
-            return f"file://{path}"
+            return "file://{}".format(path)
         return "file:///{}".format(path.replace("\\", "/"))
 
     def _create_component(
@@ -191,17 +190,17 @@ class RepoTestMixin:
         new_base="",
         vcs="git",
         branch=None,
-        **kwargs,
+        **kwargs
     ):
         """Create real test component."""
         if file_format not in FILE_FORMATS:
-            raise SkipTest(f"File format {file_format} is not supported!")
+            raise SkipTest("File format {0} is not supported!".format(file_format))
         if "project" not in kwargs:
             kwargs["project"] = self.create_project()
 
-        repo = push = self.format_local_path(getattr(self, f"{vcs}_repo_path"))
+        repo = push = self.format_local_path(getattr(self, "{0}_repo_path".format(vcs)))
         if vcs not in VCS_REGISTRY:
-            raise SkipTest(f"VCS {vcs} not available!")
+            raise SkipTest("VCS {0} not available!".format(vcs))
 
         if "new_lang" not in kwargs:
             kwargs["new_lang"] = "contact"
@@ -213,16 +212,8 @@ class RepoTestMixin:
             kwargs["name"] = "Test"
         kwargs["slug"] = kwargs["name"].lower()
 
-        if "manage_units" not in kwargs and template:
-            kwargs["manage_units"] = True
-
         if branch is None:
-            if repo.startswith("weblate://"):
-                branch = ""
-            elif vcs == "subversion":
-                branch = "master"
-            else:
-                branch = VCS_REGISTRY[vcs].get_remote_branch(repo)
+            branch = VCS_REGISTRY[vcs].default_branch
 
         return Component.objects.create(
             repo=repo,
@@ -234,17 +225,8 @@ class RepoTestMixin:
             repoweb=REPOWEB_URL,
             new_base=new_base,
             vcs=vcs,
-            **kwargs,
+            **kwargs
         )
-
-    @staticmethod
-    def configure_mt():
-        for engine in ["weblate", "weblate-translation-memory"]:
-            Setting.objects.get_or_create(
-                category=Setting.CATEGORY_MT,
-                name=engine,
-                defaults={"value": {}},
-            )
 
     def create_component(self):
         """Wrapper method for providing test component."""
@@ -281,16 +263,14 @@ class RepoTestMixin:
     def create_po_link(self):
         return self._create_component("po", "po-link/*.po")
 
-    def create_po_mono(self, **kwargs):
-        return self._create_component(
-            "po-mono", "po-mono/*.po", "po-mono/en.po", **kwargs
-        )
+    def create_po_mono(self):
+        return self._create_component("po-mono", "po-mono/*.po", "po-mono/en.po")
 
     def create_srt(self):
         return self._create_component("srt", "srt/*.srt", "srt/en.srt")
 
     def create_ts(self, suffix="", **kwargs):
-        return self._create_component("ts", f"ts{suffix}/*.ts", **kwargs)
+        return self._create_component("ts", "ts{0}/*.ts".format(suffix), **kwargs)
 
     def create_ts_mono(self):
         return self._create_component("ts", "ts-mono/*.ts", "ts-mono/en.ts")
@@ -303,9 +283,9 @@ class RepoTestMixin:
     def create_android(self, suffix="", **kwargs):
         return self._create_component(
             "aresource",
-            f"android{suffix}/values-*/strings.xml",
-            f"android{suffix}/values/strings.xml",
-            **kwargs,
+            "android{}/values-*/strings.xml".format(suffix),
+            "android{}/values/strings.xml".format(suffix),
+            **kwargs
         )
 
     def create_json(self):
@@ -313,7 +293,10 @@ class RepoTestMixin:
 
     def create_json_mono(self, suffix="mono", **kwargs):
         return self._create_component(
-            "json", f"json-{suffix}/*.json", f"json-{suffix}/en.json", **kwargs
+            "json",
+            "json-{}/*.json".format(suffix),
+            "json-{}/en.json".format(suffix),
+            **kwargs
         )
 
     def create_json_webextension(self):
@@ -329,7 +312,7 @@ class RepoTestMixin:
             "intermediate/*.json",
             "intermediate/en.json",
             intermediate="intermediate/dev.json",
-            **kwargs,
+            **kwargs
         )
 
     def create_json_intermediate_empty(self, **kwargs):
@@ -338,7 +321,7 @@ class RepoTestMixin:
             "intermediate/lang-*.json",
             "intermediate/lang-en.json",
             intermediate="intermediate/dev.json",
-            **kwargs,
+            **kwargs
         )
 
     def create_joomla(self):
@@ -367,7 +350,7 @@ class RepoTestMixin:
         )
 
     def create_xliff(self, name="default", **kwargs):
-        return self._create_component("xliff", f"xliff/*/{name}.xlf", **kwargs)
+        return self._create_component("xliff", "xliff/*/{0}.xlf".format(name), **kwargs)
 
     def create_xliff_mono(self):
         return self._create_component("xliff", "xliff-mono/*.xlf", "xliff-mono/en.xlf")
@@ -396,12 +379,6 @@ class RepoTestMixin:
     def create_odt(self):
         return self._create_component("odf", "odt/*.odt", "odt/en.odt")
 
-    def create_winrc(self):
-        return self._create_component("rc", "winrc/*.rc", "winrc/en-US.rc")
-
-    def create_tbx(self):
-        return self._create_component("tbx", "tbx/*.tbx")
-
     def create_link(self, **kwargs):
         parent = self.create_iphone(*kwargs)
         return Component.objects.create(
@@ -415,16 +392,13 @@ class RepoTestMixin:
         )
 
     def create_link_existing(self):
-        component = self.component
-        if "linked_childs" in component.__dict__:
-            del component.__dict__["linked_childs"]
         return Component.objects.create(
             name="Test2",
             slug="test2",
             project=self.project,
-            repo=component.get_repo_link_url(),
+            repo="weblate://test/test",
             file_format="po",
-            filemask="po-duplicates/*.dpo",
+            filemask="po-duplicates/*.po",
             new_lang="contact",
         )
 
@@ -437,7 +411,7 @@ class TempDirMixin:
 
     def remove_temp(self):
         if self.tempdir:
-            remove_tree(self.tempdir)
+            shutil.rmtree(self.tempdir, onerror=remove_readonly)
             self.tempdir = None
 
 
