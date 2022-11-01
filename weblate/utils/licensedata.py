@@ -431,6 +431,7 @@ LICENSES = (
         "https://spdx.org/licenses/CERN-OHL-W-2.0.html",
         True,
     ),
+    ("checkmk", "Checkmk License", "https://spdx.org/licenses/checkmk.html", False),
     (
         "ClArtistic",
         "Clarified Artistic License",
@@ -1046,6 +1047,12 @@ LICENSES = (
         True,
     ),
     ("FSFUL", "FSF Unlimited License", "https://spdx.org/licenses/FSFUL.html", False),
+    (
+        "FSFULLRWD",
+        "FSF Unlimited License (With License Retention    and Warranty Disclaimer)",
+        "https://spdx.org/licenses/FSFULLRWD.html",
+        False,
+    ),
     (
         "FSFULLR",
         "FSF Unlimited License (with License Retention)",
