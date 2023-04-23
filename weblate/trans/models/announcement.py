@@ -1,21 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 """Announcement model."""
 
@@ -32,7 +17,9 @@ from weblate.lang.models import Language
 class AnnouncementManager(models.Manager):
     def context_filter(self, project=None, component=None, language=None):
         """Filter announcements by context."""
-        base = self.filter(Q(expiry__isnull=True) | Q(expiry__gte=timezone.now()))
+        base = self.filter(
+            Q(expiry__isnull=True) | Q(expiry__gte=timezone.now())
+        ).order()
 
         if language and project is None and component is None:
             return base.filter(project=None, component=None, language=language)
@@ -71,6 +58,11 @@ class AnnouncementManager(models.Manager):
             user=user,
         )
         return result
+
+
+class AnnouncementQuerySet(models.QuerySet):
+    def order(self):
+        return self.order_by("id")
 
 
 class Announcement(models.Model):
@@ -123,15 +115,17 @@ class Announcement(models.Model):
         ),
     )
     notify = models.BooleanField(
-        blank=True, default=True, verbose_name=gettext_lazy("Notify users"),
+        blank=True,
+        default=True,
+        verbose_name=gettext_lazy("Notify users"),
     )
 
-    objects = AnnouncementManager()
+    objects = AnnouncementManager.from_queryset(AnnouncementQuerySet)()
 
     class Meta:
         app_label = "trans"
-        verbose_name = gettext_lazy("Announcement")
-        verbose_name_plural = gettext_lazy("Announcements")
+        verbose_name = "Announcement"
+        verbose_name_plural = "Announcements"
 
     def __str__(self):
         return self.message

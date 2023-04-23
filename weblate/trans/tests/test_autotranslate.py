@@ -1,31 +1,16 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 """Test for automatic translation."""
 
-from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.urls import reverse
 
 from weblate.trans.models import Component
 from weblate.trans.tests.test_views import ViewTestCase
+from weblate.utils.db import using_postgresql
 
 
 class AutoTranslationTest(ViewTestCase):
@@ -93,7 +78,7 @@ class AutoTranslationTest(ViewTestCase):
         """Test for automatic translation with different content."""
         self.perform_auto()
 
-    def test_sugggest(self):
+    def test_suggest(self):
         """Test for automatic suggestion."""
         self.perform_auto(mode="suggest")
         self.perform_auto(0, 1, mode="suggest")
@@ -103,6 +88,30 @@ class AutoTranslationTest(ViewTestCase):
 
     def test_overwrite(self):
         self.perform_auto(overwrite="1")
+
+    def test_labeling(self):
+        self.perform_auto(overwrite="1")
+        translation = self.component2.translation_set.get(language_code="cs")
+        self.assertEqual(
+            translation.unit_set.filter(
+                labels__name="Automatically translated"
+            ).count(),
+            1,
+        )
+        self.edit_unit("Thank you for using Weblate.", "Díky za používání Weblate.")
+        self.assertEqual(
+            translation.unit_set.filter(
+                labels__name="Automatically translated"
+            ).count(),
+            1,
+        )
+        self.edit_unit("Hello, world!\n", "Nazdar svete!\n", translation=translation)
+        self.assertEqual(
+            translation.unit_set.filter(
+                labels__name="Automatically translated"
+            ).count(),
+            0,
+        )
 
     def test_command(self):
         call_command("auto_translate", "test", "test", "cs")
@@ -151,11 +160,11 @@ class AutoTranslationTest(ViewTestCase):
 class AutoTranslationMtTest(ViewTestCase):
     @classmethod
     def _databases_support_transactions(cls):
-        # This is workaroud for MySQL as FULL TEXT index does not work
+        # This is workaround for MySQL as FULL TEXT index does not work
         # well inside a transaction, so we avoid using transactions for
         # tests. Otherwise we end up with no matches for the query.
         # See https://dev.mysql.com/doc/refman/5.6/en/innodb-fulltext-index.html
-        if settings.DATABASES["default"]["ENGINE"] == "django.db.backends.mysql":
+        if not using_postgresql():
             return False
         return super()._databases_support_transactions()
 
@@ -178,6 +187,7 @@ class AutoTranslationMtTest(ViewTestCase):
             allow_translation_propagation=False,
         )
         self.update_fulltext_index()
+        self.configure_mt()
 
     def test_none(self):
         """Test for automatic translation with no content."""
@@ -216,6 +226,12 @@ class AutoTranslationMtTest(ViewTestCase):
     def test_different(self):
         """Test for automatic translation with different content."""
         self.perform_auto(engines=["weblate"], threshold=80)
+
+    def test_multi(self):
+        """Test for automatic translation with more providers."""
+        self.perform_auto(
+            engines=["weblate", "weblate-translation-memory"], threshold=80
+        )
 
     def test_inconsistent(self):
         self.perform_auto(

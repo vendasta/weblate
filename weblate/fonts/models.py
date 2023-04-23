@@ -1,22 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -55,15 +39,20 @@ class Font(models.Model, UserDisplayMixin):
 
     class Meta:
         unique_together = [("family", "style", "project")]
+        verbose_name = "Font"
+        verbose_name_plural = "Fonts"
 
     def __str__(self):
-        return "{} {}".format(self.family, self.style)
+        return f"{self.family} {self.style}"
 
     def save(
         self, force_insert=False, force_update=False, using=None, update_fields=None
     ):
+        from weblate.fonts.tasks import update_fonts_cache
+
         self.clean()
         super().save(force_insert, force_update, using, update_fields)
+        update_fonts_cache.delay()
 
     def get_absolute_url(self):
         return reverse("font", kwargs={"pk": self.pk, "project": self.project.slug})
@@ -118,6 +107,8 @@ class FontGroup(models.Model):
 
     class Meta:
         unique_together = [("name", "project")]
+        verbose_name = "Font group"
+        verbose_name_plural = "Font groups"
 
     def __str__(self):
         return self.name
@@ -139,6 +130,8 @@ class FontOverride(models.Model):
 
     class Meta:
         unique_together = [("group", "language")]
+        verbose_name = "Font override"
+        verbose_name_plural = "Font overrides"
 
     def __str__(self):
-        return "{}:{}:{}".format(self.group, self.font, self.language)
+        return f"{self.group}:{self.font}:{self.language}"

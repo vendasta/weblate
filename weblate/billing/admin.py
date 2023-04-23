@@ -1,23 +1,9 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
-
+from django.contrib import admin
+from django.contrib.admin import RelatedOnlyFieldListFilter
 from django.utils.translation import gettext_lazy as _
 
 from weblate.wladmin.models import WeblateModelAdmin
@@ -39,7 +25,7 @@ class PlanAdmin(WeblateModelAdmin):
 
 
 def format_user(obj):
-    return "{}: {} <{}>".format(obj.username, obj.full_name, obj.email)
+    return f"{obj.username}: {obj.full_name} <{obj.email}>"
 
 
 class BillingAdmin(WeblateModelAdmin):
@@ -63,23 +49,21 @@ class BillingAdmin(WeblateModelAdmin):
         "last_invoice",
     )
     list_filter = ("plan", "state", "paid", "in_limits")
-    search_fields = ("projects__name",)
+    search_fields = ("projects__name", "owners__email")
     filter_horizontal = ("projects", "owners")
 
     def get_queryset(self, request):
         return super().get_queryset(request).prefetch_related("projects", "owners")
 
+    @admin.display(description=_("Projects"))
     def list_projects(self, obj):
         if not obj.all_projects:
             return "none projects associated"
-        return ",".join([project.name for project in obj.all_projects])
+        return ",".join(project.name for project in obj.all_projects)
 
-    list_projects.short_description = _("Projects")
-
+    @admin.display(description=_("Owners"))
     def list_owners(self, obj):
-        return ",".join([owner.full_name for owner in obj.owners.all()])
-
-    list_owners.short_description = _("Owners")
+        return ",".join(owner.full_name for owner in obj.owners.all())
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
@@ -91,14 +75,18 @@ class BillingAdmin(WeblateModelAdmin):
         obj = form.instance
         # Add owners as admin if there is none
         for project in obj.projects.all():
-            group = project.get_group("@Administration")
+            group = project.defined_groups.get(name="Administration")
             if not group.user_set.exists():
                 group.user_set.add(*obj.owners.all())
 
 
 class InvoiceAdmin(WeblateModelAdmin):
     list_display = ("billing", "start", "end", "amount", "currency", "ref")
-    list_filter = ("currency", "billing")
+    list_filter = (
+        "currency",
+        ("billing__projects", RelatedOnlyFieldListFilter),
+        ("billing__owners", RelatedOnlyFieldListFilter),
+    )
     search_fields = ("billing__projects__name", "ref", "note")
     date_hierarchy = "end"
     ordering = ["billing", "-start"]

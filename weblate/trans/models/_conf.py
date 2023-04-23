@@ -1,35 +1,16 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-
-
-import os.path
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 from appconf import AppConf
-from django.conf import settings
 
 
 class WeblateConf(AppConf):
-    # Weblate installation root
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
     # Data directory
-    DATA_DIR = os.path.join(settings.BASE_DIR, "data")
+    DATA_DIR = None
+
+    # Cache directory
+    CACHE_DIR = None
 
     # Akismet API key
     AKISMET_API_KEY = None
@@ -49,6 +30,9 @@ class WeblateConf(AppConf):
     # Enable sharing
     ENABLE_SHARING = False
 
+    # Default number of elements to display when pagination is active
+    DEFAULT_PAGE_LIMIT = 100
+
     # Number of nearby messages to show in each direction
     NEARBY_MESSAGES = 15
 
@@ -67,6 +51,7 @@ class WeblateConf(AppConf):
         "weblate.trans.autofixes.chars.ReplaceTrailingDotsWithEllipsis",
         "weblate.trans.autofixes.chars.RemoveZeroSpace",
         "weblate.trans.autofixes.chars.RemoveControlChars",
+        "weblate.trans.autofixes.chars.DevanagariDanda",
         "weblate.trans.autofixes.html.BleachHTML",
     )
 
@@ -77,11 +62,15 @@ class WeblateConf(AppConf):
     # Google Analytics
     GOOGLE_ANALYTICS_ID = None
 
+    # Link for support portal
+    GET_HELP_URL = None
+
     # URL with status monitoring
     STATUS_URL = None
 
     # URL with legal docs
     LEGAL_URL = None
+    PRIVACY_URL = None
 
     # Disable length limitations calculated from the source string length
     LIMIT_TRANSLATION_LENGTH_BY_SOURCE_LENGTH = True
@@ -131,9 +120,20 @@ Updated by "{{ addon_name }}" hook in Weblate.
 Translation: {{ project_name }}/{{ component_name }}
 Translate-URL: {{ url }}"""
 
-    DEFAULT_PULL_MESSAGE = """Translations update from Weblate
+    DEFAULT_PULL_MESSAGE = """Translations update from {{ site_title }}
 
-Translations update from [Weblate]({{url}}) for {{ project_name }}/{{ component_name }}.
+Translations update from [{{ site_title }}]({{ site_url }}) for [{{ project_name }}/{{ component_name }}]({{url}}).
+
+{% if component_linked_childs %}
+It also includes following components:
+{% for linked in component_linked_childs %}
+* [{{ linked.project_name }}/{{ linked.name }}]({{ linked.url }})
+{% endfor %}
+{% endif %}
+
+Current translation status:
+
+![Weblate translation status]({{widget_url}})
 """
 
     # Billing
@@ -164,12 +164,19 @@ Translations update from [Weblate]({{url}}) for {{ project_name }}/{{ component_
     SUGGESTION_CLEANUP_DAYS = None
     COMMENT_CLEANUP_DAYS = None
     REPOSITORY_ALERT_THRESHOLD = 25
+    UNUSED_ALERT_DAYS = 365
+    BACKGROUND_TASKS = "monthly"
 
     SINGLE_PROJECT = False
     LICENSE_EXTRA = []
     LICENSE_FILTER = None
     LICENSE_REQUIRED = False
+    WEBSITE_REQUIRED = True
     FONTS_CDN_URL = None
+    PROJECT_BACKUP_KEEP_DAYS = 30
+    PROJECT_BACKUP_KEEP_COUNT = 3
+
+    EXTRA_HTML_HEAD = ""
 
     class Meta:
         prefix = ""

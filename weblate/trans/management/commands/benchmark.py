@@ -1,23 +1,9 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import cProfile
+import os
 import pstats
 
 from weblate.trans.models import Component, Project
@@ -31,11 +17,16 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
+        prefix = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        )
         parser.add_argument(
             "--profile-sort", default="cumulative", help="sort order for profile stats"
         )
         parser.add_argument(
-            "--profile-filter", default="/weblate", help="filter for profile stats"
+            "--profile-filter",
+            default=prefix,
+            help=f"filter for profile stats, defaults to {prefix}",
         )
         parser.add_argument(
             "--profile-count",
@@ -67,7 +58,7 @@ class Command(BaseCommand):
             file_format=options["format"],
             project=project,
         )
-        profiler.runcall(component.after_save, True, True, True, True, True)
+        profiler.runcall(component.after_save, True, False, False, False, True, True)
         stats = pstats.Stats(profiler, stream=self.stdout)
         stats.sort_stats(options["profile_sort"])
         stats.print_stats(options["profile_filter"], options["profile_count"])

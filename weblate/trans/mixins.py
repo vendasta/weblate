@@ -1,21 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import os
 from typing import Optional
@@ -34,14 +19,14 @@ class URLMixin:
 
     def get_reverse_url_kwargs(self):
         """Return kwargs for URL reversing."""
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def reverse_url(self, name=None):
         """Generic reverser for URL."""
         if name is None:
             urlname = self._reverse_url_name
         else:
-            urlname = "{0}_{1}".format(name, self._reverse_url_name)
+            urlname = f"{name}_{self._reverse_url_name}"
         return reverse(urlname, kwargs=self.get_reverse_url_kwargs())
 
     def get_absolute_url(self):
@@ -61,6 +46,9 @@ class URLMixin:
 
     def get_cleanup_url(self):
         return self.reverse_url("cleanup")
+
+    def get_file_sync_url(self):
+        return self.reverse_url("file_sync")
 
     def get_lock_url(self):
         return self.reverse_url("lock")
@@ -104,7 +92,7 @@ class PathMixin(LoggerMixin):
 
     def _get_path(self):
         """Actual calculation of path."""
-        raise NotImplementedError()
+        raise NotImplementedError
 
     @cached_property
     def full_path(self):
@@ -115,7 +103,7 @@ class PathMixin(LoggerMixin):
             del self.__dict__["full_path"]
 
     def check_rename(self, old, validate=False):
-        """Detect slug changes and possibly renames underlaying directory."""
+        """Detect slug changes and possibly renames underlying directory."""
         # No moving for links
         if getattr(self, "is_repo_link", False) or getattr(old, "is_repo_link", False):
             return
@@ -155,4 +143,4 @@ class UserDisplayMixin:
 class CacheKeyMixin:
     @cached_property
     def cache_key(self):
-        return "{}-{}".format(self.__class__.__name__, self.pk)
+        return f"{self.__class__.__name__}-{self.pk}"

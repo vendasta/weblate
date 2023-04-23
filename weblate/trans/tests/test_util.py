@@ -1,25 +1,16 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 from django.test import SimpleTestCase
+from translate.misc.multistring import multistring
 
-from weblate.trans.util import cleanup_path, cleanup_repo_url, translation_percent
+from weblate.trans.util import (
+    cleanup_path,
+    cleanup_repo_url,
+    get_string,
+    translation_percent,
+)
 
 
 class HideCredentialsTest(SimpleTestCase):
@@ -90,3 +81,19 @@ class CleanupPathTest(SimpleTestCase):
 
     def test_double_slash(self):
         self.assertEqual(cleanup_path("foo//*.po"), "foo/*.po")
+
+
+class TextConversionTest(SimpleTestCase):
+    def test_multistring(self):
+        self.assertEqual(get_string(multistring(["foo", "bar"])), "foo\x1e\x1ebar")
+
+    def test_surrogates(self):
+        self.assertEqual(
+            get_string("\ud83d\udc68\u200d\ud83d\udcbbАгенты"), "👨‍💻Агенты"
+        )
+
+    def test_none(self):
+        self.assertEqual(get_string(None), "")
+
+    def test_int(self):
+        self.assertEqual(get_string(42), "42")

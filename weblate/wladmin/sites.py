@@ -1,21 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 from django.conf import settings
 from django.contrib import admin
@@ -23,8 +8,18 @@ from django.contrib.admin import AdminSite
 from django.contrib.auth.views import LogoutView
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.decorators import method_decorator
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.cache import never_cache
+from django_celery_beat.admin import (
+    ClockedSchedule,
+    ClockedScheduleAdmin,
+    CrontabSchedule,
+    IntervalSchedule,
+    PeriodicTask,
+    PeriodicTaskAdmin,
+    SolarSchedule,
+)
 from rest_framework.authtoken.admin import TokenAdmin
 from rest_framework.authtoken.models import Token
 from social_django.admin import AssociationOption, NonceOption, UserSocialAuthOption
@@ -37,10 +32,10 @@ from weblate.auth.admin import RoleAdmin, WeblateGroupAdmin, WeblateUserAdmin
 from weblate.auth.models import Group, Role, User
 from weblate.checks.admin import CheckAdmin
 from weblate.checks.models import Check
+from weblate.configuration.admin import SettingAdmin
+from weblate.configuration.models import Setting
 from weblate.fonts.admin import FontAdmin, FontGroupAdmin
 from weblate.fonts.models import Font, FontGroup
-from weblate.glossary.admin import GlossaryAdmin, TermAdmin
-from weblate.glossary.models import Glossary, Term
 from weblate.lang.admin import LanguageAdmin
 from weblate.lang.models import Language
 from weblate.memory.admin import MemoryAdmin
@@ -117,7 +112,9 @@ class WeblateAdminSite(AdminSite):
         self.register(Announcement, AnnouncementAdmin)
         self.register(ComponentList, ComponentListAdmin)
         self.register(ContributorAgreement, ContributorAgreementAdmin)
-        self.register(Glossary, GlossaryAdmin)
+
+        # Settings
+        self.register(Setting, SettingAdmin)
 
         # Show some controls only in debug mode
         if settings.DEBUG:
@@ -126,12 +123,10 @@ class WeblateAdminSite(AdminSite):
             self.register(Suggestion, SuggestionAdmin)
             self.register(Comment, CommentAdmin)
             self.register(Check, CheckAdmin)
-            self.register(Term, TermAdmin)
             self.register(Change, ChangeAdmin)
 
         # Billing
         if "weblate.billing" in settings.INSTALLED_APPS:
-            # pylint: disable=wrong-import-position
             from weblate.billing.admin import BillingAdmin, InvoiceAdmin, PlanAdmin
             from weblate.billing.models import Billing, Invoice, Plan
 
@@ -141,7 +136,6 @@ class WeblateAdminSite(AdminSite):
 
         # Hosted
         if "wlhosted.integrations" in settings.INSTALLED_APPS:
-            # pylint: disable=wrong-import-position
             from wlhosted.payments.admin import CustomerAdmin, PaymentAdmin
             from wlhosted.payments.models import Customer, Payment
 
@@ -150,7 +144,6 @@ class WeblateAdminSite(AdminSite):
 
         # Legal
         if "weblate.legal" in settings.INSTALLED_APPS:
-            # pylint: disable=wrong-import-position
             from weblate.legal.admin import AgreementAdmin
             from weblate.legal.models import Agreement
 
@@ -158,7 +151,6 @@ class WeblateAdminSite(AdminSite):
 
         # SAML identity provider
         if "djangosaml2idp" in settings.INSTALLED_APPS:
-            # pylint: disable=wrong-import-position
             from djangosaml2idp.admin import PersistentIdAdmin, ServiceProviderAdmin
             from djangosaml2idp.models import PersistentId, ServiceProvider
 
@@ -173,6 +165,13 @@ class WeblateAdminSite(AdminSite):
         # Django REST Framework
         self.register(Token, TokenAdmin)
 
+        # Django Celery Beat
+        self.register(IntervalSchedule)
+        self.register(CrontabSchedule)
+        self.register(SolarSchedule)
+        self.register(ClockedSchedule, ClockedScheduleAdmin)
+        self.register(PeriodicTask, PeriodicTaskAdmin)
+
         # Simple SSO
         if "simple_sso.sso_server" in settings.INSTALLED_APPS:
             from simple_sso.sso_server.models import Consumer
@@ -180,7 +179,7 @@ class WeblateAdminSite(AdminSite):
 
             self.register(Consumer, ConsumerAdmin)
 
-    @never_cache
+    @method_decorator(never_cache)
     def logout(self, request, extra_context=None):
         if request.method == "POST":
             messages.info(request, _("Thank you for using Weblate."))

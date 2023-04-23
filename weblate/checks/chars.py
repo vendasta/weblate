@@ -1,22 +1,8 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
+import re
 
 from django.utils.translation import gettext_lazy as _
 
@@ -24,19 +10,8 @@ from weblate.checks.base import CountingCheck, TargetCheck, TargetCheckParametri
 from weblate.checks.markup import strip_entities
 from weblate.checks.parser import single_value_flag
 
-KASHIDA_CHARS = (
-    "\u0640",
-    "\uFCF2",
-    "\uFCF3",
-    "\uFCF4",
-    "\uFE71",
-    "\uFE77",
-    "\uFE79",
-    "\uFE7B",
-    "\uFE7D",
-    "\uFE7F",
-)
 FRENCH_PUNCTUATION = {";", ":", "?", "!"}
+MY_QUESTION_MARK = "\u1038\u104b"
 
 
 class BeginNewlineCheck(TargetCheck):
@@ -93,10 +68,7 @@ class BeginSpaceCheck(TargetCheck):
         source = unit.source_string
         stripped_source = source.lstrip(" ")
         spaces = len(source) - len(stripped_source)
-        if spaces:
-            replacement = source[:spaces]
-        else:
-            replacement = ""
+        replacement = source[:spaces] if spaces else ""
         return [("^ *", replacement, "u")]
 
 
@@ -132,10 +104,7 @@ class EndSpaceCheck(TargetCheck):
         source = unit.source_string
         stripped_source = source.rstrip(" ")
         spaces = len(source) - len(stripped_source)
-        if spaces:
-            replacement = source[-spaces:]
-        else:
-            replacement = ""
+        replacement = source[-spaces:] if spaces else ""
         return [(" *$", replacement, "u")]
 
 
@@ -168,6 +137,12 @@ class EndStopCheck(TargetCheck):
     name = _("Mismatched full stop")
     description = _("Source and translation do not both end with a full stop")
 
+    def _check_my(self, source, target):
+        if target.endswith(MY_QUESTION_MARK):
+            # Laeave this on the question mark check
+            return False
+        return self.check_chars(source, target, -1, (".", "။"))
+
     def check_single(self, source, target, unit):
         if len(source) <= 4:
             # Might need to use shortcut in translation
@@ -193,10 +168,16 @@ class EndStopCheck(TargetCheck):
             )
         if self.is_language(unit, ("hi", "bn", "or")):
             # Using | instead of । is not typographically correct, but
-            # seems to be quite usual
-            return self.check_chars(source, target, -1, (".", "।", "|"))
+            # seems to be quite usual. \u0964 is correct, but \u09F7
+            # is also sometimes used instead in some popular editors.
+            return self.check_chars(source, target, -1, (".", "\u0964", "\u09F7", "|"))
+        if self.is_language(unit, ("sat",)):
+            # Santali uses "᱾" as full stop
+            return self.check_chars(source, target, -1, (".", "᱾"))
+        if self.is_language(unit, ("my",)):
+            return self._check_my(source, target)
         return self.check_chars(
-            source, target, -1, (".", "。", "।", "۔", "։", "·", "෴", "។")
+            source, target, -1, (".", "。", "।", "۔", "։", "·", "෴", "។", "።")
         )
 
 
@@ -249,6 +230,9 @@ class EndQuestionCheck(TargetCheck):
             return False
         return target[-1] not in self.question_el
 
+    def _check_my(self, source, target):
+        return source.endswith("?") != target.endswith(MY_QUESTION_MARK)
+
     def check_single(self, source, target, unit):
         if not source or not target:
             return False
@@ -258,6 +242,8 @@ class EndQuestionCheck(TargetCheck):
             return self._check_hy(source, target)
         if self.is_language(unit, ("el",)):
             return self._check_el(source, target)
+        if self.is_language(unit, ("my",)):
+            return self._check_my(source, target)
 
         return self.check_chars(
             source, target, -1, ("?", "՞", "؟", "⸮", "？", "፧", "꘏", "⳺")
@@ -283,6 +269,8 @@ class EndExclamationCheck(TargetCheck):
             return False
         if self.is_language(unit, ("hy", "jbo")):
             return False
+        if self.is_language(unit, ("my",)):
+            return self.check_chars(source, target, -1, ("!", "႟"))
         if source.endswith("Texy!") or target.endswith("Texy!"):
             return False
         return self.check_chars(source, target, -1, ("!", "！", "՜", "᥄", "႟", "߹"))
@@ -312,7 +300,17 @@ class EscapedNewlineCountingCheck(CountingCheck):
     string = "\\n"
     check_id = "escaped_newline"
     name = _("Mismatched \\n")
-    description = _("Number of \\n in translation does not match source")
+    description = _("Number of \\n literals in translation does not match source")
+
+    ignore_re = re.compile(r"[A-Z]:\\\\[^\\ ]+(\\[^\\ ]+)+")
+
+    def check_single(self, source, target, unit):
+        if not target or not source:
+            return False
+
+        target = self.ignore_re.sub("", target)
+        source = self.ignore_re.sub("", source)
+        return super().check_single(source, target, unit)
 
 
 class NewLineCountCheck(CountingCheck):
@@ -356,7 +354,7 @@ class MaxLengthCheck(TargetCheckParametrized):
 
     def check_target_params(self, sources, targets, unit, value):
         replace = self.get_replacement_function(unit)
-        return any((len(replace(target)) > value for target in targets))
+        return any(len(replace(target)) > value for target in targets)
 
 
 class EndSemicolonCheck(TargetCheck):
@@ -370,7 +368,9 @@ class EndSemicolonCheck(TargetCheck):
         if self.is_language(unit, ("el",)) and source and source[-1] == "?":
             # Complement to question mark check
             return False
-        return self.check_chars(source, target, -1, [";"])
+        return self.check_chars(
+            strip_entities(source), strip_entities(target), -1, [";"]
+        )
 
 
 class KashidaCheck(TargetCheck):
@@ -378,14 +378,22 @@ class KashidaCheck(TargetCheck):
     name = _("Kashida letter used")
     description = _("The decorative kashida letters should not be used")
 
+    kashida_regex = (
+        # Allow kashida after certain letters
+        "(?<![\u0628\u0643\u0644])"
+        # List of kashida letters to check
+        "[\u0640\uFCF2\uFCF3\uFCF4\uFE71\uFE77\uFE79\uFE7B\uFE7D\uFE7F]"
+    )
+    kashida_re = re.compile(kashida_regex)
+
     def check_single(self, source, target, unit):
-        return any((x in target for x in KASHIDA_CHARS))
+        return self.kashida_re.search(target)
 
     def get_fixup(self, unit):
-        return [("[{}]".format("".join(KASHIDA_CHARS)), "", "gu")]
+        return [(self.kashida_regex, "", "gu")]
 
 
-class PuctuationSpacingCheck(TargetCheck):
+class PunctuationSpacingCheck(TargetCheck):
     check_id = "punctuation_spacing"
     name = _("Punctuation spacing")
     description = _("Missing non breakable space before double punctuation sign")

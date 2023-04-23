@@ -1,31 +1,17 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 from django.apps import AppConfig
-from django.conf import settings
 from django.core.checks import register
 from django.db.models import CharField, TextField
+from django.db.models.lookups import Regex
 
 from weblate.utils.checks import (
     check_cache,
     check_celery,
     check_data_writable,
+    check_database,
     check_diskspace,
     check_encoding,
     check_errors,
@@ -33,14 +19,14 @@ from weblate.utils.checks import (
     check_perms,
     check_settings,
     check_site,
-    check_templates,
+    check_version,
 )
+from weblate.utils.db import using_postgresql
 from weblate.utils.errors import init_error_collection
-from weblate.utils.version import check_version
 
 from .db import (
     MySQLSearchLookup,
-    MySQLSubstringLookup,
+    PostgreSQLRegexLookup,
     PostgreSQLSearchLookup,
     PostgreSQLSubstringLookup,
 )
@@ -58,7 +44,7 @@ class UtilsConfig(AppConfig):
         register(check_celery, deploy=True)
         register(check_cache, deploy=True)
         register(check_settings, deploy=True)
-        register(check_templates, deploy=True)
+        register(check_database, deploy=True)
         register(check_site)
         register(check_perms, deploy=True)
         register(check_errors, deploy=True)
@@ -68,16 +54,19 @@ class UtilsConfig(AppConfig):
 
         init_error_collection()
 
-        engine = settings.DATABASES["default"]["ENGINE"]
-        if engine == "django.db.backends.postgresql":
-            CharField.register_lookup(PostgreSQLSearchLookup)
-            TextField.register_lookup(PostgreSQLSearchLookup)
-            CharField.register_lookup(PostgreSQLSubstringLookup)
-            TextField.register_lookup(PostgreSQLSubstringLookup)
-        elif engine == "django.db.backends.mysql":
-            CharField.register_lookup(MySQLSearchLookup)
-            TextField.register_lookup(MySQLSearchLookup)
-            CharField.register_lookup(MySQLSubstringLookup)
-            TextField.register_lookup(MySQLSubstringLookup)
+        if using_postgresql():
+            lookups = (
+                (PostgreSQLSearchLookup,),
+                (PostgreSQLSubstringLookup,),
+                (PostgreSQLRegexLookup, "trgm_regex"),
+            )
         else:
-            raise Exception(f"Unsupported database: {engine}")
+            lookups = (
+                (MySQLSearchLookup,),
+                (MySQLSearchLookup, "substring"),
+                (Regex, "trgm_regex"),
+            )
+
+        for lookup in lookups:
+            CharField.register_lookup(*lookup)
+            TextField.register_lookup(*lookup)

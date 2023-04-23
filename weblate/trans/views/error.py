@@ -1,22 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import django.views.defaults
 import rest_framework.exceptions
@@ -31,7 +15,7 @@ from weblate.utils.errors import report_error
 
 def bad_request(request, exception=None):
     """Error handler for bad request."""
-    if "text/html" not in request.META.get("HTTP_ACCEPT", ""):
+    if "text/html" not in request.headers.get("accept", ""):
         return rest_framework.exceptions.bad_request(request, exception)
     if exception:
         report_error(cause="Bad request")
@@ -48,7 +32,7 @@ def denied(request, exception=None):
 
 
 def csrf_failure(request, reason=""):
-    return render(
+    response = render(
         request,
         "403_csrf.html",
         {
@@ -58,11 +42,19 @@ def csrf_failure(request, reason=""):
         },
         status=403,
     )
+    # Avoid setting CSRF cookie on CSRF failure page, otherwise we end up creating
+    # new session even when user might already have one (because browser did not
+    # send the cookies with the CSRF request and Django doesn't see the session
+    # cookie).
+    response.csrf_cookie_set = True
+    # Django 4.0+
+    request.META["CSRF_COOKIE_NEEDS_UPDATE"] = False
+    return response
 
 
 def server_error(request):
     """Error handler for server errors."""
-    if "text/html" not in request.META.get("HTTP_ACCEPT", ""):
+    if "text/html" not in request.headers.get("accept", ""):
         return rest_framework.exceptions.server_error(request)
     try:
         return render(

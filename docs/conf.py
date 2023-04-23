@@ -13,24 +13,18 @@
 import os
 import sys
 
-import sphinx.transforms.i18n
-import sphinx.util.i18n
-
 # -- Path setup --------------------------------------------------------------
 
 # sys.path.insert(0, os.path.abspath('.'))
+# Our extension
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "_ext")))
-
-# Hacky way to have all localized content in single domain
-sphinx.transforms.i18n.docname_to_domain = (
-    sphinx.util.i18n.docname_to_domain
-) = lambda docname, compact: "docs"
+# Weblate code
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 def setup(app):
-    app.add_css_file("https://s.weblate.org/cdn/font-source/source-sans-pro.css")
+    app.add_css_file("https://s.weblate.org/cdn/font-source/source-sans-3.css")
     app.add_css_file("https://s.weblate.org/cdn/font-source/source-code-pro.css")
-    app.add_css_file("docs.css")
     # Used in Sphinx docs, needed for intersphinx links to it
     app.add_object_type(
         "confval",
@@ -43,11 +37,11 @@ def setup(app):
 # -- Project information -----------------------------------------------------
 
 project = "Weblate"
-copyright = "2012 - 2020 Michal Čihař"
+copyright = "Michal Čihař"
 author = "Michal Čihař"
 
 # The full version, including alpha/beta/rc tags
-release = "4.2.2"
+release = "4.17"
 
 
 # -- General configuration ---------------------------------------------------
@@ -58,9 +52,12 @@ release = "4.2.2"
 extensions = [
     "djangodocs",
     "sphinxcontrib.httpdomain",
+    "sphinx.ext.autodoc",
     "sphinx.ext.graphviz",
     "sphinx.ext.intersphinx",
     "sphinx-jsonschema",
+    "sphinx_copybutton",
+    "sphinxext.opengraph",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -69,15 +66,32 @@ templates_path = ["_templates"]
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "admin/install/steps/*.rst"]
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "admin/install/steps/*.rst",
+    "devel/reporting-example.rst",
+]
 
+ogp_social_cards = {
+    "image": "../weblate/static/logo-1024.png",
+    "line_color": "#144d3f",
+    "site_url": "docs.weblate.org",
+}
+ogp_custom_meta_tags = [
+    '<meta property="fb:app_id" content="741121112629028" />',
+    '<meta property="fb:page_id" content="371217713079025" />',
+    '<meta name="twitter:site" content="@WeblateOrg" />',
+]
 
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = "sphinx_rtd_theme"
+# html_theme = "sphinx_rtd_theme"
+html_theme = "furo"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -87,6 +101,24 @@ html_static_path = ["../weblate/static/"]
 
 html_logo = "../weblate/static/logo-128.png"
 
+
+html_theme_options = {
+    "source_repository": "https://github.com/WeblateOrg/weblate/",
+    "source_branch": "main",
+    "source_directory": "docs/",
+    "dark_css_variables": {
+        "font-stack": '"Source Sans 3", sans-serif',
+        "font-stack--monospace": '"Source Code Pro", monospace',
+        "color-brand-primary": "#1fa385",
+        "color-brand-content": "#1fa385",
+    },
+    "light_css_variables": {
+        "font-stack": '"Source Sans 3", sans-serif',
+        "font-stack--monospace": '"Source Code Pro", monospace',
+        "color-brand-primary": "#1fa385",
+        "color-brand-content": "#1fa385",
+    },
+}
 
 # -- Options for HTMLHelp output ---------------------------------------------
 
@@ -177,13 +209,49 @@ epub_exclude_files = ["search.html"]
 
 graphviz_output_format = "svg"
 
+# Use localized Python docs on Read the Docs build
+rtd_lang = os.environ.get("READTHEDOCS_LANGUAGE")
+
+python_doc_url = "https://docs.python.org/3/"
+if rtd_lang == "pt_BR":
+    python_doc_url = "https://docs.python.org/pt-br/3/"
+elif rtd_lang in ("es", "fr", "ja", "ko"):
+    python_doc_url = f"https://docs.python.org/{rtd_lang}/3/"
+elif rtd_lang == "zh_CN":
+    python_doc_url = "https://docs.python.org/zh-cn/3/"
+elif rtd_lang == "zh_TW":
+    python_doc_url = "https://docs.python.org/zh-tw/3/"
+
+django_doc_url = "https://docs.djangoproject.com/en/stable/"
+if rtd_lang in ("el", "es", "fr", "id", "ja", "ko", "pl"):
+    django_doc_url = f"https://docs.djangoproject.com/{rtd_lang}/stable/"
+elif rtd_lang == "pt_BR":
+    django_doc_url = "https://docs.djangoproject.com/pt-br/stable/"
+elif rtd_lang == "zh_CN":
+    django_doc_url = "https://docs.djangoproject.com/zh-hans/stable/"
+
+sphinx_doc_url = "https://www.sphinx-doc.org/en/stable/"
+if rtd_lang in (
+    "ar",
+    "ca",
+    "de",
+    "ru",
+    "es",
+    "fr",
+    "it",
+    "ja",
+    "ko",
+    "pl",
+    "pt_BR",
+    "sr",
+    "zh_CN",
+):
+    sphinx_doc_url = f"https://www.sphinx-doc.org/{rtd_lang}/stable/"
+
 # Configuration for intersphinx
 intersphinx_mapping = {
-    "python": ("https://docs.python.org/3.7", None),
-    "django": (
-        "https://docs.djangoproject.com/en/stable/",
-        "https://docs.djangoproject.com/en/stable/_objects/",
-    ),
+    "python": (python_doc_url, None),
+    "django": (django_doc_url, f"{django_doc_url}_objects/"),
     "psa": ("https://python-social-auth.readthedocs.io/en/latest/", None),
     "tt": (
         "http://docs.translatehouse.org/projects/translate-toolkit/en/latest/",
@@ -192,14 +260,15 @@ intersphinx_mapping = {
     "amagama": ("https://docs.translatehouse.org/projects/amagama/en/latest/", None),
     "virtaal": ("http://docs.translatehouse.org/projects/virtaal/en/latest/", None),
     "ldap": ("https://django-auth-ldap.readthedocs.io/en/latest/", None),
-    "celery": ("https://docs.celeryproject.org/en/latest/", None),
-    "sphinx": ("https://www.sphinx-doc.org/en/stable/", None),
+    "celery": ("https://docs.celeryq.dev/en/stable/", None),
+    "sphinx": (sphinx_doc_url, None),
     "rtd": ("https://docs.readthedocs.io/en/latest/", None),
     "venv": ("https://virtualenv.pypa.io/en/stable/", None),
     "borg": ("https://borgbackup.readthedocs.io/en/stable/", None),
     "pip": ("https://pip.pypa.io/en/stable/", None),
     "compressor": ("https://django-compressor.readthedocs.io/en/stable/", None),
 }
+intersphinx_disabled_reftypes = ["*"]
 
 # Ignore missing targets for the http:obj <type>, it's how we declare the types
 # for input/output fields in the API docs.
@@ -211,9 +280,62 @@ nitpick_ignore = [
     ("http:obj", "object"),
     ("http:obj", "string"),
     ("http:obj", "timestamp"),
+    ("http:obj", "file"),
 ]
 
 # Number of retries and timeout for linkcheck
 linkcheck_retries = 10
 linkcheck_timeout = 10
-linkcheck_ignore = ["http://127.0.0.1:8080/"]
+linkcheck_ignore = [
+    # Local URL to Weblate
+    "http://127.0.0.1:8080/",
+    # Requires a valid token
+    "https://api.deepl.com/v2/translate",
+    # Requires authentication
+    "https://gitlab.com/profile/applications",
+    # Anchors are used to specify channel name here
+    "https://web.libera.chat/#",
+    # Site is unreliable
+    "https://docwiki.embarcadero.com/",
+    # 403 for linkcheck
+    "https://docs.github.com/",
+    "https://translate.yandex.com/",
+    # These are PDF and fails with Unicode decode error
+    "http://ftp.pwg.org/",
+]
+
+# HTTP docs
+http_index_ignore_prefixes = ["/api/"]
+http_strict_mode = True
+
+# Autodocs
+autodoc_mock_imports = [
+    "django",
+    "celery",
+    "sentry_sdk",
+    "crispy_forms",
+    "weblate.utils.errors",
+    "weblate.trans.discovery",
+    "weblate.checks.models",
+    "weblate.trans.forms",
+    "weblate.addons.forms",
+    "weblate.trans.tasks",
+    "dateutil",
+    "filelock",
+    "redis_lock",
+    "django_redis",
+    "lxml",
+    "translate",
+    "siphashc",
+    "git",
+    "PIL",
+    "weblate.addons.models",
+    "weblate.trans.models",
+    "weblate.lang.models",
+    "weblate.vcs.git",
+    "weblate.utils.files",
+]
+
+# Create single gettext PO file for while documentation,
+# instead of having one file per chapter.
+gettext_compact = "docs"

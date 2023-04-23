@@ -1,34 +1,29 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Plain text file formats."""
 
 import os
-from collections import OrderedDict
 from glob import glob
 from itertools import chain
-from typing import Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
 from weblate.formats.base import TranslationFormat, TranslationUnit
 from weblate.utils.errors import report_error
+
+
+class MultiparserError(Exception):
+    def __init__(self, filename, original):
+        super().__init__()
+        self.filename = filename
+        self.original = original
+
+    def __str__(self):
+        return f"{self.filename}: {self.original}"
 
 
 class TextItem:
@@ -42,7 +37,7 @@ class TextItem:
 
     @cached_property
     def location(self):
-        return "{}:{}".format(self.filename, self.line)
+        return f"{self.filename}:{self.line}"
 
     def getid(self):
         return self.location
@@ -52,7 +47,7 @@ class TextParser:
     """Simple text parser returning all content as single unit."""
 
     def __init__(self, storefile, filename=None, flags=None):
-        with open(storefile, "r") as handle:
+        with open(storefile) as handle:
             content = handle.read()
         if filename:
             self.filename = filename
@@ -76,7 +71,7 @@ class MultiParser:
 
     def __init__(self, storefile):
         if not isinstance(storefile, str):
-            raise ValueError("Needs string as a storefile!")
+            raise TypeError("Needs string as a storefile!")
 
         self.base = storefile
         self.parsers = self.load_parser()
@@ -88,16 +83,19 @@ class MultiParser:
         return filename
 
     def load_parser(self):
-        result = OrderedDict()
+        result = {}
         for name, flags in self.filenames:
             filename = self.get_filename(name)
             for match in sorted(glob(filename), key=self.file_key):
                 # Needed to allow overlapping globs, more specific first
                 if match in result:
                     continue
-                result[match] = TextParser(
-                    match, os.path.relpath(match, self.base), flags
-                )
+                try:
+                    result[match] = TextParser(
+                        match, os.path.relpath(match, self.base), flags
+                    )
+                except Exception as error:
+                    raise MultiparserError(match, error)
         return result
 
     def get_filename(self, name):
@@ -124,7 +122,7 @@ class AppStoreParser(MultiParser):
         parts = filename.rsplit("changelogs/", 1)
         if len(parts) == 2:
             try:
-                return -int(parts[1].split(".")[0])
+                return "-{}".format(int(parts[1].split(".")[0]))
             except ValueError:
                 pass
         return filename
@@ -162,17 +160,13 @@ class TextUnit(TranslationUnit):
             return self.mainunit.flags
         return ""
 
-    def set_target(self, target):
+    def set_target(self, target: Union[str, List[str]]):
         """Set translation unit target."""
         self._invalidate_target()
         self.unit.text = target
 
-    def mark_fuzzy(self, fuzzy):
-        """Set fuzzy flag on translated unit."""
-        return
-
-    def mark_approved(self, value):
-        """Set approved flag on translated unit."""
+    def set_state(self, state):
+        """Set fuzzy /approved flag on translated unit."""
         return
 
 
@@ -180,33 +174,49 @@ class AppStoreFormat(TranslationFormat):
     name = _("App store metadata files")
     format_id = "appstore"
     can_add_unit = False
+    can_delete_unit = True
     monolingual = True
     unit_class = TextUnit
     simple_filename = False
+    language_format = "googleplay"
+    create_style = "directory"
 
-    @classmethod
-    def load(cls, storefile):
+    def load(self, storefile, template_store):
         return AppStoreParser(storefile)
 
-    def create_unit(self, key, source):
+    def create_unit(
+        self,
+        key: str,
+        source: Union[str, List[str]],
+        target: Optional[Union[str, List[str]]] = None,
+    ):
         raise ValueError("Create not supported")
 
     @classmethod
-    def create_new_file(cls, filename, language, base):
+    def create_new_file(
+        cls,
+        filename: str,
+        language: str,
+        base: str,
+        callback: Optional[Callable] = None,
+    ):
         """Handle creation of new translation file."""
         os.makedirs(filename)
 
     def add_unit(self, ttkit_unit):
-        """Add new unit to underlaying store."""
+        """Add new unit to underlying store."""
         self.store.units.append(ttkit_unit)
 
     def save(self):
-        """Save underlaying store to disk."""
+        """Save underlying store to disk."""
         for unit in self.store.units:
+            filename = self.store.get_filename(unit.filename)
             if not unit.text:
+                if os.path.exists(filename):
+                    os.unlink(filename)
                 continue
             self.save_atomic(
-                self.store.get_filename(unit.filename),
+                filename,
                 TextSerializer(unit.filename, self.store.units),
             )
 
@@ -218,13 +228,25 @@ class AppStoreFormat(TranslationFormat):
         return None
 
     @classmethod
-    def is_valid_base_for_new(cls, base, monolingual):
+    def is_valid_base_for_new(
+        cls,
+        base: str,
+        monolingual: bool,
+        errors: Optional[List] = None,
+        fast: bool = False,
+    ) -> bool:
         """Check whether base is valid."""
         if not base:
             return True
         try:
-            AppStoreParser(base)
-            return True
+            if not fast:
+                AppStoreParser(base)
         except Exception:
             report_error(cause="File parse error")
             return False
+        return True
+
+    def delete_unit(self, ttkit_unit) -> Optional[str]:
+        filename = self.store.get_filename(ttkit_unit.filename)
+        os.unlink(filename)
+        return filename

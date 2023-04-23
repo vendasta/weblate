@@ -1,21 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import json
 
@@ -27,55 +12,59 @@ from weblate.trans.management.commands import WeblateComponentCommand
 
 
 class Command(WeblateComponentCommand):
-    help = "installs addon to all listed components"
+    help = "installs add-on to all listed components"
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
-        parser.add_argument("--addon", required=True, help="Addon name")
+        parser.add_argument("--addon", required=True, help="Add-on name")
         parser.add_argument(
-            "--configuration", default="{}", help="Addon configuration in JSON"
+            "--configuration", default="{}", help="Add-on configuration in JSON"
         )
         parser.add_argument(
-            "--update", action="store_true", help="Update existing addons configuration"
+            "--update",
+            action="store_true",
+            help="Update existing add-ons configuration",
         )
+
+    def validate_form(self, form):
+        if not form.is_valid():
+            for error in form.non_field_errors():
+                self.stderr.write(error)
+            for field in form:
+                for error in field.errors:
+                    self.stderr.write(f"Error in {field.name}: {error}")
+            raise CommandError("Invalid add-on configuration!")
 
     def handle(self, *args, **options):
         try:
-            addon = ADDONS[options["addon"]]()
+            addon = ADDONS[options["addon"]]
         except KeyError:
-            raise CommandError("Addon not found: {}".format(options["addon"]))
+            raise CommandError("Add-on not found: {}".format(options["addon"]))
         try:
             configuration = json.loads(options["configuration"])
         except ValueError as error:
-            raise CommandError("Invalid addon configuration: {}".format(error))
+            raise CommandError(f"Invalid add-on configuration: {error}")
         try:
             user = User.objects.filter(is_superuser=True)[0]
         except IndexError:
             user = get_anonymous()
         for component in self.get_components(*args, **options):
-            if addon.has_settings:
-                form = addon.get_add_form(component, data=configuration)
-                if not form.is_valid():
-                    for error in form.non_field_errors():
-                        self.stderr.write(error)
-                    for field in form:
-                        for error in field.errors:
-                            self.stderr.write(
-                                "Error in {}: {}".format(field.name, error)
-                            )
-                    raise CommandError("Invalid addon configuration!")
+            if addon.has_settings():
+                form = addon.get_add_form(None, component, data=configuration)
+                self.validate_form(form)
             addons = Addon.objects.filter_component(component).filter(name=addon.name)
-            if addons.exists():
+            if addons:
                 if options["update"]:
-                    addons.update(configuration=configuration)
-                    self.stdout.write("Successfully updated on {}".format(component))
+                    for addon_component in addons:
+                        addon_component.addon.configure(configuration)
+                    self.stdout.write(f"Successfully updated on {component}")
                 else:
-                    self.stderr.write("Already installed on {}".format(component))
+                    self.stderr.write(f"Already installed on {component}")
                 continue
 
             if not addon.can_install(component, user):
-                self.stderr.write("Can not install on {}".format(component))
+                self.stderr.write(f"Can not install on {component}")
                 continue
 
             addon.create(component, configuration=configuration)
-            self.stdout.write("Successfully installed on {}".format(component))
+            self.stdout.write(f"Successfully installed on {component}")

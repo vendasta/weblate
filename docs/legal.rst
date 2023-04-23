@@ -9,6 +9,12 @@ Legal documents
    responsibility to ensure that your use of Weblate complies with all applicable
    laws and regulations.
 
+Licensing compliance
+--------------------
+
+Weblate comes with `REUSE 3.0 <https://reuse.software/>`_ compliant license
+specification.
+
 ITAR and other export controls
 ------------------------------
 
@@ -41,12 +47,12 @@ cryptographic function):
    Optionally used by Weblate
 `Git <https://git-scm.com/>`_
    Optionally used by Weblate
-`curl <https://curl.haxx.se/>`_
+`curl <https://curl.se/>`_
    Used by Git
 `OpenSSL <https://www.openssl.org/>`_
    Used by Python and cURL
 
-The strength of encryption keys depend on the configuration of Weblate and
+The strength of encryption keys depends on the configuration of Weblate and
 the third party components it interacts with, but in any decent setup it will
 include all export restricted cryptographic functions:
 

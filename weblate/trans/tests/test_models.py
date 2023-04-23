@@ -1,30 +1,12 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 """Test for translation models."""
-
-
 import os
-import shutil
 
 from django.core.management.color import no_style
-from django.db import connection
+from django.db import connection, transaction
 from django.test import LiveServerTestCase, TestCase
 from django.test.utils import override_settings
 
@@ -44,6 +26,7 @@ from weblate.trans.models import (
 )
 from weblate.trans.tests.utils import RepoTestMixin, create_test_user
 from weblate.utils.django_hacks import immediate_on_commit, immediate_on_commit_leave
+from weblate.utils.files import remove_tree
 from weblate.utils.state import STATE_TRANSLATED
 
 
@@ -107,7 +90,7 @@ class ProjectTest(RepoTestCase):
     def test_create(self):
         project = self.create_project()
         self.assertTrue(os.path.exists(project.full_path))
-        self.assertTrue(project.slug in project.full_path)
+        self.assertIn(project.slug, project.full_path)
 
     def test_rename(self):
         component = self.create_link()
@@ -120,10 +103,11 @@ class ProjectTest(RepoTestCase):
                 component.translation_set.get(language_code="cs").get_filename()
             )
         )
+        project.name = "Changed"
         project.slug = "changed"
         project.save()
         new_path = project.full_path
-        self.addCleanup(shutil.rmtree, new_path, True)
+        self.addCleanup(remove_tree, new_path, True)
         self.assertFalse(os.path.exists(old_path))
         self.assertTrue(os.path.exists(new_path))
         self.assertTrue(
@@ -144,12 +128,15 @@ class ProjectTest(RepoTestCase):
         self.assertFalse(os.path.exists(project.full_path))
 
     def test_delete_votes(self):
-        component = self.create_po(suggestion_voting=True, suggestion_autoaccept=True)
-        user = create_test_user()
-        translation = component.translation_set.get(language_code="cs")
-        unit = translation.unit_set.first()
-        suggestion = Suggestion.objects.add(unit, "Test", None)
-        Vote.objects.create(suggestion=suggestion, value=Vote.POSITIVE, user=user)
+        with transaction.atomic():
+            component = self.create_po(
+                suggestion_voting=True, suggestion_autoaccept=True
+            )
+            user = create_test_user()
+            translation = component.translation_set.get(language_code="cs")
+            unit = translation.unit_set.first()
+            suggestion = Suggestion.objects.add(unit, "Test", None)
+            Vote.objects.create(suggestion=suggestion, value=Vote.POSITIVE, user=user)
         component.project.delete()
 
     def test_delete_all(self):
@@ -174,18 +161,13 @@ class ProjectTest(RepoTestCase):
         self.assertFalse(user.can_access_project(project))
 
         # Add to ACL group
-        user.groups.add(Group.objects.get(name="Test@Translate"))
+        user.groups.add(Group.objects.get(name="Translate", defining_project=project))
 
         # Need to fetch user again to clear permission cache
         user = User.objects.get(username="testuser")
 
         # We now should have access
         self.assertTrue(user.can_access_project(project))
-
-    def test_change_source_language(self):
-        component = self.create_component()
-        component.project.source_language = Language.objects.get(code="cs")
-        component.project.save()
 
 
 class TranslationTest(RepoTestCase):
@@ -199,13 +181,13 @@ class TranslationTest(RepoTestCase):
         self.assertEqual(translation.stats.translated, 4)
         self.assertEqual(translation.stats.all, 4)
         self.assertEqual(translation.stats.fuzzy, 0)
-        self.assertEqual(translation.stats.all_words, 15)
+        self.assertEqual(translation.stats.all_words, 19)
         # Verify target translation
         translation = component.translation_set.get(language_code="cs")
         self.assertEqual(translation.stats.translated, 0)
         self.assertEqual(translation.stats.all, 4)
         self.assertEqual(translation.stats.fuzzy, 0)
-        self.assertEqual(translation.stats.all_words, 15)
+        self.assertEqual(translation.stats.all_words, 19)
 
     def test_validation(self):
         """Translation validation."""
@@ -218,7 +200,7 @@ class TranslationTest(RepoTestCase):
         component = self.create_component()
         translation = component.translation_set.get(language_code="cs")
         self.assertEqual(translation.stats.all, 4)
-        self.assertEqual(translation.stats.all_words, 15)
+        self.assertEqual(translation.stats.all_words, 19)
         translation.unit_set.all().delete()
         translation.invalidate_cache()
         self.assertEqual(translation.stats.all, 0)
@@ -240,12 +222,12 @@ class TranslationTest(RepoTestCase):
         for unit in translation.unit_set.iterator():
             unit.translate(user, "test4", STATE_TRANSLATED)
         self.assertEqual(start_rev, component.repository.last_revision)
-        # Translation from other author should trigger commmit
+        # Translation from other author should trigger commit
         for i, unit in enumerate(translation.unit_set.iterator()):
             user = User.objects.create(
-                full_name="User {}".format(unit.pk),
-                username="user-{}".format(unit.pk),
-                email="{}@example.com".format(unit.pk),
+                full_name=f"User {unit.pk}",
+                username=f"user-{unit.pk}",
+                email=f"{unit.pk}@example.com",
             )
             # Fetch current pending state, it might have been
             # updated by background commit
@@ -279,7 +261,7 @@ class ComponentListTest(RepoTestCase):
         AutoComponentList.objects.create(
             project_match="^.*$", component_match="^.*$", componentlist=clist
         )
-        self.assertEqual(clist.components.count(), 1)
+        self.assertEqual(clist.components.count(), 2)
 
     def test_auto_create(self):
         clist = ComponentList.objects.create(name="Name", slug="slug")
@@ -288,7 +270,7 @@ class ComponentListTest(RepoTestCase):
         )
         self.assertEqual(clist.components.count(), 0)
         self.create_component()
-        self.assertEqual(clist.components.count(), 1)
+        self.assertEqual(clist.components.count(), 2)
 
     def test_auto_nomatch(self):
         self.create_component()
@@ -308,14 +290,16 @@ class ModelTestCase(RepoTestCase):
 class SourceUnitTest(ModelTestCase):
     """Source Unit objects testing."""
 
-    def test_source_info(self):
+    def test_source_unit(self):
         unit = Unit.objects.filter(translation__language_code="cs")[0]
-        self.assertIsNotNone(unit.source_info)
+        self.assertIsNotNone(unit.source_unit)
+        unit = Unit.objects.filter(translation__language_code="en")[0]
+        self.assertEqual(unit.source_unit, unit)
 
     def test_priority(self):
         unit = Unit.objects.filter(translation__language_code="cs")[0]
         self.assertEqual(unit.priority, 100)
-        source = unit.source_info
+        source = unit.source_unit
         source.extra_flags = "priority:200"
         source.save()
         unit2 = Unit.objects.get(pk=unit.pk)
@@ -327,8 +311,8 @@ class SourceUnitTest(ModelTestCase):
         check = Check.objects.all()[0]
         unit = check.unit
         self.assertEqual(self.component.stats.allchecks, 3)
-        source = unit.source_info
-        source.extra_flags = "ignore-{0}".format(check.check)
+        source = unit.source_unit
+        source.extra_flags = f"ignore-{check.name}"
         source.save()
         self.assertEqual(Check.objects.count(), 0)
         self.assertEqual(Component.objects.get(pk=self.component.pk).stats.allchecks, 0)
@@ -337,16 +321,18 @@ class SourceUnitTest(ModelTestCase):
 class UnitTest(ModelTestCase):
     def test_newlines(self):
         user = create_test_user()
-        unit = Unit.objects.filter(translation__language_code="cs")[0]
-        unit.translate(user, "new\nstring", STATE_TRANSLATED)
-        self.assertEqual(unit.target, "new\nstring")
+        unit = Unit.objects.filter(
+            translation__language_code="cs", source="Hello, world!\n"
+        )[0]
+        unit.translate(user, "new\nstring\n", STATE_TRANSLATED)
+        self.assertEqual(unit.target, "new\nstring\n")
         # New object to clear all_flags cache
         unit = Unit.objects.get(pk=unit.pk)
         unit.flags = "dos-eol"
         unit.translate(user, "new\nstring", STATE_TRANSLATED)
-        self.assertEqual(unit.target, "new\r\nstring")
+        self.assertEqual(unit.target, "new\r\nstring\r\n")
         unit.translate(user, "other\r\nstring", STATE_TRANSLATED)
-        self.assertEqual(unit.target, "other\r\nstring")
+        self.assertEqual(unit.target, "other\r\nstring\r\n")
 
     def test_flags(self):
         unit = Unit.objects.filter(translation__language_code="cs")[0]
@@ -355,33 +341,33 @@ class UnitTest(ModelTestCase):
 
     def test_order_by_request(self):
         unit = Unit.objects.filter(translation__language_code="cs")[0]
-        source = unit.source_info
+        source = unit.source_unit
         source.extra_flags = "priority:200"
         source.save()
 
         # test both ascending and descending order works
         unit1 = Unit.objects.filter(translation__language_code="cs")
-        unit1 = unit1.order_by_request({"sort_by": "-priority"})
+        unit1 = unit1.order_by_request({"sort_by": "-priority"}, None)
         self.assertEqual(unit1[0].priority, 200)
         unit1 = Unit.objects.filter(translation__language_code="cs")
-        unit1 = unit1.order_by_request({"sort_by": "priority"})
+        unit1 = unit1.order_by_request({"sort_by": "priority"}, None)
         self.assertEqual(unit1[0].priority, 100)
 
         # test if invalid sorting, then sorted in default order
         unit2 = Unit.objects.filter(translation__language_code="cs")
         unit2 = unit2.order()
         unit3 = Unit.objects.filter(translation__language_code="cs")
-        unit3 = unit3.order_by_request({"sort_by": "invalid"})
+        unit3 = unit3.order_by_request({"sort_by": "invalid"}, None)
         self.assertEqual(unit3[0], unit2[0])
 
         # test sorting by count
         unit4 = Unit.objects.filter(translation__language_code="cs")[2]
         Comment.objects.create(unit=unit4, comment="Foo")
         unit5 = Unit.objects.filter(translation__language_code="cs")
-        unit5 = unit5.order_by_request({"sort_by": "-num_comments"})
+        unit5 = unit5.order_by_request({"sort_by": "-num_comments"}, None)
         self.assertEqual(unit5[0].comment_set.count(), 1)
         unit5 = Unit.objects.filter(translation__language_code="cs")
-        unit5 = unit5.order_by_request({"sort_by": "num_comments"})
+        unit5 = unit5.order_by_request({"sort_by": "num_comments"}, None)
         self.assertEqual(unit5[0].comment_set.count(), 0)
 
         # check all order options produce valid queryset
@@ -397,17 +383,17 @@ class UnitTest(ModelTestCase):
         for order_option in order_options:
             ordered_unit = Unit.objects.filter(
                 translation__language_code="cs"
-            ).order_by_request({"sort_by": order_option})
+            ).order_by_request({"sort_by": order_option}, None)
             ordered_desc_unit = Unit.objects.filter(
                 translation__language_code="cs"
-            ).order_by_request({"sort_by": "-{}".format(order_option)})
+            ).order_by_request({"sort_by": f"-{order_option}"}, None)
             self.assertEqual(len(ordered_unit), 4)
             self.assertEqual(len(ordered_desc_unit), 4)
 
         # check sorting with multiple options work
         multiple_ordered_unit = Unit.objects.filter(
             translation__language_code="cs"
-        ).order_by_request({"sort_by": "position,timestamp"})
+        ).order_by_request({"sort_by": "position,timestamp"}, None)
         self.assertEqual(multiple_ordered_unit.count(), 4)
 
     def test_get_max_length_no_pk(self):

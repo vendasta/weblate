@@ -1,27 +1,13 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 """Test for alerts."""
 
 from django.test.utils import override_settings
 from django.urls import reverse
 
+from weblate.lang.models import Language
 from weblate.trans.tests.test_views import ViewTestCase
 
 
@@ -35,7 +21,6 @@ class AlertTest(ViewTestCase):
             {
                 "DuplicateLanguage",
                 "DuplicateString",
-                "MissingLicense",
                 "BrokenBrowserURL",
                 "BrokenProjectURL",
             },
@@ -45,6 +30,29 @@ class AlertTest(ViewTestCase):
         alert = self.component.alert_set.get(name="DuplicateString")
         self.assertEqual(
             alert.details["occurrences"][0]["source"], "Thank you for using Weblate."
+        )
+
+    def test_unused_enforced(self):
+        self.assertEqual(
+            set(self.component.alert_set.values_list("name", flat=True)),
+            {
+                "DuplicateLanguage",
+                "DuplicateString",
+                "BrokenBrowserURL",
+                "BrokenProjectURL",
+            },
+        )
+        self.component.enforced_checks = ["es_format"]
+        self.component.save()
+        self.assertEqual(
+            set(self.component.alert_set.values_list("name", flat=True)),
+            {
+                "DuplicateLanguage",
+                "DuplicateString",
+                "BrokenBrowserURL",
+                "BrokenProjectURL",
+                "UnusedEnforcedCheck",
+            },
         )
 
     def test_dismiss(self):
@@ -61,6 +69,7 @@ class AlertTest(ViewTestCase):
         response = self.client.get(self.component.get_absolute_url())
         self.assertContains(response, "Duplicated translation")
 
+    @override_settings(LICENSE_REQUIRED=True)
     def test_license(self):
         def has_license_alert(component):
             return component.alert_set.filter(name="MissingLicense").exists()
@@ -81,6 +90,16 @@ class AlertTest(ViewTestCase):
             component.update_alerts()
             self.assertFalse(has_license_alert(component))
 
+        # Filtered licenses
+        with override_settings(LICENSE_FILTER=set()):
+            component.update_alerts()
+            self.assertFalse(has_license_alert(component))
+
+        # Filtered licenses
+        with override_settings(LICENSE_FILTER={"proprietary"}):
+            component.update_alerts()
+            self.assertTrue(has_license_alert(component))
+
         # Set license
         component.license = "license"
         component.update_alerts()
@@ -94,18 +113,33 @@ class AlertTest(ViewTestCase):
         )
 
 
+class LanguageAlertTest(ViewTestCase):
+    def create_component(self):
+        return self.create_po_new_base(new_lang="add")
+
+    def test_ambiguous_language(self):
+        component = self.component
+        self.assertFalse(component.alert_set.filter(name="AmbiguousLanguage").exists())
+        self.component.add_new_language(
+            Language.objects.get(code="ku"), self.get_request()
+        )
+        self.component.update_alerts()
+        self.assertTrue(component.alert_set.filter(name="AmbiguousLanguage").exists())
+
+
 class MonolingualAlertTest(ViewTestCase):
     def create_component(self):
         return self.create_po_mono()
 
     def test_monolingual(self):
-        def has_monolingual_alert(component):
-            return component.alert_set.filter(name="MonolingualTranslation").exists()
+        self.assertFalse(
+            self.component.alert_set.filter(name="MonolingualTranslation").exists()
+        )
 
-        component = self.component
-        component.update_alerts()
-        self.assertFalse(has_monolingual_alert(component))
-
-        self.component.template = ""
-        self.component.save()
-        self.assertTrue(has_monolingual_alert(component))
+    def test_false_bilingual(self):
+        component = self._create_component(
+            "po-mono", "po-mono/*.po", project=self.project, name="bimono"
+        )
+        self.assertTrue(
+            component.alert_set.filter(name="MonolingualTranslation").exists()
+        )

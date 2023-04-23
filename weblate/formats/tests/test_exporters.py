@@ -1,21 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 from weblate.formats.base import EmptyFormat
 from weblate.formats.exporters import (
@@ -31,7 +16,6 @@ from weblate.formats.exporters import (
     XlsxExporter,
 )
 from weblate.formats.helpers import BytesIOMode
-from weblate.glossary.models import Term
 from weblate.lang.models import Language, Plural
 from weblate.trans.models import (
     Comment,
@@ -56,7 +40,10 @@ class PoExporterTest(BaseTestCase):
             if created:
                 Plural.objects.create(language=lang)
         return self._class(
-            language=lang, project=Project(slug="test", name="TEST"), **kwargs
+            language=lang,
+            source_language=Language.objects.get(code="en"),
+            project=Project(slug="test", name="TEST"),
+            **kwargs,
         )
 
     def check_export(self, exporter):
@@ -68,46 +55,35 @@ class PoExporterTest(BaseTestCase):
         self.assertIn(b"msgid_plural", result)
         self.assertIn(b"msgstr[2]", result)
 
-    def check_glossary(self, word):
-        exporter = self.get_exporter()
-        exporter.add_glossary_term(word)
-        self.check_export(exporter)
-
-    def test_glossary(self):
-        self.check_glossary(Term(source="foo", target="bar"))
-
-    def test_glossary_markup(self):
-        self.check_glossary(Term(source="<b>foo</b>", target="<b>bar</b>"))
-
-    def test_glossary_special(self):
-        self.check_glossary(Term(source="bar\x1e\x1efoo", target="br\x1eff"))
-
     def check_unit(self, nplurals=3, template=None, source_info=None, **kwargs):
-        if nplurals == 3:
-            formula = "n==0 ? 0 : n==1 ? 1 : 2"
-        else:
-            formula = "0"
+        formula = "n==0 ? 0 : n==1 ? 1 : 2" if nplurals == 3 else "0"
         lang = Language.objects.create(code="zz")
         plural = Plural.objects.create(language=lang, number=nplurals, formula=formula)
-        project = Project(slug="test", source_language=Language.objects.get(code="en"))
+        project = Project(slug="test")
         component = Component(
-            slug="comp", project=project, file_format="xliff", template=template
+            slug="comp",
+            project=project,
+            file_format="xliff",
+            template=template,
+            source_language=Language.objects.get(code="en"),
         )
         translation = Translation(language=lang, component=component, plural=plural)
         # Fake file format to avoid need for actual files
         translation.store = EmptyFormat(BytesIOMode("", b""))
-        unit = Unit(translation=translation, id_hash=-1, **kwargs)
+        unit = Unit(translation=translation, id_hash=-1, pk=-1, **kwargs)
         if source_info:
             for key, value in source_info.items():
                 setattr(unit, key, value)
-            unit.__dict__["all_comments"] = [
-                Comment(comment="Weblate translator comment")
+            # The dashes need special handling in XML based formats
+            unit.__dict__["unresolved_comments"] = [
+                Comment(comment="Weblate translator comment ---- ")
             ]
             unit.__dict__["suggestions"] = [
                 Suggestion(target="Weblate translator suggestion")
             ]
         else:
-            unit.__dict__["all_comments"] = []
+            unit.__dict__["unresolved_comments"] = []
+        unit.source_unit = unit
         exporter = self.get_exporter(lang, translation=translation)
         exporter.add_unit(unit)
         return self.check_export(exporter)
@@ -117,6 +93,15 @@ class PoExporterTest(BaseTestCase):
 
     def test_unit_mono(self):
         self.check_unit(source="xxx", target="yyy", template="template")
+
+    def test_unit_markup(self):
+        self.check_unit(source="<b>foo</b>", target="<b>bar</b>")
+
+    def test_unit_special(self):
+        self.check_unit(source="bar\x1e\x1efoo", target="br\x1eff")
+
+    def test_unit_bom(self):
+        self.check_unit(source="For example ￾￾", target="For example ￾￾")
 
     def _encode(self, string):
         return string.encode("utf-8")
@@ -156,7 +141,8 @@ class PoExporterTest(BaseTestCase):
             state=STATE_TRANSLATED,
             source_info={
                 "extra_flags": "max-length:200",
-                "explanation": "Context in Weblate",
+                # The dashes need special handling in XML based formats
+                "explanation": "Context in Weblate\n------------------\n",
             },
         )
         if self._has_context:
@@ -204,6 +190,13 @@ class PoXliffExporterTest(PoExporterTest):
         </xliff:g>"""
         result = self.check_unit(source="x " + xml, target="y " + xml).decode()
         self.assertIn("<g", result)
+
+    def test_html(self):
+        result = self.check_unit(
+            source="x <b>test</b>", target="y <b>test</b>"
+        ).decode()
+        self.assertIn("<source>x <b>test</b></source>", result)
+        self.assertIn('<target state="translated">y <b>test</b></target>', result)
 
     def test_php_code(self):
         text = """<?php

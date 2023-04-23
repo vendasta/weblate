@@ -1,24 +1,8 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 """Test for import and export."""
-
 
 from copy import copy
 
@@ -26,6 +10,7 @@ from django.contrib.messages import ERROR
 from django.test import SimpleTestCase
 from django.urls import reverse
 
+from weblate.formats.helpers import BytesIOMode
 from weblate.trans.forms import SimpleUploadForm
 from weblate.trans.models import ComponentList
 from weblate.trans.tests.test_views import ViewTestCase
@@ -44,6 +29,7 @@ TEST_MO = get_test_file("cs.mo")
 TEST_XLIFF = get_test_file("cs.poxliff")
 TEST_ANDROID = get_test_file("strings-cs.xml")
 TEST_XLSX = get_test_file("cs.xlsx")
+TEST_TBX = get_test_file("terms.tbx")
 
 TRANSLATION_OURS = "Nazdar světe!\n"
 TRANSLATION_PO = "Ahoj světe!\n"
@@ -84,6 +70,7 @@ class ImportTest(ImportBaseTest):
     """Testing of file imports."""
 
     test_file = TEST_PO
+    has_plurals = True
 
     def test_import_normal(self):
         """Test importing normally."""
@@ -149,7 +136,7 @@ class ImportTest(ImportBaseTest):
         # Verify unit
         unit = self.get_unit()
         self.assertEqual(unit.target, TRANSLATION_PO)
-        self.assertEqual(unit.fuzzy, True)
+        self.assertTrue(unit.fuzzy)
 
         # Verify stats
         translation = self.get_translation()
@@ -164,18 +151,22 @@ class ImportTest(ImportBaseTest):
 
         # Verify unit
         unit = self.get_unit()
-        self.assertEqual(unit.translated, False)
+        self.assertFalse(unit.translated)
 
         # Verify stats
         translation = self.get_translation()
         self.assertEqual(translation.stats.translated, 0)
         self.assertEqual(translation.stats.fuzzy, 0)
         self.assertEqual(translation.stats.all, 4)
-        self.assertEqual(translation.stats.suggestions, 1)
+        self.assertEqual(
+            translation.stats.suggestions, 2 if self.test_file == TEST_XLIFF else 1
+        )
 
     def test_import_xliff(self):
         response = self.do_import(test_file=TEST_XLIFF, follow=True)
-        self.assertContains(response, "updated: 1")
+        self.assertContains(
+            response, "updated: 2" if self.has_plurals else "updated: 1"
+        )
         # Verify stats
         translation = self.get_translation()
         self.assertEqual(translation.stats.translated, 1)
@@ -185,7 +176,8 @@ class ImportErrorTest(ImportBaseTest):
     """Testing import of broken files."""
 
     def test_mismatched_plurals(self):
-        """Test importing a file with different number of plural forms.
+        """
+        Test importing a file with different number of plural forms.
 
         In response to issue #900
         """
@@ -276,26 +268,62 @@ class ImportMoPoTest(ImportTest):
 
 
 class ImportJoomlaTest(ImportTest):
+    has_plurals = False
+
     def create_component(self):
         return self.create_joomla()
 
 
+class ImportCSVTest(ImportTest):
+    has_plurals = False
+
+    def create_component(self):
+        return self.create_csv_mono()
+
+    def test_import_source(self):
+        kwargs = self.kw_translation.copy()
+        kwargs["lang"] = "en"
+
+        with open(TEST_CSV, "rb") as handle:
+            response = self.client.post(
+                reverse("upload_translation", kwargs=kwargs),
+                {
+                    "file": handle,
+                    "method": "replace",
+                    "author_name": self.user.full_name,
+                    "author_email": self.user.email,
+                },
+                follow=True,
+            )
+        self.assertRedirects(response, reverse("translation", kwargs=kwargs))
+        messages = list(response.context["messages"])
+        self.assertIn("Processed 1 string from the uploaded files", messages[0].message)
+
+
 class ImportJSONTest(ImportTest):
+    has_plurals = False
+
     def create_component(self):
         return self.create_json()
 
 
 class ImportJSONMonoTest(ImportTest):
+    has_plurals = False
+
     def create_component(self):
         return self.create_json_mono()
 
 
 class ImportPHPMonoTest(ImportTest):
+    has_plurals = False
+
     def create_component(self):
         return self.create_php_mono()
 
 
 class StringsImportTest(ImportTest):
+    has_plurals = False
+
     def create_component(self):
         return self.create_iphone()
 
@@ -510,7 +538,7 @@ class FormTest(SimpleTestCase):
         form.remove_translation_choice("suggest")
         self.assertEqual(
             [x[0] for x in form.fields["method"].choices],
-            ["translate", "approve", "fuzzy", "replace", "source"],
+            ["translate", "approve", "fuzzy", "replace", "source", "add"],
         )
 
 
@@ -565,6 +593,44 @@ class ImportSourceTest(ImportBaseTest):
         self.assertEqual(unit.target, "")
 
 
+class ImportAddTest(ImportBaseTest):
+    """Testing of source strings update imports."""
+
+    test_file = TEST_TBX
+
+    def test_import(self):
+        """Test importing normally."""
+        response = self.do_import(method="add", follow=True)
+        self.assertRedirects(response, self.translation_url)
+        messages = [message.message for message in response.context["messages"]]
+        self.assertIn(
+            (
+                "Error in parameter method: Select a valid choice. "
+                "add is not one of the available choices."
+            ),
+            messages,
+        )
+
+        self.component.manage_units = True
+        self.component.save(update_fields=["manage_units"])
+        response = self.do_import(method="add", follow=True)
+        self.assertRedirects(response, self.translation_url)
+        messages = [message.message for message in response.context["messages"]]
+        self.assertIn(
+            (
+                "Processed 164 strings from the uploaded files "
+                "(skipped: 0, not found: 0, updated: 164)."
+            ),
+            messages,
+        )
+
+        # Verify stats
+        translation = self.get_translation()
+        self.assertEqual(translation.stats.translated, 164)
+        self.assertEqual(translation.stats.fuzzy, 0)
+        self.assertEqual(translation.stats.all, 168)
+
+
 class ImportSourceBrokenTest(ImportSourceTest):
     test_file = TEST_POT
     expected = 'Charset "CHARSET" is not a portable encoding name.'
@@ -598,3 +664,73 @@ class DownloadMultiTest(ViewTestCase):
             reverse("download_component_list", kwargs={"name": "testcl"})
         )
         self.assert_zip(response)
+
+
+EXPECTED_CSV = """"location","source","target","id","fuzzy","context","translator_comments","developer_comments"\r
+"","Hello, world!
+","","","False","hello","",""\r
+"","Orangutan has %d banana.
+","","","False","orangutan","",""\r
+"","Try Weblate at https://demo.weblate.org/!
+","","","False","try","",""\r
+"","Thank you for using Weblate.","","","False","thanks","",""\r
+"""
+
+UPLOAD_CSV = """
+"location","source","target","id","fuzzy","context","translator_comments","developer_comments"
+"","Hello, world!
+","Nazdar, světe!
+","","False","hello","",""
+"""
+
+
+class ImportExportAddTest(ViewTestCase):
+    def create_component(self):
+        return self.create_json_mono()
+
+    def test_notchanged(self):
+        response = self.client.get(
+            reverse("download_translation", kwargs=self.kw_translation),
+            {"format": "csv"},
+        )
+        self.assertEqual(response.content.decode(), EXPECTED_CSV)
+
+        handle = BytesIOMode("test.csv", UPLOAD_CSV.encode())
+        params = {
+            "file": handle,
+            "method": "translate",
+            "author_name": self.user.full_name,
+            "author_email": self.user.email,
+        }
+        response = self.client.post(
+            reverse("upload_translation", kwargs=self.kw_translation),
+            params,
+            follow=True,
+        )
+        self.assertContains(response, "(skipped: 0, not found: 0, updated: 1)")
+
+    def test_changed(self):
+        self.edit_unit("Hello, world!\n", "Hi, World!\n", "en")
+        response = self.client.get(
+            reverse("download_translation", kwargs=self.kw_translation),
+            {"format": "csv"},
+        )
+        self.assertEqual(
+            response.content.decode(), EXPECTED_CSV.replace("Hello, world", "Hi, World")
+        )
+
+        handle = BytesIOMode(
+            "test.csv", UPLOAD_CSV.replace("Hello, world", "Hi, World").encode()
+        )
+        params = {
+            "file": handle,
+            "method": "translate",
+            "author_name": self.user.full_name,
+            "author_email": self.user.email,
+        }
+        response = self.client.post(
+            reverse("upload_translation", kwargs=self.kw_translation),
+            params,
+            follow=True,
+        )
+        self.assertContains(response, "(skipped: 0, not found: 0, updated: 1)")

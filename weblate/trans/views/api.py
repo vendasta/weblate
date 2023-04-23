@@ -1,22 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import csv
 
@@ -33,7 +17,7 @@ def export_stats_project(request, project):
 
     return export_response(
         request,
-        "stats-{0}.csv".format(obj.slug),
+        f"stats-{obj.slug}.csv",
         (
             "language",
             "code",
@@ -58,7 +42,7 @@ def export_stats(request, project, component):
 
     return export_response(
         request,
-        "stats-{0}-{1}.csv".format(subprj.project.slug, subprj.slug),
+        f"stats-{subprj.project.slug}-{subprj.slug}.csv",
         (
             "name",
             "code",
@@ -81,6 +65,12 @@ def export_stats(request, project, component):
             "last_change",
             "last_author",
             "recent_changes",
+            "readonly",
+            "readonly_percent",
+            "approved",
+            "approved_percent",
+            "suggestions",
+            "comments",
         ),
         StatisticsSerializer(translations, many=True).data,
     )
@@ -94,7 +84,7 @@ def export_response(request, filename, fields, data):
 
     if output == "csv":
         response = HttpResponse(content_type="text/csv; charset=utf-8")
-        response["Content-Disposition"] = "attachment; filename={0}".format(filename)
+        response["Content-Disposition"] = f"attachment; filename={filename}"
 
         writer = csv.DictWriter(response, fields)
 

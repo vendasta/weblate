@@ -3,8 +3,8 @@
    :target: https://weblate.org/
    :height: 80px
 
-**Weblate is a copylefted libre software web-based continuous localization system,
-used by over 1150 libre projects and companies in more than 115 countries.**
+**Weblate is libre software web-based continuous localization system,
+used by over 2500 libre projects and companies in more than 165 countries.**
 
 Install it, or use the Hosted Weblate service at `weblate.org`_.
 
@@ -14,13 +14,17 @@ Install it, or use the Hosted Weblate service at `weblate.org`_.
 
 .. image:: https://hosted.weblate.org/widgets/weblate/-/svg-badge.svg
     :alt: Translation status
-    :target: https://hosted.weblate.org/engage/weblate/?utm_source=widget
+    :target: https://hosted.weblate.org/engage/weblate/
 
 .. image:: https://bestpractices.coreinfrastructure.org/projects/552/badge
     :alt: CII Best Practices
     :target: https://bestpractices.coreinfrastructure.org/projects/552
 
-.. image:: https://img.shields.io/pypi/v/Weblate.svg
+.. image:: https://api.reuse.software/badge/github.com/WeblateOrg/weblate
+    :alt: REUSE status
+    :target: https://api.reuse.software/info/github.com/WeblateOrg/weblate
+
+.. image:: https://img.shields.io/pypi/v/weblate.svg
     :target: https://pypi.org/project/Weblate/
 
 .. image:: https://readthedocs.org/projects/weblate/badge/
@@ -28,12 +32,12 @@ Install it, or use the Hosted Weblate service at `weblate.org`_.
 
 .. image:: https://img.shields.io/github/license/WeblateOrg/weblate.svg
     :alt: License
-    :target: https://github.com/WeblateOrg/weblate/blob/master/COPYING
+    :target: https://github.com/WeblateOrg/weblate/blob/main/COPYING
 
 Support
 -------
 
-Weblate is a libre software with optional professional support and cloud
+Weblate is libre software with optional professional support and cloud
 hosting offerings. Check out https://weblate.org/hosting/ for more information.
 
 Documentation
@@ -56,10 +60,16 @@ Please report feature requests and problems to:
 
 https://github.com/WeblateOrg/weblate/issues
 
+
+Live chat
+---------
+
+Live chat about Weblate is available at `Libera.Chat <https://libera.chat/>`_ IRC network. The channel name is ``#weblate``. This can be accessed by, for example, https://web.libera.chat/#weblate or an IRC client installed on your computer.
+
 License
 -------
 
-Copyright © 2012–2020 Michal Čihař michal@cihar.com
+Copyright © Michal Čihař michal@weblate.org
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -68,9 +78,7 @@ version.
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE. See the GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along with
-this program. If not, see https://www.gnu.org/licenses/.
+PARTICULAR PURPOSE. See the `GNU General Public License`_ for more details.
 
 .. _weblate.org: https://weblate.org/
+.. _GNU General Public License: https://www.gnu.org/licenses/gpl-3.0.html

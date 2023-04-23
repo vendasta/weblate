@@ -1,23 +1,8 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Tests for consisntency checks."""
+"""Tests for consistency checks."""
 
 from django.test import TestCase
 
@@ -109,5 +94,6 @@ class TranslatedCheckTest(ViewTestCase):
         self.test_untranslated()
         check = Check(unit=self.get_unit())
         self.assertEqual(
-            self.check.get_description(check), 'Last translation was "Nazdar svete!\n".'
+            self.check.get_description(check),
+            'Previous translation was "Nazdar svete!\n".',
         )

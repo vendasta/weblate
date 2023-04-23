@@ -5,32 +5,66 @@ Language definitions
 
 To present different translations properly, info about language name,
 text direction, plural definitions and language code is needed.
-Definitions for about 350 languages are included.
+
+.. _included-languages:
+
+Built-in language definitions
+-----------------------------
+
+Definitions for about 600 languages are included in Weblate and the list is
+extended in every release. Whenever Weblate is upgraded (more specifically
+whenever :program:`weblate migrate` is executed, see
+:ref:`generic-upgrade-instructions`) the database of languages is updated to
+include all language definitions shipped in Weblate.
+
+This feature can be disable using :setting:`UPDATE_LANGUAGES`. You can also
+enforce updating the database to match Weblate built-in data using
+:djadmin:`setuplang`.
+
+.. seealso::
+
+   :ref:`extending-languages`,
+   `Current language definitions <https://github.com/WeblateOrg/language-data/blob/main/languages.csv>`_
 
 .. _language-parsing-codes:
 
 Parsing language codes
 ----------------------
 
-While parsing translations, Weblate attempts to map language code
-(usually the ISO 639-1 one) to any existing language object.
+While parsing translations, Weblate attempts to map language code (usually the
+ISO 639-1 one) from the :ref:`component-filemask` to any existing language
+object.
 
 You can further adjust this mapping at project level by :ref:`project-language_aliases`.
 
 If no exact match can be found, an attempt will be made
-to best fit it into an existing language (e.g. ignoring the default country code
-for a given language—choosing ``cs`` instead of ``cs_CZ``).
+to best fit it into an existing language. Following steps are tried:
 
-Should that also fail, a new language definition will be created using the defaults (left
-to right text direction, one plural) and naming of the language as :guilabel:`xx_XX (generated)`.
-You might want to change this in the admin interface later, (see :ref:`changing-languages`)
-and report it to the issue tracker (see :ref:`contributing`).
+* Case insensitive lookups.
+* Normalizing underscores and dashes.
+* Looking up built-in language aliases.
+* Looking up by language name.
+* Ignoring the default country code for a given language—choosing ``cs`` instead of ``cs_CZ``.
+
+Should that also fail, a new language definition will be created using the
+defaults (left to right text direction, one plural). The automatically created
+language with code ``xx_XX`` will be named as :guilabel:`xx_XX (generated)`.
+You might want to change this in the admin interface later, (see
+:ref:`changing-languages`) and report it to the issue tracker (see
+:ref:`contributing`), so that the proper definition can be added to the
+upcoming Weblate release.
 
 .. hint::
 
    In case you see something unwanted as a language, you might want to adjust
    :ref:`component-language_regex` to ignore such file when parsing
    translations.
+
+.. seealso::
+
+    :ref:`language-code`,
+    :ref:`adding-translation`
+
 
 .. _changing-languages:
 
@@ -43,6 +77,22 @@ You can change language definitions in the languages interface
 While editing, make sure all fields are correct (especially plurals and
 text direction), otherwise translators will be unable to properly edit
 those translations.
+
+.. _ambiguous-languages:
+
+Ambiguous language codes and macrolanguages
+-------------------------------------------
+
+In many cases it is not a good idea to use macrolanguage code for a
+translation. The typical problematic case might be Kurdish language, which
+might be written in Arabic or Latin script, depending on actual variant. To get
+correct behavior in Weblate, it is recommended to use individual language codes
+only and avoid macrolanguages.
+
+.. seealso::
+
+   `Macrolanguages definition <https://iso639-3.sil.org/about/scope#Macrolanguages>`_,
+   `List of macrolanguages <https://iso639-3.sil.org/code_tables/macrolanguage_mappings/data>`_
 
 Language definitions
 --------------------
@@ -58,12 +108,14 @@ Code identifying the language. Weblate prefers two letter codes as defined by
 `ISO 639-1 <https://en.wikipedia.org/wiki/ISO_639-1>`_, but uses `ISO 639-2
 <https://en.wikipedia.org/wiki/ISO_639-2>`_ or `ISO 639-3
 <https://en.wikipedia.org/wiki/ISO_639-3>`_ codes for languages that do not
-have two letter code. It can also support extended codes as defined by `BCP 47
-<https://tools.ietf.org/html/bcp47>`_.
+have two letter code. It can also support extended codes as defined by `BCP 47`_.
+
+.. _BCP 47: https://www.rfc-editor.org/info/bcp47
 
 .. seealso::
 
-   :ref:`language-parsing-codes`
+   :ref:`language-parsing-codes`,
+   :ref:`adding-translation`
 
 .. _language-name:
 
@@ -101,3 +153,10 @@ Gettext compatible plural formula used to determine which plural form is used fo
    `Language Plural Rules by the Unicode Consortium`_
 
 .. _Language Plural Rules by the Unicode Consortium: https://unicode-org.github.io/cldr-staging/charts/37/supplemental/language_plural_rules.html
+
+.. _language-population:
+
+Number of speakers
+++++++++++++++++++
+
+Number of worldwide speakers of this language.

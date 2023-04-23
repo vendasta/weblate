@@ -1,21 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 #
 # Django settings for running testsuite
@@ -24,7 +9,7 @@
 import os
 import warnings
 
-from weblate.settings_example import *  # noqa
+from weblate.settings_example import *  # noqa: F403
 
 CI_DATABASE = os.environ.get("CI_DATABASE", "")
 
@@ -35,7 +20,7 @@ if CI_DATABASE in ("mysql", "mariadb"):
     default_user = "root"
     DATABASES["default"]["OPTIONS"] = {
         "init_command": (
-            "SET NAMES utf8, "
+            "SET NAMES utf8mb4, "
             "wait_timeout=28800, "
             "default_storage_engine=INNODB, "
             'sql_mode="STRICT_TRANS_TABLES"'
@@ -47,7 +32,7 @@ elif CI_DATABASE == "postgresql":
     DATABASES["default"]["ENGINE"] = "django.db.backends.postgresql"
     default_user = "postgres"
 else:
-    raise ValueError("Not supported database: {}".format(CI_DATABASE))
+    raise ValueError(f"Not supported database: {CI_DATABASE}")
 
 DATABASES["default"]["HOST"] = os.environ.get("CI_DB_HOST", "")
 DATABASES["default"]["NAME"] = os.environ.get("CI_DB_NAME", default_name)
@@ -64,14 +49,20 @@ SECRET_KEY = "secret key used for tests only"
 SITE_DOMAIN = "example.com"
 
 # Different root for test repos
+if "CI_BASE_DIR" in os.environ:
+    BASE_DIR = os.environ["CI_BASE_DIR"]
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data-test")
+CACHE_DIR = os.path.join(DATA_DIR, "cache")
 MEDIA_ROOT = os.path.join(DATA_DIR, "media")
 STATIC_ROOT = os.path.join(DATA_DIR, "static")
-CELERY_BEAT_SCHEDULE_FILENAME = os.path.join(DATA_DIR, "celery", "beat-schedule")
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_BROKER_URL = "memory://"
 CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_RESULT_BACKEND = None
+
+VCS_API_DELAY = 0
 
 # Localize CDN addon
 LOCALIZE_CDN_URL = "https://cdn.example.com/"
@@ -141,7 +132,8 @@ AUTHENTICATION_BACKENDS = (
     "weblate.accounts.auth.WeblateUserBackend",
 )
 
-AUTH_VALIDATE_PERMS = True
+# Disable random admin checks trigger
+BACKGROUND_ADMIN_CHECKS = False
 
 warnings.filterwarnings(
     "error",
