@@ -904,7 +904,7 @@ if "WEBLATE_MT_MICROSOFT_TERMINOLOGY_ENABLED" in os.environ:
     )
 
 # Google API key for Google Translate API
-MT_GOOGLE_KEY = os.environ.get("WEBLATE_MT_GOOGLE_KEY")
+MT_GOOGLE_KEY = os.environ.get("WEBLATE_GOOGLE_CLOUD_API_KEY")
 
 if MT_GOOGLE_KEY:
     MT_SERVICES += ("weblate.machinery.google.GoogleTranslation",)
