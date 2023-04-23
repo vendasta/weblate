@@ -1,22 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 from django.conf import settings
 from django.db import models
@@ -26,9 +10,10 @@ from django.dispatch import receiver
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
+from weblate.checks.flags import Flags
 from weblate.screenshots.fields import ScreenshotField
 from weblate.trans.mixins import UserDisplayMixin
-from weblate.trans.models import Component, Unit
+from weblate.trans.models import Translation, Unit
 from weblate.trans.tasks import component_alerts
 from weblate.utils.decorators import disable_for_loaddata
 
@@ -41,10 +26,10 @@ class ScreenshotQuerySet(models.QuerySet):
         if user.is_superuser:
             return self
         return self.filter(
-            Q(component__project_id__in=user.allowed_project_ids)
+            Q(translation__component__project__in=user.allowed_projects)
             & (
-                Q(component__restricted=False)
-                | Q(component_id__in=user.component_permissions)
+                Q(translation__component__restricted=False)
+                | Q(translation__component_id__in=user.component_permissions)
             )
         )
 
@@ -56,7 +41,7 @@ class Screenshot(models.Model, UserDisplayMixin):
         help_text=_("Upload JPEG or PNG images up to 2000x2000 pixels."),
         upload_to="screenshots/",
     )
-    component = models.ForeignKey(Component, on_delete=models.deletion.CASCADE)
+    translation = models.ForeignKey(Translation, on_delete=models.deletion.CASCADE)
     units = models.ManyToManyField(Unit, blank=True, related_name="screenshots")
     timestamp = models.DateTimeField(auto_now_add=True)
     user = models.ForeignKey(
@@ -68,16 +53,26 @@ class Screenshot(models.Model, UserDisplayMixin):
 
     objects = ScreenshotQuerySet.as_manager()
 
+    class Meta:
+        verbose_name = "Screenshot"
+        verbose_name_plural = "Screenshots"
+
     def __str__(self):
         return self.name
 
     def get_absolute_url(self):
         return reverse("screenshot", kwargs={"pk": self.pk})
 
+    @property
+    def filter_name(self):
+        return f"screenshot:{Flags.format_value(self.name)}"
+
 
 @receiver(m2m_changed, sender=Screenshot.units.through)
 @disable_for_loaddata
 def change_screenshot_assignment(sender, instance, action, **kwargs):
     # Update alerts in case there is change in string assignment
-    if instance.component.alert_set.filter(name="UnusedScreenshot").exists():
+    if instance.translation.component.alert_set.filter(
+        name="UnusedScreenshot"
+    ).exists():
         component_alerts.delay([instance.pk])

@@ -1,21 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import os.path
 from typing import Tuple
@@ -25,22 +10,22 @@ import gi
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.urls import reverse
-from django.utils.encoding import force_str
-from django.utils.formats import number_format
-from django.utils.html import escape
+from django.utils.html import format_html
 from django.utils.translation import get_language
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy, npgettext, pgettext, pgettext_lazy
 
 from weblate.fonts.utils import configure_fontconfig, render_size
+from weblate.trans.models import Project
+from weblate.trans.templatetags.translations import number_format
+from weblate.trans.util import sort_unicode
 from weblate.utils.site import get_site_url
 from weblate.utils.stats import GlobalStats
 from weblate.utils.views import get_percent_color
 
 gi.require_version("PangoCairo", "1.0")
 gi.require_version("Pango", "1.0")
-# pylint:disable=wrong-import-position,wrong-import-order
-from gi.repository import Pango, PangoCairo  # noqa:E402,I001 isort:skip
+from gi.repository import Pango, PangoCairo  # noqa: E402
 
 COLOR_DATA = {
     "grey": (0, 0, 0),
@@ -50,6 +35,7 @@ COLOR_DATA = {
 }
 
 WIDGETS = {}
+WIDGET_FONT = "Source Sans 3"
 
 
 def register_widget(widget):
@@ -90,10 +76,7 @@ class ContentWidget(Widget):
         """Create Widget object."""
         super().__init__(obj, color, lang)
         # Get translation status
-        if lang:
-            stats = obj.stats.get_single_language_stats(lang)
-        else:
-            stats = obj.stats
+        stats = obj.stats.get_single_language_stats(lang) if lang else obj.stats
         self.percent = stats.translated_percent
 
     def get_percent_text(self):
@@ -144,19 +127,19 @@ class BitmapWidget(ContentWidget):
         return os.path.join(
             settings.STATIC_ROOT,
             "widget-images",
-            "{widget}-{color}.png".format(**{"color": self.color, "widget": self.name}),
+            f"{self.name}-{self.color}.png",
         )
 
     def get_columns(self):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def get_column_width(self, surface, columns):
         return surface.get_width() // len(columns)
 
     def get_column_fonts(self):
         return [
-            Pango.FontDescription("Source Sans Pro {}".format(self.font_size * 1.5)),
-            Pango.FontDescription("Source Sans Pro {}".format(self.font_size)),
+            Pango.FontDescription(f"{WIDGET_FONT} {self.font_size * 1.5}"),
+            Pango.FontDescription(f"{WIDGET_FONT} {self.font_size}"),
         ]
 
     def render_additional(self, ctx):
@@ -217,7 +200,7 @@ class SVGWidget(ContentWidget):
 
     def render(self, response):
         """Rendering method to be implemented."""
-        raise NotImplementedError()
+        raise NotImplementedError
 
 
 class RedirectWidget(Widget):
@@ -249,28 +232,26 @@ class NormalWidget(BitmapWidget):
     def get_columns(self):
         return [
             [
-                self.head_template.format(
-                    number_format(self.total, force_grouping=True)
-                ),
-                self.foot_template.format(
+                format_html(self.head_template, number_format(self.total)),
+                format_html(
+                    self.foot_template,
                     npgettext(
-                        "Label on enage page", "String", "Strings", self.total
-                    ).upper()
+                        "Label on engage page", "String", "Strings", self.total
+                    ).upper(),
                 ),
             ],
             [
-                self.head_template.format(
-                    number_format(self.languages, force_grouping=True)
-                ),
-                self.foot_template.format(
+                format_html(self.head_template, number_format(self.languages)),
+                format_html(
+                    self.foot_template,
                     npgettext(
-                        "Label on enage page", "Language", "Languages", self.languages
-                    ).upper()
+                        "Label on engage page", "Language", "Languages", self.languages
+                    ).upper(),
                 ),
             ],
             [
-                self.head_template.format(self.get_percent_text()),
-                self.foot_template.format(_("Translated").upper()),
+                format_html(self.head_template, self.get_percent_text()),
+                format_html(self.foot_template, _("Translated").upper()),
             ],
         ]
 
@@ -287,8 +268,8 @@ class SmallWidget(BitmapWidget):
     def get_columns(self):
         return [
             [
-                self.head_template.format(self.get_percent_text()),
-                self.foot_template.format(_("Translated").upper()),
+                format_html(self.head_template, self.get_percent_text()),
+                format_html(self.foot_template, _("Translated").upper()),
             ]
         ]
 
@@ -311,21 +292,43 @@ class OpenGraphWidget(NormalWidget):
 
     def get_column_fonts(self):
         return [
-            Pango.FontDescription("Source Sans Pro {}".format(42)),
-            Pango.FontDescription("Source Sans Pro {}".format(18)),
+            Pango.FontDescription(f"{WIDGET_FONT} {42}"),
+            Pango.FontDescription(f"{WIDGET_FONT} {18}"),
         ]
 
-    def get_title(self):
+    def get_name(self) -> str:
+        return str(self.obj)
+
+    def get_title(self, name: str, suffix: str = "") -> str:
         # Translators: Text on OpenGraph image
-        return _("Project %s") % "<b>{}</b>".format(escape(self.obj.name))
+        if isinstance(self.obj, Project):
+            template = _("Project {}")
+        else:
+            template = _("Component {}")
+
+        return format_html(template, format_html("<b>{}</b>{}", name, suffix))
 
     def render_additional(self, ctx):
         ctx.move_to(280, 170)
         layout = PangoCairo.create_layout(ctx)
-        layout.set_font_description(
-            Pango.FontDescription("Source Sans Pro {}".format(52))
-        )
-        layout.set_markup(self.get_title())
+        layout.set_font_description(Pango.FontDescription(f"{WIDGET_FONT} {52}"))
+        name = self.get_name()
+        layout.set_markup(self.get_title(name))
+
+        max_width = 1200 - 280
+        while layout.get_size().width / Pango.SCALE > max_width:
+            if " " in name:
+                name = name.rsplit(" ", 1)[0]
+            elif "-" in name:
+                name = name.rsplit("-", 1)[0]
+            elif "_" in name:
+                name = name.rsplit("_", 1)[0]
+            else:
+                name = name[:-1]
+            layout.set_markup(self.get_title(f"{name}", "…"))
+            if not name:
+                break
+
         PangoCairo.show_layout(ctx, layout)
 
 
@@ -333,8 +336,11 @@ class SiteOpenGraphWidget(OpenGraphWidget):
     def __init__(self, obj=None, color=None, lang=None):
         super().__init__(GlobalStats())
 
-    def get_title(self):
-        return "<b>{}</b>".format(escape(settings.SITE_TITLE))
+    def get_name(self) -> str:
+        return settings.SITE_TITLE
+
+    def get_title(self, name: str, suffix: str = "") -> str:
+        return format_html("<b>{}</b>{}", name, suffix)
 
     def get_text_params(self):
         return {}
@@ -367,18 +373,18 @@ class SVGBadgeWidget(SVGWidget):
     def render(self, response):
         translated_text = _("translated")
         translated_width = (
-            render_size("DejaVu Sans", Pango.Weight.NORMAL, 11, 0, translated_text)[
+            render_size("Kurinto Sans", Pango.Weight.NORMAL, 11, 0, translated_text)[
                 0
             ].width
-            + 5
+            + 10
         )
 
         percent_text = self.get_percent_text()
         percent_width = (
-            render_size("DejaVu Sans", Pango.Weight.NORMAL, 11, 0, percent_text)[
+            render_size("Kurinto Sans", Pango.Weight.NORMAL, 11, 0, percent_text)[
                 0
             ].width
-            + 5
+            + 10
         )
 
         if self.percent >= 90:
@@ -422,7 +428,8 @@ class MultiLanguageWidget(SVGWidget):
         offset = 20
         color = self.COLOR_MAP[self.color]
         language_width = 190
-        for stats in self.obj.stats.get_language_stats():
+        languages = self.obj.stats.get_language_stats()
+        for stats in sort_unicode(languages, lambda x: str(x.language)):
             # Skip empty translations
             if stats.translated == 0:
                 continue
@@ -430,15 +437,15 @@ class MultiLanguageWidget(SVGWidget):
             percent = stats.translated_percent
             if self.color == "auto":
                 color = get_percent_color(percent)
-            language_name = force_str(language)
+            language_name = str(language)
 
             language_width = max(
                 language_width,
                 (
                     render_size(
-                        "DejaVu Sans", Pango.Weight.NORMAL, 11, 0, language_name
+                        "Kurinto Sans", Pango.Weight.NORMAL, 11, 0, language_name
                     )[0].width
-                    + 5
+                    + 10
                 ),
             )
             translations.append(

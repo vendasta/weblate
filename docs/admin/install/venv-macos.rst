@@ -7,15 +7,15 @@ Installing on macOS
 
 .. code-block:: sh
 
-    brew install pango libjpeg python git libyaml gobject-introspection
-    pip3 install virtualenv
+    brew install python pango cairo gobject-introspection libffi glib libyaml
+    pip install virtualenv
 
-Make sure pip will be able to find the ``libffi`` version provided by homebrew
+Make sure pip will be able to find the ``libffi`` and ``openssl`` versions provided by homebrew
 — this will be needed during the installation build step.
 
 .. code-block:: sh
 
-    export PKG_CONFIG_PATH="/usr/local/opt/libffi/lib/pkgconfig"
+    export PKG_CONFIG_PATH="/usr/local/opt/libffi/lib/pkgconfig:/usr/local/opt/openssl@3/lib/pkgconfig"
 
 .. include:: steps/install-system-optional.rst
 

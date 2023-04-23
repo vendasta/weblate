@@ -1,33 +1,18 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import re
+from typing import Any, Tuple
 
-import bleach
+import nh3
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
 from weblate.checks.base import TargetCheck
-from weblate.utils.html import extract_bleach
+from weblate.utils.html import extract_html_tags
 from weblate.utils.xml import parse_xml
 
 BBCODE_MATCH = re.compile(
@@ -35,30 +20,49 @@ BBCODE_MATCH = re.compile(
 )
 
 MD_LINK = re.compile(
-    r"!?\[("
-    r"(?:\[[^^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*"
-    r")\]\("
-    r"""\s*(<)?([\s\S]*?)(?(2)>)(?:\s+['"]([\s\S]*?)['"])?\s*"""
-    r"\)"
+    r"""
+    (?:
+    !?                                                          # Exclamation for images
+    \[((?:\[[^^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*)\]               # Link text
+    \(
+        \s*(<)?([\s\S]*?)(?(2)>)                                # URL
+        (?:\s+['"]([\s\S]*?)['"])?\s*                           # Title
+    \)
+    |
+    <(https?://[^>]+)>                                          # URL
+    |
+    <([^>]+@[^>]+\.[^>]+)>                                      # E-mail
+    )
+    """,
+    re.VERBOSE,
 )
+MD_BROKEN_LINK = re.compile(r"\] +\(")
 MD_REFLINK = re.compile(
     r"!?\[("  # leading [
     r"(?:\[[^^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*"  # link text
     r")\]\s*\[([^^\]]*)\]"  # trailing ] with optional target
 )
 MD_SYNTAX = re.compile(
-    r"(_{2})(?:[\s\S]+?)_{2}(?!_)"  # __word__
-    r"|"
-    r"(\*{2})(?:[\s\S]+?)\*{2}(?!\*)"  # **word**
-    r"|"
-    r"\b(_)(?:(?:__|[^_])+?)_\b"  # _word_
-    r"|"
-    r"(\*)(?:(?:\*\*|[^\*])+?)\*(?!\*)"  # *word*
-    r"|"
-    r"(`+)\s*(?:[\s\S]*?[^`])\s*\5(?!`)"  # `code`
-    r"|"
-    r"(~~)(?=\S)(?:[\s\S]*?\S)~~"  # ~~word~~
+    r"""
+    (_{2})(?:[\s\S]+?)_{2}(?!_)         # __word__
+    |
+    (\*{2})(?:[\s\S]+?)\*{2}(?!\*)      # **word**
+    |
+    \b(_)(?:(?:__|[^_])+?)_\b           # _word_
+    |
+    (\*)(?:(?:\*\*|[^\*])+?)\*(?!\*)    # *word*
+    |
+    (`+)\s*(?:[\s\S]*?[^`])\s*\5(?!`)   # `code`
+    |
+    (~~)(?=\S)(?:[\s\S]*?\S)~~          # ~~word~~
+    |
+    (<)(?:https?://[^>]+)>              # URL
+    |
+    (<)(?:[^>]+@[^>]+\.[^>]+)>          # E-mail
+    """,
+    re.VERBOSE,
 )
+MD_SYNTAX_GROUPS = 8
 
 XML_MATCH = re.compile(r"<[^>]+>")
 XML_ENTITY_MATCH = re.compile(r"&#?\w+;")
@@ -73,8 +77,8 @@ class BBCodeCheck(TargetCheck):
     """Check for matching bbcode tags."""
 
     check_id = "bbcode"
-    name = _("BBcode markup")
-    description = _("BBcode in translation does not match source")
+    name = _("BBCode markup")
+    description = _("BBCode in translation does not match source")
 
     def check_single(self, source, target, unit):
         # Parse source
@@ -94,38 +98,61 @@ class BBCodeCheck(TargetCheck):
 
     def check_highlight(self, source, unit):
         if self.should_skip(unit):
-            return []
-        ret = []
+            return
         for match in BBCODE_MATCH.finditer(source):
             for tag in ("start", "end"):
-                ret.append((match.start(tag), match.end(tag), match.group(tag)))
-        return ret
+                yield match.start(tag), match.end(tag), match.group(tag)
 
 
 class BaseXMLCheck(TargetCheck):
-    def parse_xml(self, text, wrap=None):
+    def detect_xml_wrapping(self, text: str) -> Tuple[Any, bool]:
+        """Detect whether wrapping is desired."""
+        try:
+            return self.parse_xml(text, True), True
+        except SyntaxError:
+            return self.parse_xml(text, False), False
+
+    def can_parse_xml(self, text: str) -> bool:
+        try:
+            self.detect_xml_wrapping(text)
+        except SyntaxError:
+            return False
+        return True
+
+    def parse_xml(self, text: str, wrap: bool) -> Any:
         """Wrapper for parsing XML."""
-        if wrap is None:
-            # Detect whether wrapping is desired
-            try:
-                return self.parse_xml(text, True), True
-            except SyntaxError:
-                return self.parse_xml(text, False), False
         text = strip_entities(text)
         if wrap:
-            text = "<weblate>{}</weblate>".format(text)
-
+            text = f"<weblate>{text}</weblate>"
         return parse_xml(text.encode() if "encoding" in text else text)
 
-    def is_source_xml(self, flags, source):
-        """Quick check if source looks like XML."""
-        if "xml-text" in flags:
+    def should_skip(self, unit):
+        result = super().should_skip(unit)
+        if result:
             return True
-        return "<" in source and len(XML_MATCH.findall(source))
+
+        flags = unit.all_flags
+
+        if "safe-html" in flags:
+            return True
+
+        if "xml-text" in flags:
+            return False
+
+        sources = unit.get_source_plurals()
+
+        # Quick check if source looks like XML.
+        if not any(
+            "<" in source and len(XML_MATCH.findall(source)) for source in sources
+        ):
+            return False
+
+        # Actually verify XML parsing
+        return not all(self.can_parse_xml(source) for source in sources)
 
     def check_single(self, source, target, unit):
         """Check for single phrase, not dealing with plurals."""
-        raise NotImplementedError()
+        raise NotImplementedError
 
 
 class XMLValidityCheck(BaseXMLCheck):
@@ -136,12 +163,9 @@ class XMLValidityCheck(BaseXMLCheck):
     description = _("The translation is not valid XML")
 
     def check_single(self, source, target, unit):
-        if not self.is_source_xml(unit.all_flags, source):
-            return False
-
         # Check if source is XML
         try:
-            wrap = self.parse_xml(source)[1]
+            wrap = self.detect_xml_wrapping(source)[1]
         except SyntaxError:
             # Source is not valid XML, we give up
             return False
@@ -164,12 +188,9 @@ class XMLTagsCheck(BaseXMLCheck):
     description = _("XML tags in translation do not match source")
 
     def check_single(self, source, target, unit):
-        if not self.is_source_xml(unit.all_flags, source):
-            return False
-
         # Check if source is XML
         try:
-            source_tree, wrap = self.parse_xml(source)
+            source_tree, wrap = self.detect_xml_wrapping(source)
             source_tags = [(x.tag, x.keys()) for x in source_tree.iter()]
         except SyntaxError:
             # Source is not valid XML, we give up
@@ -189,11 +210,9 @@ class XMLTagsCheck(BaseXMLCheck):
     def check_highlight(self, source, unit):
         if self.should_skip(unit):
             return []
+        if not self.can_parse_xml(source):
+            return []
         ret = []
-        try:
-            self.parse_xml(source)
-        except SyntaxError:
-            return ret
         # Include XML markup
         for match in XML_MATCH.finditer(source):
             ret.append((match.start(), match.end(), match.group()))
@@ -261,6 +280,11 @@ class MarkdownLinkCheck(MarkdownBaseCheck):
         src_anchors = {x[2] for x in src_match if x[2] and x[2][0] in link_start}
         return tgt_anchors != src_anchors
 
+    def get_fixup(self, unit):
+        if MD_BROKEN_LINK.findall(unit.target):
+            return [(MD_BROKEN_LINK.pattern, "](")]
+        return None
+
 
 class MarkdownSyntaxCheck(MarkdownBaseCheck):
     check_id = "md-syntax"
@@ -282,19 +306,17 @@ class MarkdownSyntaxCheck(MarkdownBaseCheck):
 
     def check_highlight(self, source, unit):
         if self.should_skip(unit):
-            return []
-        ret = []
+            return
         for match in MD_SYNTAX.finditer(source):
             value = ""
-            for i in range(6):
+            for i in range(MD_SYNTAX_GROUPS):
                 value = match.group(i + 1)
                 if value:
                     break
             start = match.start()
             end = match.end()
-            ret.append((start, start + len(value), value))
-            ret.append((end - len(value), end, value))
-        return ret
+            yield (start, start + len(value), value)
+            yield ((end - len(value), end, value if value != "<" else ">"))
 
 
 class URLCheck(TargetCheck):
@@ -312,9 +334,9 @@ class URLCheck(TargetCheck):
             return False
         try:
             self.validator(target)
-            return False
         except ValidationError:
             return True
+        return False
 
 
 class SafeHTMLCheck(TargetCheck):
@@ -324,4 +346,8 @@ class SafeHTMLCheck(TargetCheck):
     default_disabled = True
 
     def check_single(self, source, target, unit):
-        return bleach.clean(target, **extract_bleach(source)) != target
+        # Strip MarkDown links
+        if "md-text" in unit.all_flags:
+            target = MD_LINK.sub("", target)
+
+        return nh3.clean(target, link_rel=None, **extract_html_tags(source)) != target

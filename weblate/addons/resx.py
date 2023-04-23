@@ -1,23 +1,8 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
-
+from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from translate.storage.resx import RESXFile
 
@@ -35,8 +20,38 @@ class ResxUpdateAddon(BaseCleanupAddon):
     icon = "refresh.svg"
     compat = {"file_format": {"resx"}}
 
+    @cached_property
+    def template_store(self):
+        return self.instance.component.template_store.store
+
+    @staticmethod
+    def build_index(storage):
+        index = {}
+
+        for unit in storage.units:
+            index[unit.getid()] = unit
+
+        return index
+
+    def build_indexes(self):
+        index = self.build_index(self.template_store)
+        if self.instance.component.intermediate:
+            intermediate = self.build_index(
+                self.instance.component.intermediate_store.store
+            )
+        else:
+            intermediate = {}
+        return index, intermediate
+
+    @staticmethod
+    def get_index(index, intermediate, translation):
+        if intermediate and translation.is_source:
+            return intermediate
+        return index
+
     def update_resx(self, index, translation, storage, changes):
-        """Filter obsolete units in RESX storage.
+        """
+        Filter obsolete units in RESX storage.
 
         This removes the corresponding XML element and also adds newly added, and
         changed units.

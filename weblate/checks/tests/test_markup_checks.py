@@ -1,21 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 """Tests for markup quality checks."""
 
@@ -31,6 +16,7 @@ from weblate.checks.markup import (
     XMLValidityCheck,
 )
 from weblate.checks.tests.test_checks import CheckTestCase
+from weblate.trans.models import Unit
 
 
 class BBCodeCheckTest(CheckTestCase):
@@ -67,6 +53,10 @@ class XMLValidityCheckTest(CheckTestCase):
             True, ("<emphasis>2nd</emphasis>", "<emphasis>not< /emphasis>", "")
         )
 
+    def test_safe_html(self):
+        self.do_test(True, ("<br />", "<br>", ""))
+        self.do_test(False, ("<br />", "<br>", "safe-html"))
+
     def test_root(self):
         self.do_test(
             False,
@@ -87,6 +77,16 @@ class XMLValidityCheckTest(CheckTestCase):
 
     def test_html(self):
         self.do_test(False, ("This is<br>valid HTML", "Toto je<br>platne HTML", ""))
+
+    def test_skip_mixed(self):
+        self.do_test(
+            False,
+            (
+                ["<emphasis>1st</emphasis>", "<invalid>"],
+                "<emphasis>not</ emphasis>",
+                "",
+            ),
+        )
 
 
 class XMLTagsCheckTest(CheckTestCase):
@@ -185,34 +185,98 @@ class MarkdownLinkCheckTest(CheckTestCase):
             ),
         )
 
-
-class MarkdownLinkCheckMultipleOrderIndependentLinksTest(CheckTestCase):
-    check = MarkdownLinkCheck()
-
-    def setUp(self):
-        super().setUp()
-
-        self.test_good_matching = (
-            "[Weblate](#weblate) has an [example]({{example}}) "
-            "for illustrating the useage of [Weblate](#weblate)",
-            "Ein [Beispiel]({{example}}) in [Webspät](#weblate) "
-            "illustriert die Verwendung von [Webspät](#weblate)",
-            "md-text",
+    def test_spacing(self):
+        self.do_test(
+            True,
+            (
+                "[My Home Page](http://example.com)",
+                "[Moje stránka] (http://example.com)",
+                "md-text",
+            ),
         )
 
-        self.test_failure_1 = (
-            "[Weblate](#weblate) has an [example]({{example}}) "
-            "for illustrating the useage of [Weblate](#weblate)",
-            "Ein [Beispiel]({{example}}) in [Webspät](#weblate) "
-            "illustriert die Verwendung von [Webspät](#Webspät)",
-            "md-text",
+    def test_fixup(self):
+        unit = Unit(
+            source="[My Home Page](http://example.com)",
+            target="[Moje stránka] (http://example.com)",
         )
-        self.test_failure_2 = (
-            "[Weblate](#weblate) has an [example]({{example}}) "
-            "for illustrating the useage of [Weblate](#weblate)",
-            "Ein [Beispiel]({{example}}) in [Webspät](#weblate) "
-            "illustriert die Verwendung von Webspät",
-            "md-text",
+
+        self.assertEqual(self.check.get_fixup(unit), [(r"\] +\(", "](")])
+
+        unit = Unit(
+            source="[My Home Page](http://example.com)",
+            target="[Moje stránka]",
+        )
+
+        self.assertIsNone(self.check.get_fixup(unit))
+
+    def test_mutliple_ordered(self):
+        self.do_test(
+            False,
+            (
+                "[Weblate](#weblate) has an [example]({{example}}) "
+                "for illustrating the usage of [Weblate](#weblate)",
+                "Ein [Beispiel]({{example}}) in [Webspät](#weblate) "
+                "illustriert die Verwendung von [Webspät](#weblate)",
+                "md-text",
+            ),
+        )
+
+        self.do_test(
+            True,
+            (
+                "[Weblate](#weblate) has an [example]({{example}}) "
+                "for illustrating the usage of [Weblate](#weblate)",
+                "Ein [Beispiel]({{example}}) in [Webspät](#weblate) "
+                "illustriert die Verwendung von [Webspät](#Webspät)",
+                "md-text",
+            ),
+        )
+        self.do_test(
+            True,
+            (
+                "[Weblate](#weblate) has an [example]({{example}}) "
+                "for illustrating the usage of [Weblate](#weblate)",
+                "Ein [Beispiel]({{example}}) in [Webspät](#weblate) "
+                "illustriert die Verwendung von Webspät",
+                "md-text",
+            ),
+        )
+
+    def test_url(self):
+        self.do_test(
+            False,
+            (
+                "See <https://weblate.org/>",
+                "Viz <https://weblate.org/>",
+                "md-text",
+            ),
+        )
+        self.do_test(
+            True,
+            (
+                "See <https://weblate.org/>",
+                "Viz <https:>",
+                "md-text",
+            ),
+        )
+
+    def test_email(self):
+        self.do_test(
+            False,
+            (
+                "See <noreply@weblate.org>",
+                "Viz <noreply@weblate.org>",
+                "md-text",
+            ),
+        )
+        self.do_test(
+            True,
+            (
+                "See <noreply@weblate.org>",
+                "Viz <noreply>",
+                "md-text",
+            ),
         )
 
 
@@ -229,7 +293,7 @@ class MarkdownSyntaxCheckTest(CheckTestCase):
         self.test_failure_3 = ("_string_", "*string*", "md-text")
         self.test_highlight = (
             "md-text",
-            "**string** ~~strike~~ `code`",
+            "**string** ~~strike~~ `code` <https://weblate.org> <noreply@weblate.org>",
             [
                 (0, 2, "**"),
                 (8, 10, "**"),
@@ -237,6 +301,10 @@ class MarkdownSyntaxCheckTest(CheckTestCase):
                 (19, 21, "~~"),
                 (22, 23, "`"),
                 (27, 28, "`"),
+                (29, 30, "<"),
+                (49, 50, ">"),
+                (51, 52, "<"),
+                (71, 72, ">"),
             ],
         )
 
@@ -267,3 +335,37 @@ class SafeHTMLCheckTest(CheckTestCase):
         self.test_failure_1 = (safe, '<a href="javascript:foo()">link</a>', "safe-html")
         self.test_failure_2 = (safe, '<a href="#" onclick="x()">link</a>', "safe-html")
         self.test_failure_3 = (safe, '<iframe src="xxx"></iframe>', "safe-html")
+
+    def test_markdown(self):
+        self.do_test(
+            False,
+            (
+                "See <https://weblate.org>",
+                "Viz <https://weblate.org>",
+                "md-text,safe-html",
+            ),
+        )
+        self.do_test(
+            True,
+            (
+                "See <https://weblate.org>",
+                "Viz <https://weblate.org>",
+                "safe-html",
+            ),
+        )
+        self.do_test(
+            False,
+            (
+                "See <noreply@weblate.org>",
+                "Viz <noreply@weblate.org>",
+                "md-text,safe-html",
+            ),
+        )
+        self.do_test(
+            True,
+            (
+                "See <noreply@weblate.org>",
+                "Viz <noreply@weblate.org>",
+                "safe-html",
+            ),
+        )

@@ -1,26 +1,13 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import os
 
+from django.conf import settings
 from django.contrib.auth import update_session_auth_hash
+from django.core.exceptions import ObjectDoesNotExist
+from rest_framework.authtoken.models import Token
 from social_django.models import Code
 
 from weblate.accounts.models import AuditLog, VerifiedEmail
@@ -40,12 +27,12 @@ def remove_user(user, request):
     invalidate_reset_codes(user)
 
     # Change username
-    user.username = "deleted-{0}".format(user.pk)
-    user.email = "noreply+{}@weblate.org".format(user.pk)
+    user.username = f"deleted-{user.pk}"
+    user.email = f"noreply+{user.pk}@weblate.org"
     while User.objects.filter(username=user.username).exists():
-        user.username = "deleted-{0}-{1}".format(user.pk, os.urandom(5).hex())
+        user.username = f"deleted-{user.pk}-{os.urandom(5).hex()}"
     while User.objects.filter(email=user.email).exists():
-        user.email = "noreply+{0}-{1}@weblate.org".format(user.pk, os.urandom(5).hex())
+        user.email = f"noreply+{user.pk}-{os.urandom(5).hex()}@weblate.org"
 
     # Remove user information
     user.full_name = "Deleted User"
@@ -60,18 +47,57 @@ def remove_user(user, request):
 
     # Remove user from all groups
     user.groups.clear()
+    user.administered_group_set.clear()
 
     # Remove user translation memory
     user.memory_set.all().delete()
 
+    # Clear subscriptions
+    user.subscription_set.all().delete()
+    user.profile.watched.clear()
 
-def get_all_user_mails(user, entries=None):
+    # Cleanup profile
+    try:
+        profile = user.profile
+    except ObjectDoesNotExist:
+        pass
+    else:
+        profile.website = ""
+        profile.liberapay = ""
+        profile.fediverse = ""
+        profile.codesite = ""
+        profile.github = ""
+        profile.twitter = ""
+        profile.linkedin = ""
+        profile.location = ""
+        profile.company = ""
+        profile.public_email = ""
+        profile.save()
+
+    # Delete API tokens
+    Token.objects.filter(user=user).delete()
+
+
+def get_all_user_mails(user, entries=None, filter_deliverable=True):
     """Return all verified mails for user."""
     kwargs = {"social__user": user}
     if entries:
         kwargs["social__in"] = entries
-    emails = set(VerifiedEmail.objects.filter(**kwargs).values_list("email", flat=True))
+    if filter_deliverable:
+        # filter out emails that are not deliverable
+        emails = set(
+            VerifiedEmail.objects.filter(is_deliverable=True, **kwargs).values_list(
+                "email", flat=True
+            )
+        )
+    else:
+        # allow all emails, including non deliverable ones
+        emails = set(
+            VerifiedEmail.objects.filter(**kwargs).values_list("email", flat=True)
+        )
     emails.add(user.email)
+    emails.discard(None)
+    emails.discard("")
     return emails
 
 
@@ -94,3 +120,8 @@ def cycle_session_keys(request, user):
         user.set_unusable_password()
     # Cycle session key
     update_session_auth_hash(request, user)
+
+
+def adjust_session_expiry(request):
+    """Set longer expiry for authenticated users."""
+    request.session.set_expiry(settings.SESSION_COOKIE_AGE_AUTHENTICATED)

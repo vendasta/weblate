@@ -1,21 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 from time import sleep
 
@@ -28,6 +13,12 @@ class Command(BaseCommand):
     """Command for creating demo project."""
 
     help = "imports demo project and components"
+
+    def add_arguments(self, parser):
+        super().add_arguments(parser)
+        parser.add_argument(
+            "--additional", type=int, default=0, help="number of additional components"
+        )
 
     def handle(self, *args, **options):
         # Create project
@@ -51,12 +42,12 @@ class Command(BaseCommand):
             file_format="po",
             license="GPL-3.0-or-later",
         )
-        component.clean()
         while component.in_progress():
             self.stdout.write(
-                "Importing base component: {}%".format(component.get_progress()[0])
+                f"Importing base component: {component.get_progress()[0]}%"
             )
             sleep(1)
+        component.clean()
 
         # Install discovery
         DiscoveryAddon.create(
@@ -86,3 +77,16 @@ class Command(BaseCommand):
             file_format="aresource",
             license="GPL-3.0-or-later",
         )
+
+        for i in range(options["additional"]):
+            Component.objects.create(
+                name=f"Additional {i}",
+                slug=f"additional-{i}",
+                project=project,
+                vcs="git",
+                repo=component.get_repo_link_url(),
+                filemask="weblate/langdata/locale/*/LC_MESSAGES/django.po",
+                new_base="weblate/langdata/locale/django.pot",
+                file_format="po",
+                license="GPL-3.0-or-later",
+            )

@@ -1,21 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import csv
 
@@ -33,12 +18,11 @@ from django.views.generic.list import ListView
 from weblate.accounts.notifications import NOTIFICATIONS_ACTIONS
 from weblate.auth.models import User
 from weblate.lang.models import Language
-from weblate.trans.forms import ChangesForm
+from weblate.trans.forms import ChangesFilterForm, ChangesForm
 from weblate.trans.models.change import Change
 from weblate.utils import messages
-from weblate.utils.forms import FilterForm
 from weblate.utils.site import get_site_url
-from weblate.utils.views import get_project_translation, show_form_errors
+from weblate.utils.views import get_project_translation
 
 
 class ChangesView(ListView):
@@ -51,9 +35,13 @@ class ChangesView(ListView):
         self.project = None
         self.component = None
         self.translation = None
+        self.unit = None
         self.language = None
         self.user = None
         self.actions = set()
+        self.start_date = None
+        self.end_date = None
+        self.changes_form = None
 
     def get_context_data(self, **kwargs):
         """Create context for rendering page."""
@@ -73,6 +61,15 @@ class ChangesView(ListView):
             context["title"] = (
                 pgettext("Changes in translation", "Changes in %s") % self.translation
             )
+            if self.unit is not None:
+                context["unit"] = self.unit
+                url = {"string": self.unit.pk}
+                context["title"] = (
+                    pgettext(
+                        "Changes of string in a translation", "Changes of string in %s"
+                    )
+                    % self.translation
+                )
         elif self.component is not None:
             context["project"] = self.component.project
             context["component"] = self.component
@@ -112,12 +109,20 @@ class ChangesView(ListView):
         for action in self.actions:
             url.append(("action", action))
 
+        if self.start_date:
+            url.append(("start_date", self.start_date.date()))
+
+        if self.end_date:
+            url.append(("end_date", self.end_date.date()))
+
         if not url:
             context["changes_rss"] = reverse("rss")
 
         context["query_string"] = urlencode(url)
 
-        context["form"] = ChangesForm(self.request, data=self.request.GET)
+        context["form"] = self.changes_form
+
+        context["search_items"] = url
 
         return context
 
@@ -135,6 +140,14 @@ class ChangesView(ListView):
         except Http404:
             messages.error(self.request, _("Failed to find matching project!"))
 
+    def _get_unit(self, form):
+        unit = form.cleaned_data.get("string")
+        if unit:
+            self.unit = unit
+            self.translation = translation = unit.translation
+            self.component = component = translation.component
+            self.project = component.project
+
     def _get_queryset_language(self, form):
         """Filtering by language."""
         if self.translation is None and form.cleaned_data.get("lang"):
@@ -151,33 +164,35 @@ class ChangesView(ListView):
             except User.DoesNotExist:
                 messages.error(self.request, _("Failed to find matching user!"))
 
-    def _get_request_actions(self):
-        form = ChangesForm(self.request, data=self.request.GET)
-        if form.is_valid() and "action" in form.cleaned_data:
-            self.actions.update(form.cleaned_data["action"])
+    def _get_request_params(self):
+        self.changes_form = form = ChangesForm(self.request, data=self.request.GET)
+        if form.is_valid():
+            if "action" in form.cleaned_data:
+                self.actions.update(form.cleaned_data["action"])
+            if "start_date" in form.cleaned_data:
+                self.start_date = form.cleaned_data["start_date"]
+            if "end_date" in form.cleaned_data:
+                self.end_date = form.cleaned_data["end_date"]
 
     def get_queryset(self):
         """Return list of changes to browse."""
-        form = FilterForm(self.request.GET)
+        form = ChangesFilterForm(self.request, self.request.GET)
         if form.is_valid():
             self._get_queryset_project(form)
+
+            self._get_unit(form)
 
             self._get_queryset_language(form)
 
             self._get_queryset_user(form)
 
-            self._get_request_actions()
+            self._get_request_params()
         else:
-            show_form_errors(self.request, form)
+            self.changes_form = ChangesForm(self.request, data=self.request.GET)
 
-        result = Change.objects.last_changes(self.request.user)
-
-        if self.translation is not None:
-            result = result.filter(translation=self.translation)
-        elif self.component is not None:
-            result = result.filter(component=self.component)
-        elif self.project is not None:
-            result = result.filter(project=self.project)
+        result = Change.objects.last_changes(
+            self.request.user, self.unit, self.translation, self.component, self.project
+        )
 
         if self.language is not None:
             result = result.filter(language=self.language)
@@ -185,10 +200,25 @@ class ChangesView(ListView):
         if self.actions:
             result = result.filter(action__in=self.actions)
 
+        if self.start_date:
+            result = result.filter(timestamp__date__gte=self.start_date)
+
+        if self.end_date:
+            result = result.filter(timestamp__date__lte=self.end_date)
+
         if self.user is not None:
             result = result.filter(user=self.user)
 
         return result
+
+    def paginate_queryset(self, queryset, page_size):
+        if not self.changes_form.is_valid():
+            queryset = queryset.none()
+        paginator, page, queryset, is_paginated = super().paginate_queryset(
+            queryset, page_size
+        )
+        page = Change.objects.preload_list(page)
+        return paginator, page, queryset, is_paginated
 
 
 class ChangesCSVView(ChangesView):
@@ -208,7 +238,7 @@ class ChangesCSVView(ChangesView):
                     break
 
         if not request.user.has_perm("change.download", acl_obj):
-            raise PermissionDenied()
+            raise PermissionDenied
 
         # Always output in english
         activate("en")
@@ -243,15 +273,15 @@ def show_change(request, pk):
     change = get_object_or_404(Change, pk=pk)
     acl_obj = change.translation or change.component or change.project
     if not request.user.has_perm("unit.edit", acl_obj):
-        raise PermissionDenied()
+        raise PermissionDenied
     others = request.GET.getlist("other")
     changes = None
     if others:
-        changes = Change.objects.filter(pk__in=others + [change.pk])
+        changes = Change.objects.filter(pk__in=[*others, change.pk])
         for change in changes:
             acl_obj = change.translation or change.component or change.project
             if not request.user.has_perm("unit.edit", acl_obj):
-                raise PermissionDenied()
+                raise PermissionDenied
     if change.action not in NOTIFICATIONS_ACTIONS:
         content = ""
     else:

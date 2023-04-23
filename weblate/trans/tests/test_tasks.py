@@ -1,22 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 from datetime import timedelta
 
@@ -40,10 +24,10 @@ class CleanupTest(ViewTestCase):
         unit = self.get_unit()
 
         # Add two suggestions
-        Suggestion.objects.add(unit, "Zkouška", request)
-        Suggestion.objects.add(unit, "zkouška", request)
+        Suggestion.objects.add(unit, "Zkouška\n", request)
+        Suggestion.objects.add(unit, "zkouška\n", request)
         # This should be ignored
-        Suggestion.objects.add(unit, "zkouška", request)
+        Suggestion.objects.add(unit, "zkouška\n", request)
         self.assertEqual(len(self.get_unit().suggestions), 2)
 
         # Perform cleanup, no suggestions should be deleted
@@ -51,7 +35,7 @@ class CleanupTest(ViewTestCase):
         self.assertEqual(len(self.get_unit().suggestions), 2)
 
         # Translate string to one of suggestions
-        unit.translate(self.user, "zkouška", STATE_TRANSLATED)
+        unit.translate(self.user, "zkouška\n", STATE_TRANSLATED)
 
         # The cleanup should remove one
         cleanup_suggestions()
@@ -93,9 +77,9 @@ class CleanupTest(ViewTestCase):
     def test_cleanup_old_comments(self, expected=2):
         request = self.get_request()
         unit = self.get_unit()
-        Comment.objects.add(unit.source_info, request, "Zkouška")
+        Comment.objects.add(unit.source_unit, request, "Zkouška")
         Comment.objects.all().update(timestamp=timezone.now() - timedelta(days=30))
-        Comment.objects.add(unit.source_info, request, "Zkouška 2")
+        Comment.objects.add(unit.source_unit, request, "Zkouška 2")
         cleanup_old_comments()
         self.assertEqual(Comment.objects.count(), expected)
 

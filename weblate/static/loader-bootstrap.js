@@ -1,4 +1,8 @@
-var loading = 0;
+// Copyright © Michal Čihař <michal@weblate.org>
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+var loading = [];
 
 // Remove some weird things from location hash
 if (
@@ -11,26 +15,28 @@ if (
 
 // Loading indicator handler
 function increaseLoading(sel) {
-  if (loading === 0) {
+  if (!(sel in loading)) {
+    loading[sel] = 0;
+  }
+  if (loading[sel] === 0) {
     $("#loading-" + sel).show();
   }
-  loading += 1;
+  loading[sel] += 1;
 }
 
 function decreaseLoading(sel) {
-  loading -= 1;
-  if (loading === 0) {
+  loading[sel] -= 1;
+  if (loading[sel] === 0) {
     $("#loading-" + sel).hide();
   }
 }
 
-function addAlert(message, kind = "danger") {
+function addAlert(message, kind = "danger", delay = 3000) {
   var alerts = $("#popup-alerts");
   var e = $(
-    '<div class="alert alert-' +
-      kind +
-      ' alert-dismissible" role="alert"><button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>'
+    '<div class="alert alert-dismissible" role="alert"><button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>',
   );
+  e.addClass("alert-" + kind);
   e.append(new Text(message));
   e.hide();
   alerts.show().append(e);
@@ -40,9 +46,11 @@ function addAlert(message, kind = "danger") {
       alerts.hide();
     }
   });
-  e.delay(3000).slideUp(200, function () {
-    $(this).alert("close");
-  });
+  if (delay) {
+    e.delay(delay).slideUp(200, function () {
+      $(this).alert("close");
+    });
+  }
 }
 
 jQuery.fn.extend({
@@ -73,11 +81,27 @@ jQuery.fn.extend({
         this.value += myValue;
         this.focus();
       }
+      // Need `bubbles` because some event listeners (like this
+      // https://github.com/WeblateOrg/weblate/blob/86d4fb308c9941f32b48f007e16e8c153b0f3fd7/weblate/static/editor/base.js#L50
+      // ) are attached to the parent elements.
+      this.dispatchEvent(new Event("input", { bubbles: true }));
+      this.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  },
+
+  replaceValue: function (myValue) {
+    return this.each(function () {
+      this.value = myValue;
+      // Need `bubbles` because some event listeners (like this
+      // https://github.com/WeblateOrg/weblate/blob/86d4fb308c9941f32b48f007e16e8c153b0f3fd7/weblate/static/editor/base.js#L50
+      // ) are attached to the parent elements.
+      this.dispatchEvent(new Event("input", { bubbles: true }));
+      this.dispatchEvent(new Event("change", { bubbles: true }));
     });
   },
 });
 
-function submitForm(evt) {
+function submitForm(evt, combo, selector) {
   var $target = $(evt.target);
   var $form = $target.closest("form");
 
@@ -85,21 +109,25 @@ function submitForm(evt) {
     $form = $(".translation-form");
   }
   if ($form.length > 0) {
-    let submits = $form.find('input[type="submit"]');
+    if (typeof selector !== "undefined") {
+      $form.find(selector).click();
+    } else {
+      let submits = $form.find('input[type="submit"]');
 
-    if (submits.length === 0) {
-      submits = $form.find('button[type="submit"]');
-    }
-    if (submits.length > 0) {
-      submits[0].click();
+      if (submits.length === 0) {
+        submits = $form.find('button[type="submit"]');
+      }
+      if (submits.length > 0) {
+        submits[0].click();
+      }
     }
   }
   return false;
 }
-Mousetrap.bindGlobal(["alt+enter", "mod+enter"], submitForm);
+Mousetrap.bindGlobal("mod+enter", submitForm);
 
 function screenshotStart() {
-  $("#search-results").empty();
+  $("#search-results tbody.unit-listing-body").empty();
   increaseLoading("screenshots");
 }
 
@@ -119,9 +147,8 @@ function screenshotAddString() {
     dataType: "json",
     success: function () {
       var list = $("#sources-listing");
-
       $.get(list.data("href"), function (data) {
-        list.html(data);
+        list.find("table").replaceWith(data);
       });
     },
     error: function (jqXHR, textStatus, errorThrown) {
@@ -131,32 +158,11 @@ function screenshotAddString() {
 }
 
 function screnshotResultError(severity, message) {
-  $("#search-results").html(
-    '<tr class="' + severity + '"><td colspan="4">' + message + "</td></tr>"
+  $("#search-results tbody.unit-listing-body").html(
+    $("<tr/>")
+      .addClass(severity)
+      .html($('<td colspan="4"></td>').text(message)),
   );
-}
-
-function screenshotResultSet(results) {
-  $("#search-results").empty();
-  $.each(results, function (idx, value) {
-    var row = $(
-      '<tr><td class="text"></td>' +
-        '<td class="context"></td>' +
-        '<td class="location"></td>' +
-        '<td class="assigned"></td>' +
-        '<td><a class="add-string btn btn-primary"> ' +
-        gettext("Add to screenshot") +
-        "</tr>"
-    );
-
-    row.find(".text").text(value.text);
-    row.find(".context").text(value.context);
-    row.find(".location").text(value.location);
-    row.find(".assigned").text(value.assigned);
-    row.find(".add-string").data("pk", value.pk);
-    $("#search-results").append(row);
-  });
-  $("#search-results").find(".add-string").click(screenshotAddString);
 }
 
 function screenshotLoaded(data) {
@@ -166,10 +172,11 @@ function screenshotLoaded(data) {
   } else if (data.results.length === 0) {
     screnshotResultError(
       "warning",
-      gettext("No new matching source strings found.")
+      gettext("No new matching source strings found."),
     );
   } else {
-    screenshotResultSet(data.results);
+    $("#search-results table").replaceWith(data.results);
+    $("#search-results").find(".add-string").click(screenshotAddString);
   }
 }
 
@@ -226,15 +233,19 @@ function loadTableSorting() {
         // skip empty cells and cells with icon (probably already processed)
         if (
           th.text() !== "" &&
-          !th.hasClass("sort-cell") &&
+          !th.hasClass("sort-init") &&
           !th.hasClass("sort-skip")
         ) {
           // Store index copy
           let myIndex = thIndex;
           // Add icon, title and class
-          th.attr("title", gettext("Sort this column"))
-            .addClass("sort-cell")
-            .append('<span class="sort-icon" />');
+          th.addClass("sort-init");
+          if (!th.hasClass("sort-cell")) {
+            // Skip statically initialized parts (when server side ordering is supported)
+            th.attr("title", gettext("Sort this column"))
+              .addClass("sort-cell")
+              .append('<span class="sort-icon" />');
+          }
 
           // Click handler
           th.click(function () {
@@ -255,7 +266,7 @@ function loadTableSorting() {
                   inverse *
                   compareCells(
                     extractText($a.find("td,th")[myIndex]),
-                    extractText($b.find("td,th")[myIndex])
+                    extractText($b.find("td,th")[myIndex]),
                   )
                 );
               })
@@ -312,7 +323,7 @@ function load_matrix() {
 
   $.get($loader.attr("href") + "&offset=" + offset, function (data) {
     $loadingNext.hide();
-    $(".matrix tfoot").before(data);
+    $(".matrix tbody").append(data);
   });
 }
 
@@ -320,6 +331,9 @@ function adjustColspan() {
   $("table.autocolspan").each(function () {
     var $this = $(this);
     var numOfVisibleCols = $this.find("thead th:visible").length;
+    if (numOfVisibleCols === 0) {
+      numOfVisibleCols = 3;
+    }
     $this.find("td.autocolspan").attr("colspan", numOfVisibleCols - 1);
   });
 }
@@ -336,6 +350,112 @@ function quoteSearch(value) {
   }
   /* We should do some escaping here */
   return value;
+}
+
+function initHighlight(root) {
+  if (typeof ResizeObserver === "undefined") {
+    return;
+  }
+  root.querySelectorAll(".highlight-editor").forEach(function (editor) {
+    var parent = editor.parentElement;
+    var hasFocus = editor == document.activeElement;
+
+    if (parent.classList.contains("editor-wrap")) {
+      return;
+    }
+
+    var mode = editor.getAttribute("data-mode");
+
+    /* Create wrapper element */
+    var wrapper = document.createElement("div");
+    wrapper.setAttribute("class", "editor-wrap");
+
+    /* Inject wrapper */
+    parent.replaceChild(wrapper, editor);
+
+    /* Create highlighter */
+    var highlight = document.createElement("div");
+    highlight.setAttribute("class", "highlighted-output");
+    if (editor.readOnly) {
+      highlight.classList.add("readonly");
+    }
+    highlight.setAttribute("role", "status");
+    if (editor.hasAttribute("dir")) {
+      highlight.setAttribute("dir", editor.getAttribute("dir"));
+    }
+    if (editor.hasAttribute("lang")) {
+      highlight.setAttribute("lang", editor.getAttribute("lang"));
+    }
+    wrapper.appendChild(highlight);
+
+    /* Add editor to wrapper */
+    wrapper.appendChild(editor);
+    if (hasFocus) {
+      editor.focus();
+    }
+
+    /* Content synchronisation and highlighting */
+    var languageMode = Prism.languages[mode];
+    if (editor.classList.contains("translation-editor")) {
+      let placeables = editor.getAttribute("data-placeables");
+      /* This should match WHITESPACE_REGEX in weblate/trans/templatetags/translations.py */
+      let whitespace_regex = new RegExp(
+        [
+          "  +|(^) +| +(?=$)| +\n|\n +|\t|",
+          "\u00A0|\u1680|\u2000|\u2001|",
+          "\u2002|\u2003|\u2004|\u2005|",
+          "\u2006|\u2007|\u2008|\u2009|",
+          "\u200A|\u202F|\u205F|\u3000",
+        ].join(""),
+      );
+      let extension = {
+        hlspace: {
+          pattern: whitespace_regex,
+          lookbehind: true,
+        },
+      };
+      if (placeables) {
+        extension.placeable = RegExp(placeables);
+      }
+      /*
+       * We can not use Prism.extend here as we want whitespace highlighting
+       * to apply first. The code is borrowed from Prism.util.clone.
+       */
+      for (var key in languageMode) {
+        if (languageMode.hasOwnProperty(key)) {
+          extension[key] = Prism.util.clone(languageMode[key]);
+        }
+      }
+      languageMode = extension;
+    }
+    var syncContent = function () {
+      highlight.innerHTML = Prism.highlight(editor.value, languageMode, mode);
+      autosize.update(editor);
+    };
+    syncContent();
+    editor.addEventListener("input", syncContent);
+
+    /* Handle scrolling */
+    editor.addEventListener("scroll", (event) => {
+      highlight.scrollTop = editor.scrollTop;
+      highlight.scrollLeft = editor.scrollLeft;
+    });
+
+    /* Handle resizing */
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        if (entry.target === editor) {
+          // match the height and width of the output area to the input area
+          highlight.style.height = editor.offsetHeight + "px";
+          highlight.style.width = editor.offsetWidth + "px";
+        }
+      }
+    });
+
+    resizeObserver.observe(editor);
+    /* Autosizing */
+    autosize(editor);
+  });
 }
 
 $(function () {
@@ -369,13 +489,13 @@ $(function () {
               " (" +
               xhr.status +
               "): " +
-              responseText
+              responseText,
           );
         }
         $target.data("loaded", 1);
         loadTableSorting();
       });
-    }
+    },
   );
 
   if ($("#form-activetab").length > 0) {
@@ -384,11 +504,6 @@ $(function () {
       $("#form-activetab").attr("value", $target.attr("href"));
     });
   }
-
-  /* Hiding spam protection field */
-  $("#s_content").hide();
-  $("#id_content").parent("div").hide();
-  $("#div_id_content").hide();
 
   /* Form automatic submission */
   $("form.autosubmit select").change(function () {
@@ -405,7 +520,7 @@ $(function () {
       activeTab = $(
         '.nav [data-toggle=tab][href="' +
           location.hash.substr(0, separator) +
-          '"]'
+          '"]',
       );
       if (activeTab.length) {
         activeTab.tab("show");
@@ -415,6 +530,11 @@ $(function () {
     if (activeTab.length) {
       activeTab.tab("show");
       window.scrollTo(0, 0);
+    } else {
+      let anchor = document.getElementById(location.hash.substr(1));
+      if (anchor !== null) {
+        anchor.scrollIntoView();
+      }
     }
   } else if (
     $(".translation-tabs").length > 0 &&
@@ -422,7 +542,7 @@ $(function () {
   ) {
     /* From cookie */
     activeTab = $(
-      '[data-toggle=tab][href="' + Cookies.get("translate-tab") + '"]'
+      '[data-toggle=tab][href="' + Cookies.get("translate-tab") + '"]',
     );
     if (activeTab.length) {
       activeTab.tab("show");
@@ -591,13 +711,16 @@ $(function () {
       e.stopPropagation();
     });
 
-  $(".link-post").click(function () {
+  $document.on("click", ".link-post", function () {
     var $form = $("#link-post");
     var $this = $(this);
 
-    $form.attr("action", $this.attr("href"));
+    $form.attr("action", $this.attr("data-href"));
     $.each($this.data("params"), function (name, value) {
-      var elm = $("<input>").attr("name", name).attr("value", value);
+      var elm = $("<input>")
+        .attr("type", "hidden")
+        .attr("name", name)
+        .attr("value", value);
       $form.append(elm);
     });
     $form.submit();
@@ -608,7 +731,13 @@ $(function () {
     var $this = $(this);
     $("#imagepreview").attr("src", $this.attr("href"));
     $("#screenshotModal").text($this.attr("title"));
-    $("#modalEditLink").attr("href", $this.data("edit"));
+
+    var detailsLink = $("#modalDetailsLink");
+    detailsLink.attr("href", $this.data("details-url"));
+    if ($this.data("can-edit")) {
+      detailsLink.text(detailsLink.data("edit-text"));
+    }
+
     $("#imagemodal").modal("show");
     return false;
   });
@@ -626,39 +755,6 @@ $(function () {
       error: screenshotFailure,
     });
     return false;
-  });
-
-  /* Access management */
-  $(".set-group").click(function () {
-    var $this = $(this);
-    var $form = $("#set_groups_form");
-
-    $this.prop("disabled", true);
-    $this.data("error", "");
-    $this.parent().removeClass("load-error");
-
-    $.ajax({
-      type: "POST",
-      url: $form.attr("action"),
-      data: {
-        csrfmiddlewaretoken: $form.find("input").val(),
-        action: $this.prop("checked") ? "add" : "remove",
-        user: $this.data("username"),
-        group: $this.data("group"),
-      },
-      dataType: "json",
-      success: function (data) {
-        if (data.responseCode !== 200) {
-          addAlert(data.message);
-        }
-        $this.prop("checked", data.state);
-        $this.prop("disabled", false);
-      },
-      error: function (xhr, textStatus, errorThrown) {
-        addAlert(errorThrown);
-        $this.prop("disabled", false);
-      },
-    });
   });
 
   /* Avoid double submission of non AJAX forms */
@@ -716,12 +812,6 @@ $(function () {
     });
   }
 
-  /*
-   * Disable modal enforce focus to fix compatibility
-   * issues with ClipboardJS, see https://stackoverflow.com/a/40862005/225718
-   */
-  $.fn.modal.Constructor.prototype.enforceFocus = function () {};
-
   /* Focus first input in modal */
   $(document).on("shown.bs.modal", function (event) {
     var button = $(event.relatedTarget); // Button that triggered the modal
@@ -735,14 +825,20 @@ $(function () {
   });
 
   /* Copy to clipboard */
-  var clipboard = new ClipboardJS("[data-clipboard-text]");
-  clipboard.on("success", function (e) {
-    addAlert(gettext("Text copied to clipboard."), (kind = "info"));
-  });
-  clipboard.on("error", function (e) {
-    addAlert(gettext("Please press Ctrl+C to copy."), (kind = "danger"));
-  });
   $("[data-clipboard-text]").on("click", function (e) {
+    navigator.clipboard
+      .writeText(this.getAttribute("data-clipboard-text"))
+      .then(
+        () => {
+          var text =
+            this.getAttribute("data-clipboard-message") ||
+            gettext("Text copied to clipboard.");
+          addAlert(text, (kind = "info"));
+        },
+        () => {
+          addAlert(gettext("Please press Ctrl+C to copy."), (kind = "danger"));
+        },
+      );
     e.preventDefault();
   });
 
@@ -776,9 +872,9 @@ $(function () {
     var $form = $slug.closest("form");
     $form
       .find('input[name="name"]')
-      .on("change keypress keydown paste", function () {
+      .on("change keypress keydown keyup paste", function () {
         $slug.val(
-          slugify($(this).val(), { remove: /[^\w\s-]+/g }).toLowerCase()
+          slugify($(this).val(), { remove: /[^\w\s-]+/g }).toLowerCase(),
         );
       });
   });
@@ -787,23 +883,53 @@ $(function () {
   $("[data-progress-url]").each(function () {
     var $progress = $(this);
     var $pre = $progress.find("pre"),
-      $bar = $progress.find(".progress-bar");
+      $bar = $progress.find(".progress-bar"),
+      url = $progress.data("progress-url");
+    var $form = $("#link-post");
 
     $pre.animate({ scrollTop: $pre.get(0).scrollHeight });
 
+    var progress_completed = function () {
+      $bar.width("100%");
+      if ($("#progress-redirect").prop("checked")) {
+        window.location = $("#progress-return").attr("href");
+      }
+    };
+
     var progress_interval = setInterval(function () {
-      $.get($progress.data("progress-url"), function (data) {
-        $bar.width(data.progress + "%");
-        $pre.text(data.log);
-        $pre.animate({ scrollTop: $pre.get(0).scrollHeight });
-        if (!data.in_progress) {
-          clearInterval(progress_interval);
-          if ($("#progress-redirect").prop("checked")) {
-            window.location = $("#progress-return").attr("href");
+      $.ajax({
+        url: url,
+        type: "get",
+        error: function (XMLHttpRequest, textStatus, errorThrown) {
+          if (XMLHttpRequest.status == 404) {
+            clearInterval(progress_interval);
+            progress_completed();
           }
-        }
+        },
+        success: function (data) {
+          $bar.width(data.progress + "%");
+          $pre.text(data.log);
+          $pre.animate({ scrollTop: $pre.get(0).scrollHeight });
+          if (data.completed) {
+            clearInterval(progress_interval);
+            progress_completed();
+          }
+        },
       });
     }, 1000);
+
+    $("#terminate-task-button").click((e) => {
+      fetch(url, {
+        method: "DELETE",
+        headers: {
+          Accept: "application/json",
+          "X-CSRFToken": $form.find("input").val(),
+        },
+      }).then((data) => {
+        window.location = $("#progress-return").attr("href");
+      });
+      e.preventDefault();
+    });
   });
 
   /* Generic messages progress */
@@ -816,7 +942,7 @@ $(function () {
         $bar.width(data.progress + "%");
         if (data.completed) {
           clearInterval(task_interval);
-          $message.text(data.result);
+          $message.text(data.result.message);
         }
       });
     }, 1000);
@@ -836,16 +962,13 @@ $(function () {
       })
       .data("sort");
     var sort_value = $("#id_sort_by").val();
+    var $label = $(this).find("span.search-icon");
     if (sort_dropdown_value) {
       if (
         sort_value.replace("-", "") === sort_dropdown_value.replace("-", "") &&
         sort_value !== sort_dropdown_value
       ) {
-        $("#query-sort-toggle .asc").hide();
-        $("#query-sort-toggle .desc").show();
-      } else {
-        $("#query-sort-toggle .desc").hide();
-        $("#query-sort-toggle .asc").show();
+        $label.toggle();
       }
     }
   }
@@ -864,9 +987,11 @@ $(function () {
 
   /* Click to edit position inline. Disable when clicked outside or pressed ESC */
   $("#position-input").on("click", function () {
+    var $form = $(this).closest("form");
     $("#position-input").hide();
+    $form.find("input[name=offset]").prop("disabled", false);
     $("#position-input-editable").show();
-    $("#position-input-editable input").focus();
+    $("#position-input-editable-input").attr("type", "number").focus();
     document.addEventListener("click", clickedOutsideEditableInput);
     document.addEventListener("keyup", pressedEscape);
   });
@@ -876,6 +1001,7 @@ $(function () {
       event.target != $("#position-input")[0]
     ) {
       $("#position-input").show();
+      $("#position-input-editable-input").attr("type", "hidden");
       $("#position-input-editable").hide();
       document.removeEventListener("click", clickedOutsideEditableInput);
       document.removeEventListener("keyup", pressedEscape);
@@ -884,6 +1010,7 @@ $(function () {
   var pressedEscape = function (event) {
     if (event.key == "Escape" && event.target != $("#position-input")[0]) {
       $("#position-input").show();
+      $("#position-input-editable-input").attr("type", "hidden");
       $("#position-input-editable").hide();
       document.removeEventListener("click", clickedOutsideEditableInput);
       document.removeEventListener("keyup", pressedEscape);
@@ -915,7 +1042,7 @@ $(function () {
       $group.find("input[name=q]").val($this.data("field"));
       if ($this.closest(".result-page-form").length) {
         var $form = $this.closest("form");
-        $form.find("input[name=offset]").val("1");
+        $form.find("input[name=offset]").prop("disabled", true);
         $form.submit();
       }
     }
@@ -924,9 +1051,7 @@ $(function () {
   });
   $(".query-sort-toggle").click(function () {
     var $this = $(this);
-    var $label = $this.find("span.search-icon");
     var $input = $this.closest(".search-group").find("input[name=sort_by]");
-    $label.toggle();
     var sort_params = $input.val().split(",");
     sort_params.forEach(function (param, index) {
       if (param.indexOf("-") !== -1) {
@@ -941,7 +1066,7 @@ $(function () {
     }
   });
   $(".search-group input")
-    .not("#id_q,#id_position,#id_term")
+    .not("#id_q,#id_position,#id_term,#position-input-editable-input")
     .on("keydown", function (event) {
       if (event.key === "Enter") {
         $(this).closest(".input-group").find(".search-add").click();
@@ -949,17 +1074,9 @@ $(function () {
         return false;
       }
     });
-  $("#id_position").on("keydown", function (event) {
-    if (event.key === "Enter") {
-      $(this).closest("form").submit();
-    }
-  });
-  $("#id_q").on("keydown", function (event) {
-    if (event.key === "Enter") {
-      var $form = $(this).closest("form");
-      $form.find("input[name=offset]").val("1");
-      $form.submit();
-    }
+  $("#id_q").on("change", function (event) {
+    var $form = $(this).closest("form");
+    $form.find("input[name=offset]").prop("disabled", true);
   });
   $(".search-add").click(function () {
     var group = $(this).closest(".search-group");
@@ -978,13 +1095,13 @@ $(function () {
           button.attr("data-field") +
           prefix +
           quoteSearch(input.val()) +
-          " "
+          " ",
       );
     }
   });
   $(".search-insert").click(function () {
     $("#id_q").insertAtCaret(
-      " " + $(this).closest("tr").find("code").text() + " "
+      " " + $(this).closest("tr").find("code").text() + " ",
     );
   });
 
@@ -1003,15 +1120,123 @@ $(function () {
         target.val(name.substring(0, name.lastIndexOf(".")));
         target.change();
       }
-    }
+    },
   );
 
-  /* Warn users that they do not want to use developer console in most cases */
-  console.log("%cStop!", "color: red; font-weight: bold; font-size: 50px;");
-  console.log(
-    "%cThis is a console for developers. If someone has asked you to open this " +
-      "window, they are likely trying to compromise your Weblate account.",
-    "color: red;"
+  /* Alert when creating a component */
+  $("#form-create-component-branch,#form-create-component-vcs").submit(
+    function () {
+      addAlert(
+        gettext("Weblate is now scanning the repository, please be patient."),
+        (kind = "info"),
+        (delay = 0),
+      );
+    },
   );
-  console.log("%cPlease close this window now.", "color: blue;");
+
+  /* Username autocompletion */
+  var tribute = new Tribute({
+    trigger: "@",
+    requireLeadingSpace: true,
+    menuShowMinLength: 2,
+    searchOpts: {
+      pre: "​",
+      post: "​",
+    },
+    noMatchTemplate: function () {
+      return "";
+    },
+    menuItemTemplate: function (item) {
+      let link = document.createElement("a");
+      link.innerText = item.string;
+      return link.outerHTML;
+    },
+    values: (text, callback) => {
+      $.ajax({
+        type: "GET",
+        url: `/api/users/?username=${text}`,
+        dataType: "json",
+        success: function (data) {
+          var userMentionList = data.results.map(function (user) {
+            return {
+              value: user.username,
+              key: `${user.full_name} (${user.username})`,
+            };
+          });
+          callback(userMentionList);
+        },
+        error: function (jqXHR, textStatus, errorThrown) {
+          console.error(errorThrown);
+        },
+      });
+    },
+  });
+  tribute.attach(document.querySelectorAll(".markdown-editor"));
+  document.querySelectorAll(".markdown-editor").forEach((editor) => {
+    editor.addEventListener("tribute-active-true", function (e) {
+      $(".tribute-container").addClass("open");
+      $(".tribute-container ul").addClass("dropdown-menu");
+    });
+  });
+
+  /* forset fields adding */
+  $(".add-multifield").on("click", function () {
+    const updateElementIndex = function (el, prefix, ndx) {
+      const id_regex = new RegExp("(" + prefix + "-(\\d+|__prefix__))");
+      const replacement = prefix + "-" + ndx;
+      if ($(el).prop("for")) {
+        $(el).prop("for", $(el).prop("for").replace(id_regex, replacement));
+      }
+      if (el.id) {
+        el.id = el.id.replace(id_regex, replacement);
+      }
+      if (el.name) {
+        el.name = el.name.replace(id_regex, replacement);
+      }
+    };
+    var $this = $(this);
+    var $form = $this.parents("form");
+    var prefix = $this.data("prefix");
+    var blank = $form.find(".multiFieldEmpty");
+    var row = blank.clone();
+    var totalForms = $("#id_" + prefix + "-TOTAL_FORMS");
+    row.removeClass(["multiFieldEmpty", "hidden"]).addClass("multiField");
+    row.find("*").each(function () {
+      updateElementIndex(this, prefix, totalForms.val());
+    });
+
+    row.insertBefore(blank);
+    totalForms.val(parseInt(totalForms.val(), 10) + 1);
+
+    return false;
+  });
+
+  /* Textarea highlighting */
+  Prism.languages.none = {};
+  initHighlight(document);
+
+  $(".replace-preview input[type='checkbox']").on("change", function () {
+    $(this).closest("tr").toggleClass("warning", this.checked);
+  });
+
+  /* Warn users that they do not want to use developer console in most cases */
+  console.log(
+    "%c" +
+      pgettext("Alert to user when opening browser developer console", "Stop!"),
+    "color: red; font-weight: bold; font-size: 50px; font-family: sans-serif; -webkit-text-stroke: 1px black;",
+  );
+  console.log(
+    "%c" +
+      gettext(
+        "This is a browser feature intended for developers. If someone told you to copy-paste something here, they are likely trying to compromise your Weblate account.",
+      ),
+    "font-size: 20px; font-family: sans-serif",
+  );
+  console.log(
+    "%c" +
+      gettext(
+        "See https://en.wikipedia.org/wiki/Self-XSS for more information.",
+      ),
+    "font-size: 20px; font-family: sans-serif",
+  );
 });

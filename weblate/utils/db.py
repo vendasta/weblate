@@ -1,29 +1,22 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Database specific code to extend Django."""
 
-from django.db import models, router
+from django.db import connection, models
 from django.db.models import Case, IntegerField, Sum, When
-from django.db.models.deletion import Collector
-from django.db.models.lookups import PatternLookup
+from django.db.models.lookups import Contains, Exact, PatternLookup, Regex
+
+from .inv_regex import invert_re
 
 ESCAPED = frozenset(".\\+*?[^]$(){}=!<>|:-")
+
+PG_TRGM = "CREATE INDEX {0}_{1}_fulltext ON trans_{0} USING GIN ({1} gin_trgm_ops {2})"
+PG_DROP = "DROP INDEX {0}_{1}_fulltext"
+
+MY_FTX = "CREATE FULLTEXT INDEX {0}_{1}_fulltext ON trans_{0}({1})"
+MY_DROP = "ALTER TABLE trans_{0} DROP INDEX {0}_{1}_fulltext"
 
 
 def conditional_sum(value=1, **cond):
@@ -31,14 +24,100 @@ def conditional_sum(value=1, **cond):
     return Sum(Case(When(then=value, **cond), default=0, output_field=IntegerField()))
 
 
-class PostgreSQLSearchLookup(PatternLookup):
-    lookup_name = "search"
+def using_postgresql():
+    return connection.vendor == "postgresql"
 
-    def as_sql(self, qn, connection):
-        lhs, lhs_params = self.process_lhs(qn, connection)
-        rhs, rhs_params = self.process_rhs(qn, connection)
+
+def adjust_similarity_threshold(value: float):
+    """
+    Adjusts pg_trgm.similarity_threshold for the % operator.
+
+    Ideally we would use directly similarity() in the search, but that doesn't seem
+    to use index, while using % does.
+    """
+    if not using_postgresql():
+        return
+    with connection.cursor() as cursor:
+        # The SELECT has to be executed first as othervise the trgm extension
+        # might not yet be loaded and GUC setting not possible.
+        if not hasattr(connection, "weblate_similarity"):
+            cursor.execute("SELECT show_limit()")
+            connection.weblate_similarity = cursor.fetchone()[0]
+        # Change setting only for reasonably big difference
+        if abs(connection.weblate_similarity - value) > 0.01:
+            cursor.execute("SELECT set_limit(%s)", [value])
+            connection.weblate_similarity = value
+
+
+def count_alnum(string):
+    return sum(map(str.isalnum, string))
+
+
+class PostgreSQLFallbackLookup(PatternLookup):
+    def __init__(self, lhs, rhs):
+        self.orig_lhs = lhs
+        self.orig_rhs = rhs
+        super().__init__(lhs, rhs)
+
+    def needs_fallback(self):
+        return isinstance(self.orig_rhs, str) and count_alnum(self.orig_rhs) < 3
+
+
+class FallbackStringMixin:
+    """Avoid using index for lhs by concatenating to a string."""
+
+    def process_lhs(self, compiler, connection, lhs=None):
+        lhs_sql, params = super().process_lhs(compiler, connection, lhs)
+        return f"{lhs_sql} || ''", params
+
+
+class PostgreSQLRegexFallbackLookup(FallbackStringMixin, Regex):
+    pass
+
+
+class PostgreContainsFallbackLookup(FallbackStringMixin, Contains):
+    pass
+
+
+class PostgreExactFallbackLookup(FallbackStringMixin, Exact):
+    pass
+
+
+class PostgreSQLRegexLookup(Regex):
+    def __init__(self, lhs, rhs):
+        self.orig_lhs = lhs
+        self.orig_rhs = rhs
+        super().__init__(lhs, rhs)
+
+    def needs_fallback(self):
+        if not isinstance(self.orig_rhs, str):
+            return False
+        return (
+            min((count_alnum(match) for match in invert_re(self.orig_rhs)), default=0)
+            < 3
+        )
+
+    def as_sql(self, compiler, connection):
+        if self.needs_fallback():
+            return PostgreSQLRegexFallbackLookup(self.orig_lhs, self.orig_rhs).as_sql(
+                compiler, connection
+            )
+        return super().as_sql(compiler, connection)
+
+
+class PostgreSQLSearchLookup(PostgreSQLFallbackLookup):
+    lookup_name = "search"
+    param_pattern = "%s"
+
+    def as_sql(self, compiler, connection):
+        if self.needs_fallback():
+            return PostgreContainsFallbackLookup(self.orig_lhs, self.orig_rhs).as_sql(
+                compiler, connection
+            )
+        lhs, lhs_params = self.process_lhs(compiler, connection)
+        rhs, rhs_params = self.process_rhs(compiler, connection)
         params = lhs_params + rhs_params
-        return "%s %%%% %s = true" % (lhs, rhs), params
+        return f"{lhs} %% {rhs} = true", params
 
 
 class MySQLSearchLookup(models.Lookup):
@@ -48,14 +127,10 @@ class MySQLSearchLookup(models.Lookup):
         lhs, lhs_params = self.process_lhs(compiler, connection)
         rhs, rhs_params = self.process_rhs(compiler, connection)
         params = lhs_params + rhs_params
-        return "MATCH (%s) AGAINST (%s IN NATURAL LANGUAGE MODE)" % (lhs, rhs), params
+        return f"MATCH ({lhs}) AGAINST ({rhs} IN NATURAL LANGUAGE MODE)", params
 
 
-class MySQLSubstringLookup(MySQLSearchLookup):
-    lookup_name = "substring"
-
-
-class PostgreSQLSubstringLookup(PatternLookup):
+class PostgreSQLSubstringLookup(PostgreSQLFallbackLookup):
     """
     Case insensitive substring lookup.
 
@@ -66,26 +141,19 @@ class PostgreSQLSubstringLookup(PatternLookup):
     lookup_name = "substring"
 
     def as_sql(self, compiler, connection):
+        if self.needs_fallback():
+            return PostgreContainsFallbackLookup(self.orig_lhs, self.orig_rhs).as_sql(
+                compiler, connection
+            )
         lhs, lhs_params = self.process_lhs(compiler, connection)
         rhs, rhs_params = self.process_rhs(compiler, connection)
         params = lhs_params + rhs_params
-        return "%s ILIKE %s" % (lhs, rhs), params
-
-
-def table_has_row(connection, table, rowname):
-    """Check whether actual table has row."""
-    with connection.cursor() as cursor:
-        table_description = connection.introspection.get_table_description(
-            cursor, table
-        )
-        for row in table_description:
-            if row.name == rowname:
-                return True
-    return False
+        return f"{lhs} ILIKE {rhs}", params
 
 
 def re_escape(pattern):
-    """Escape for use in database regexp match.
+    """
+    Escape for use in database regexp match.
 
     This is based on re.escape, but that one escapes too much.
     """
@@ -96,32 +164,3 @@ def re_escape(pattern):
         elif char in ESCAPED:
             string[i] = "\\" + char
     return "".join(string)
-
-
-class FastCollector(Collector):
-    """
-    Fast delete collector skipping some signals.
-
-    It allows fast deletion for models flagged with weblate_unsafe_delete.
-
-    This is needed as check removal triggers check run and that can
-    create new checks for just removed units.
-    """
-
-    def can_fast_delete(self, objs, from_field=None):
-        if hasattr(objs, "model") and getattr(
-            objs.model, "weblate_unsafe_delete", False
-        ):
-            return True
-        return super().can_fast_delete(objs, from_field)
-
-
-class FastDeleteMixin:
-    """Model mixin to use FastCollector."""
-
-    def delete(self, using=None, keep_parents=False):
-        """Copy of Django delete with changed collector."""
-        using = using or router.db_for_write(self.__class__, instance=self)
-        collector = FastCollector(using=using)
-        collector.collect([self], keep_parents=keep_parents)
-        return collector.delete()

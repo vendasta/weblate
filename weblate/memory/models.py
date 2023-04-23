@@ -1,29 +1,15 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import json
+import math
 import os
 from functools import reduce
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils.encoding import force_str
 from django.utils.translation import gettext as _
 from django.utils.translation import pgettext
@@ -40,6 +26,7 @@ from weblate.memory.utils import (
     CATEGORY_SHARED,
     CATEGORY_USER_OFFSET,
 )
+from weblate.utils.db import adjust_similarity_threshold
 from weblate.utils.errors import report_error
 
 
@@ -61,16 +48,27 @@ class MemoryQuerySet(models.QuerySet):
     def filter_type(self, user=None, project=None, use_shared=False, from_file=False):
         query = []
         if from_file:
-            query.append(models.Q(from_file=from_file))
+            query.append(Q(from_file=from_file))
         if use_shared:
-            query.append(models.Q(shared=use_shared))
+            query.append(Q(shared=use_shared))
         if project:
-            query.append(models.Q(project=project))
+            query.append(Q(project=project))
         if user:
-            query.append(models.Q(user=user))
+            query.append(Q(user=user))
         return self.filter(reduce(lambda x, y: x | y, query))
 
-    def lookup(self, source_language, target_language, text, user, project, use_shared):
+    def lookup(
+        self, source_language, target_language, text: str, user, project, use_shared
+    ):
+        # Basic similarity for short strings
+        length = len(text)
+        threshold = 0.5
+        # Adjust similarity based on string length to get more relevant matches
+        # for long strings
+        if length > 50:
+            threshold = 1 - 28.1838 * math.log(0.0443791 * length) / length
+        adjust_similarity_threshold(threshold)
+        # Actual database query
         return self.filter_type(
             # Type filtering
             user=user,
@@ -78,11 +76,11 @@ class MemoryQuerySet(models.QuerySet):
             use_shared=use_shared,
             from_file=True,
         ).filter(
+            # Full-text search on source
+            source__search=text,
             # Language filtering
             source_language=source_language,
             target_language=target_language,
-            # Full-text search on source
-            source__search=text,
         )[
             :50
         ]
@@ -93,10 +91,10 @@ class MemoryQuerySet(models.QuerySet):
 
 class MemoryManager(models.Manager):
     def import_file(self, request, fileobj, langmap=None, **kwargs):
-        origin = force_str(os.path.basename(fileobj.name)).lower()
+        origin = os.path.basename(fileobj.name).lower()
         name, extension = os.path.splitext(origin)
         if len(name) > 25:
-            origin = "{}...{}".format(name[:25], extension)
+            origin = f"{name[:25]}...{extension}"
 
         if extension == ".tmx":
             result = self.import_tmx(request, fileobj, origin, langmap, **kwargs)
@@ -114,12 +112,12 @@ class MemoryManager(models.Manager):
             data = json.loads(force_str(content))
         except ValueError as error:
             report_error(cause="Failed to parse memory")
-            raise MemoryImportError(_("Failed to parse JSON file: {!s}").format(error))
+            raise MemoryImportError(_("Failed to parse JSON file: %s") % error)
         try:
             validate(data, load_schema("weblate-memory.schema.json"))
         except ValidationError as error:
             report_error(cause="Failed to validate memory")
-            raise MemoryImportError(_("Failed to parse JSON file: {!s}").format(error))
+            raise MemoryImportError(_("Failed to parse JSON file: %s") % error)
         found = 0
         lang_cache = {}
         for entry in data:
@@ -134,7 +132,7 @@ class MemoryManager(models.Manager):
                     source=entry["source"],
                     target=entry["target"],
                     origin=origin,
-                    **kwargs
+                    **kwargs,
                 )
                 found += 1
             except Language.DoesNotExist:
@@ -153,12 +151,13 @@ class MemoryManager(models.Manager):
             storage.document.getroot().iterchildren(storage.namespaced("header"))
         )
         lang_cache = {}
+        srclang = header.get("srclang")
+        if not srclang:
+            raise MemoryImportError(_("Source language not defined in the TMX file!"))
         try:
-            source_language = Language.objects.get_by_code(
-                header.get("srclang"), lang_cache, langmap
-            )
+            source_language = Language.objects.get_by_code(srclang, lang_cache, langmap)
         except Language.DoesNotExist:
-            raise MemoryImportError(_("Failed to find source language!"))
+            raise MemoryImportError(_("Failed to find language %s!") % srclang)
 
         found = 0
         for unit in storage.units:
@@ -169,7 +168,14 @@ class MemoryManager(models.Manager):
                 lang_code, text = get_node_data(unit, node)
                 if not lang_code or not text:
                     continue
-                language = Language.objects.get_by_code(lang_code, lang_cache, langmap)
+                try:
+                    language = Language.objects.get_by_code(
+                        lang_code, lang_cache, langmap
+                    )
+                except Language.DoesNotExist:
+                    raise MemoryImportError(
+                        _("Failed to find language %s!") % header.get("srclang")
+                    )
                 translations[language.code] = text
 
             try:
@@ -187,7 +193,7 @@ class MemoryManager(models.Manager):
                     source=source,
                     target=text,
                     origin=origin,
-                    **kwargs
+                    **kwargs,
                 )
                 found += 1
         return found
@@ -225,13 +231,17 @@ class Memory(models.Model):
         blank=True,
         default=None,
     )
-    from_file = models.BooleanField(db_index=True, default=False)
-    shared = models.BooleanField(db_index=True, default=False)
+    from_file = models.BooleanField(default=False)
+    shared = models.BooleanField(default=False)
 
     objects = MemoryManager.from_queryset(MemoryQuerySet)()
 
+    class Meta:
+        verbose_name = "Translation memory entry"
+        verbose_name_plural = "Translation memory entries"
+
     def __str__(self):
-        return "Memory: {}:{}".format(self.source_language, self.target_language)
+        return f"Memory: {self.source_language}:{self.target_language}"
 
     def get_origin_display(self):
         if self.project:

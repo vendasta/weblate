@@ -1,22 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 from weblate.trans.discovery import ComponentDiscovery
 from weblate.trans.tests.test_models import RepoTestCase
@@ -72,6 +56,7 @@ class ComponentDiscoveryTest(RepoTestCase):
                     "slug": "po",
                     "base_file": "",
                     "new_base": "",
+                    "intermediate": "",
                 },
                 "po-link/*.po": {
                     "files": {"po-link/cs.po", "po-link/de.po", "po-link/it.po"},
@@ -86,6 +71,7 @@ class ComponentDiscoveryTest(RepoTestCase):
                     "slug": "po-link",
                     "base_file": "",
                     "new_base": "",
+                    "intermediate": "",
                 },
                 "po-mono/*.po": {
                     "files": {
@@ -106,6 +92,7 @@ class ComponentDiscoveryTest(RepoTestCase):
                     "slug": "po-mono",
                     "base_file": "",
                     "new_base": "",
+                    "intermediate": "",
                 },
                 "second-po/*.po": {
                     "files": {"second-po/cs.po", "second-po/de.po"},
@@ -119,6 +106,7 @@ class ComponentDiscoveryTest(RepoTestCase):
                     "slug": "second-po",
                     "base_file": "",
                     "new_base": "",
+                    "intermediate": "",
                 },
             },
         )
@@ -202,4 +190,20 @@ class ComponentDiscoveryTest(RepoTestCase):
         self.assertEqual(len(created), 1)
         self.assertEqual(created[0][0]["mask"], "localization/*/component.*.po")
         self.assertEqual(len(matched), 0)
+        self.assertEqual(len(deleted), 0)
+
+    def test_named_group(self):
+        discovery = ComponentDiscovery(
+            self.component,
+            match=r"(?P<path>[^/]+)/(?P<language>[^/]*)/"
+            r"(?P<component>[^/]*)\.(?P=language)\.po",
+            name_template="{{ path }}: {{ component }}",
+            file_format="po",
+        )
+        created, matched, deleted = discovery.perform()
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0][0]["mask"], "localization/*/component.*.po")
+        self.assertEqual(created[0][0]["name"], "localization: component")
+        self.assertEqual(len(matched), 0)
+        self.assertEqual(len(deleted), 0)
         self.assertEqual(len(deleted), 0)

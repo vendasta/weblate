@@ -1,21 +1,6 @@
+# Copyright © Michal Čihař <michal@weblate.org>
 #
-# Copyright © 2012 - 2020 Michal Čihař <michal@cihar.com>
-#
-# This file is part of Weblate <https://weblate.org/>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 """Tests for notitifications."""
 
@@ -35,9 +20,10 @@ from weblate.accounts.notifications import (
     FREQ_NONE,
     FREQ_WEEKLY,
     SCOPE_ADMIN,
+    SCOPE_ALL,
     SCOPE_COMPONENT,
-    SCOPE_DEFAULT,
     SCOPE_PROJECT,
+    SCOPE_WATCHED,
     MergeFailureNotification,
 )
 from weblate.accounts.tasks import (
@@ -88,7 +74,7 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
         for notification in notifications:
             Subscription.objects.create(
                 user=self.user,
-                scope=SCOPE_DEFAULT,
+                scope=SCOPE_WATCHED,
                 notification=notification,
                 frequency=FREQ_INSTANT,
             )
@@ -111,12 +97,14 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
 
     def test_notify_lock(self):
         Change.objects.create(
-            component=self.component, action=Change.ACTION_LOCK,
+            component=self.component,
+            action=Change.ACTION_LOCK,
         )
         self.validate_notifications(1, "[Weblate] Component Test/Test was locked")
         mail.outbox = []
         Change.objects.create(
-            component=self.component, action=Change.ACTION_UNLOCK,
+            component=self.component,
+            action=Change.ACTION_UNLOCK,
         )
         self.validate_notifications(1, "[Weblate] Component Test/Test was unlocked")
 
@@ -124,18 +112,20 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
         Subscription.objects.filter(notification="LockNotification").delete()
         Subscription.objects.create(
             user=self.user,
-            scope=SCOPE_DEFAULT,
+            scope=SCOPE_WATCHED,
             notification="LockNotification",
             frequency=FREQ_INSTANT,
             onetime=True,
         )
         Change.objects.create(
-            component=self.component, action=Change.ACTION_UNLOCK,
+            component=self.component,
+            action=Change.ACTION_UNLOCK,
         )
         self.validate_notifications(1, "[Weblate] Component Test/Test was unlocked")
         mail.outbox = []
         Change.objects.create(
-            component=self.component, action=Change.ACTION_LOCK,
+            component=self.component,
+            action=Change.ACTION_LOCK,
         )
         self.validate_notifications(0)
         self.assertFalse(
@@ -146,6 +136,13 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
         self.component.license = "WTFPL"
         self.component.save()
         self.validate_notifications(1, "[Weblate] Test/Test was re-licensed to WTFPL")
+
+    def test_notify_agreement(self):
+        self.component.agreement = "You have to agree."
+        self.component.save()
+        self.validate_notifications(
+            1, "[Weblate] Contributor agreement for Test/Test was changed"
+        )
 
     def test_notify_merge_failure(self):
         change = Change.objects.create(
@@ -158,7 +155,7 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
         self.assertEqual(len(mail.outbox), 1)
 
         # Add project owner
-        self.component.project.add_user(self.anotheruser, "@Administration")
+        self.component.project.add_user(self.anotheruser, "Administration")
         notify_change(change.pk)
 
         # Check mail
@@ -173,7 +170,7 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
         self.assertEqual(len(mail.outbox), 1)
 
         # Add project owner
-        self.component.project.add_user(self.anotheruser, "@Administration")
+        self.component.project.add_user(self.anotheruser, "Administration")
         notify_change(change.pk)
 
         # Check mail
@@ -190,7 +187,7 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
         self.assertEqual(len(mail.outbox), 1)
 
         # Add project owner
-        self.component.project.add_user(self.anotheruser, "@Administration")
+        self.component.project.add_user(self.anotheruser, "Administration")
         notify_change(change.pk)
 
         # Check mail
@@ -259,7 +256,7 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
         self.assertEqual(len(mail.outbox), 1)
 
         # Add project owner
-        self.component.project.add_user(anotheruser, "@Administration")
+        self.component.project.add_user(anotheruser, "Administration")
         notify_change(change.pk)
 
         # Check mail
@@ -321,7 +318,7 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
 
     def test_notify_new_comment_mention(self):
         self.test_notify_new_comment(
-            2, "Hello @{} and @invalid".format(self.anotheruser.username)
+            2, f"Hello @{self.anotheruser.username} and @invalid"
         )
 
     def test_notify_new_comment_author(self):
@@ -346,6 +343,20 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
         Announcement.objects.create(component=self.component, message="Hello word")
         self.validate_notifications(1, "[Weblate] New announcement on Test")
         mail.outbox = []
+        Announcement.objects.create(
+            component=self.component,
+            language=Language.objects.get(code="cs"),
+            message="Hello word",
+        )
+        self.validate_notifications(1, "[Weblate] New announcement on Test")
+        mail.outbox = []
+        Announcement.objects.create(
+            component=self.component,
+            language=Language.objects.get(code="de"),
+            message="Hello word",
+        )
+        self.validate_notifications(0)
+        mail.outbox = []
         Announcement.objects.create(message="Hello global word")
         self.validate_notifications(
             User.objects.filter(is_active=True).count(),
@@ -353,7 +364,7 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
         )
 
     def test_notify_alert(self):
-        self.component.project.add_user(self.user, "@Administration")
+        self.component.project.add_user(self.user, "Administration")
         self.component.add_alert("PushFailure", error="Some error")
         self.validate_notifications(
             2,
@@ -364,7 +375,7 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
         )
 
     def test_notify_alert_ignore(self):
-        self.component.project.add_user(self.user, "@Administration")
+        self.component.project.add_user(self.user, "Administration")
         # Create linked component, this triggers missing license alert
         self.create_link_existing()
         mail.outbox = []
@@ -424,7 +435,7 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
 
         # Trigger notification
         notify()
-        self.validate_notifications(1, "[Weblate] Digest: {}".format(subj))
+        self.validate_notifications(1, f"[Weblate] Digest: {subj}")
         content = mail.outbox[0].alternatives[0][0]
         self.assertNotIn('img src="/', content)
 
@@ -442,17 +453,17 @@ class NotificationTest(ViewTestCase, RegistrationTestMixin):
         frequency=FREQ_DAILY,
         notify=notify_daily,
         notification="ToDoStringsNotification",
-        subj="4 strings needing action in Test/Test",
+        subj="4 unfinished strings in Test/Test",
     ):
         self.user.subscription_set.create(
-            scope=SCOPE_DEFAULT, notification=notification, frequency=frequency
+            scope=SCOPE_WATCHED, notification=notification, frequency=frequency
         )
         # Check mail
         self.assertEqual(len(mail.outbox), 0)
 
         # Trigger notification
         notify()
-        self.validate_notifications(1, "[Weblate] {}".format(subj))
+        self.validate_notifications(1, f"[Weblate] {subj}")
 
     def test_reminder_weekly(self):
         self.test_reminder(FREQ_WEEKLY, notify_weekly)
@@ -489,7 +500,7 @@ class SubscriptionTest(ViewTestCase):
         self.assertEqual(len(self.get_users(FREQ_MONTHLY)), 0)
         # Default subscription
         self.user.subscription_set.create(
-            scope=SCOPE_DEFAULT,
+            scope=SCOPE_WATCHED,
             notification=self.notification.get_name(),
             frequency=FREQ_MONTHLY,
         )
@@ -508,7 +519,7 @@ class SubscriptionTest(ViewTestCase):
         self.assertEqual(len(self.get_users(FREQ_WEEKLY)), 0)
         self.assertEqual(len(self.get_users(FREQ_MONTHLY)), 1)
 
-        self.component.project.add_user(self.user, "@Administration")
+        self.component.project.add_user(self.user, "Administration")
         self.assertEqual(len(self.get_users(FREQ_INSTANT)), 0)
         self.assertEqual(len(self.get_users(FREQ_DAILY)), 0)
         self.assertEqual(len(self.get_users(FREQ_WEEKLY)), 1)
@@ -543,6 +554,22 @@ class SubscriptionTest(ViewTestCase):
         self.assertEqual(len(self.get_users(FREQ_WEEKLY)), 0)
         self.assertEqual(len(self.get_users(FREQ_MONTHLY)), 0)
 
+    def test_all_scope(self):
+        self.user.subscription_set.all().delete()
+        self.assertEqual(len(self.get_users(FREQ_INSTANT)), 0)
+        self.assertEqual(len(self.get_users(FREQ_DAILY)), 0)
+        self.assertEqual(len(self.get_users(FREQ_WEEKLY)), 0)
+        self.assertEqual(len(self.get_users(FREQ_MONTHLY)), 0)
+        self.user.subscription_set.create(
+            scope=SCOPE_ALL,
+            notification=self.notification.get_name(),
+            frequency=FREQ_MONTHLY,
+        )
+        self.assertEqual(len(self.get_users(FREQ_INSTANT)), 0)
+        self.assertEqual(len(self.get_users(FREQ_DAILY)), 0)
+        self.assertEqual(len(self.get_users(FREQ_WEEKLY)), 0)
+        self.assertEqual(len(self.get_users(FREQ_MONTHLY)), 1)
+
     def test_skip(self):
         self.user.profile.watched.add(self.project)
         # Not subscriptions
@@ -550,14 +577,14 @@ class SubscriptionTest(ViewTestCase):
         self.assertEqual(len(self.get_users(FREQ_INSTANT)), 0)
         # Default subscription
         self.user.subscription_set.create(
-            scope=SCOPE_DEFAULT,
+            scope=SCOPE_WATCHED,
             notification=self.notification.get_name(),
             frequency=FREQ_INSTANT,
         )
         self.assertEqual(len(self.get_users(FREQ_INSTANT)), 1)
         # Subscribe to parent event
         self.user.subscription_set.create(
-            scope=SCOPE_DEFAULT,
+            scope=SCOPE_WATCHED,
             notification="NewAlertNotificaton",
             frequency=FREQ_INSTANT,
         )
