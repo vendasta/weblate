@@ -15,19 +15,14 @@ version: '3'
 
 services:
   weblate:
-    image: weblate-dev:latest
+    image: weblate-dev
     build:
-      context: ./weblate-dev/
+      context: ../
       dockerfile: mscli-Dockerfile
-      args:
-        USER_ID: ${USER_ID}
-        GROUP_ID: ${GROUP_ID}
     ports:
-    - ${WEBLATE_HOST}:8080
-    user: $USER_ID:$GROUP_ID
-    userns_mode: host
-    tmpfs:
-    - /app/cache:uid=$USER_ID,gid=$GROUP_ID
+      - 8080:8080
+    user: 1000:1000
+    userns_mode: "host"
     volumes:
       # Local data directory
     - $PWD/data:/app/data

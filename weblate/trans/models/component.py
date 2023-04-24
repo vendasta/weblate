@@ -1431,7 +1431,7 @@ class Component(models.Model, URLMixin, PathMixin, CacheKeyMixin):
                     remote_revision=self.repository.last_remote_revision
                 )
 
-                        update_remote_branch.send(sender=self.__class__, component=self)
+        update_remote_branch.send(sender=self.__class__, component=self)
         return True
 
     def configure_repo(self, validate=False, pull=True):
