@@ -17,7 +17,7 @@ RUN useradd --shell /bin/sh --user-group weblate --groups root,tty \
 ENV HOME=/home/weblate
 
 # This is needed to run tests inside the container.
-RUN install -d -o weblate -g weblate -m 755 /usr/local/lib/python3.7/dist-packages/data-test /usr/local/lib/python3.7/dist-packages/test-images \
+RUN install -d -o weblate -g weblate -m 755 /usr/local/lib/python${PYVERSION}/dist-packages/data-test /usr/local/lib/python${PYVERSION}/dist-packages/test-images \
  && install -d -o weblate -g weblate -m 755 /app/data
 
 # Configure utf-8 locales to make sure Python
@@ -44,6 +44,7 @@ RUN set -x \
     supervisor \
     openssh-client \
     ca-certificates \
+    gcc-aarch64-linux-gnu \
     curl \
     gir1.2-pango-1.0 \
     libgirepository1.0-dev \
@@ -121,7 +122,7 @@ RUN set -x \
 
 # Apply hotfixes on Weblate
 RUN find /usr/src/weblate -name '*.patch' -print0 | sort -z | \
-  xargs -n1 -0 -r patch -p1 -d /usr/local/lib/python3.7/dist-packages/ -i
+  xargs -n1 -0 -r patch -p1 -d /usr/local/lib/python${PYVERSION}/dist-packages/ -i
 
 # Install Hub
 RUN curl -L https://github.com/github/hub/releases/download/v2.13.0/hub-linux-amd64-2.13.0.tgz | tar xzv --wildcards hub-linux*/bin/hub && \
@@ -134,7 +135,7 @@ RUN curl -sL "https://github.com/zaquestion/lab/releases/download/v0.17.2/lab_0.
   && chmod u+x /usr/bin/lab
 
 # Install nodejs and npm
-RUN curl -sL https://deb.nodesource.com/setup_14.x | bash - \
+RUN curl -sL https://deb.nodesource.com/setup_18.x | bash - \
   && apt-get install nodejs
 
 # Configuration for Weblate, nginx, uwsgi and supervisor
@@ -153,8 +154,8 @@ RUN rm -f /etc/localtime && cp /usr/share/zoneinfo/Etc/UTC /etc/localtime \
   && sed -i '/pam_rootok.so/a auth requisite pam_deny.so' /etc/pam.d/su
 
 # Search path for custom modules
-RUN echo "/app/data/python" > /usr/local/lib/python3.7/dist-packages/weblate-docker.pth
-RUN echo "/usr/src" >> /usr/local/lib/python3.7/dist-packages/weblate-docker.pth
+RUN echo "/app/data/python" > /usr/local/lib/python${PYVERSION}/dist-packages/weblate-docker.pth
+RUN echo "/usr/src" >> /usr/local/lib/python${PYVERSION}/dist-packages/weblate-docker.pth
 
 # Entrypoint
 COPY start /app/bin/
