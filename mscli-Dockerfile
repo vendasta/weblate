@@ -18,7 +18,8 @@ ENV HOME=/home/weblate
 
 # This is needed to run tests inside the container.
 RUN install -d -o weblate -g weblate -m 755 /usr/local/lib/python${PYVERSION}/dist-packages/data-test /usr/local/lib/python${PYVERSION}/dist-packages/test-images \
- && install -d -o weblate -g weblate -m 755 /app/data
+ && install -d -o weblate -g weblate -m 755 /app/data \
+ && install -d -o weblate -g weblate -m 755 /app/cache
 
 # Configure utf-8 locales to make sure Python
 # correctly handles unicode filenames, configure settings
@@ -95,9 +96,9 @@ RUN set -x \
     tesseract-ocr \
     patch \
   && pip3 install --upgrade pip \
+  && pip3 install --force-reinstall --no-binary :all: cffi \
   && pip3 install setuptools_scm==6.0.1 \
   && pip3 install --use-pep517 maturin \
-  && pip3 install phply \
   && pip3 install /usr/src \
   && pip3 install supervisor-stdout \
   && python3 -c 'from phply.phpparse import make_parser; make_parser()' \
