@@ -34,7 +34,7 @@ services:
     - cache
     environment:
       DJANGO_SETTINGS_MODULE: weblate.settings_docker
-      WEBLATE_SITE_DOMAIN: ${WEBLATE_HOST}
+      WEBLATE_SITE_DOMAIN: '127.0.0.1:8000'
     env_file:
     - ./environment
   database:
