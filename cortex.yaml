@@ -1,0 +1,40 @@
+openapi: 3.0.0
+info:
+  title: ""
+  x-cortex-tag: ""
+  x-cortex-owners:
+    - type: group
+      name: vendasta/
+      provider: GITHUB
+    - type: slack
+      channel: ""
+      notificationsEnabled: true
+  x-cortex-git:
+    github:
+      repository: vendasta/
+  x-cortex-link:
+    - name: ' Service Timeboard'
+      type: Dashboard
+      url: https://app.datadoghq.com/dashboard/
+    - name: ' Logs (Prod)'
+      type: Logs
+      url: https://console.cloud.google.com/logs/query;query=resource.type%3D%22k8s_container%22%0Aresource.labels.cluster_name%3D%22vendasta-central%22%0Aresource.labels.namespace_name%3D%22-prod%22?project=repcore-prod
+    - name: ' Logs (Demo)'
+      type: Logs
+      url: https://console.cloud.google.com/logs/query;query=resource.type%3D%22k8s_container%22%0Aresource.labels.cluster_name%3D%22vendasta-central%22%0Aresource.labels.namespace_name%3D%22-demo%22?project=repcore-prod
+    - name: Deploy Info
+      type: deploy_info
+      url: https://mission-control-prod.vendasta-internal.com/applications/
+    - name: Build Info
+      type: build_info
+      url: https://console.cloud.google.com/cloud-build/builds;region=global?project=repcore-prod&organizationId=39943578564&query=tags%3D%22%22
+  x-cortex-slos:
+    datadog:
+      - id: ""
+  x-cortex-custom-metadata:
+    build-provider: CloudBuild
+    deploy-provider: Mission-Control
+    platform: gke
+  x-cortex-apm:
+    datadog:
+      monitors: []
