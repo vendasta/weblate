@@ -76,12 +76,12 @@ autosize@^5.0.1:
   resolved "https://registry.yarnpkg.com/autosize/-/autosize-5.0.1.tgz#ed269b0fa9b7eb47627048a1bb3299e99e003a0f"
   integrity sha512-UIWUlE4TOVPNNj2jjrU39wI4hEYbneUypEqcyRmRFIx5CC2gNdg3rQr+Zh7/3h6egbBvm33TDQjNQKtj9Tk1HA==
 
-bootstrap-datepicker@^1.9.0:
-  version "1.9.0"
-  resolved "https://registry.yarnpkg.com/bootstrap-datepicker/-/bootstrap-datepicker-1.9.0.tgz#e4bfce3fcce1967876b21dc6833ec5994aaed090"
-  integrity sha512-9rYYbaVOheGYxjOr/+bJCmRPihfy+LkLSg4fIFMT9Od8WwWB/MB50w0JO1eBgKUMbb7PFHQD5uAfI3ArAxZRXA==
+bootstrap-datepicker@^1.10.0:
+  version "1.10.0"
+  resolved "https://registry.yarnpkg.com/bootstrap-datepicker/-/bootstrap-datepicker-1.10.0.tgz#61612bbe8bf0a69a5bce32bbcdda93ebb6ccf24a"
+  integrity sha512-lWxtSYddAQOpbAO8UhYhHLcK6425eWoSjb5JDvZU3ePHEPF6A3eUr51WKaFy4PccU19JRxUG6wEU3KdhtKfvpg==
   dependencies:
-    jquery ">=1.7.1 <4.0.0"
+    jquery ">=3.4.0 <4.0.0"
 
 bootstrap-rtl@^3.3.4:
   version "3.3.4"
@@ -197,10 +197,10 @@ is-fullwidth-code-point@^3.0.0:
   resolved "https://registry.yarnpkg.com/is-fullwidth-code-point/-/is-fullwidth-code-point-3.0.0.tgz#f116f8064fe90b3f7844a38997c0b75051269f1d"
   integrity sha512-zymm5+u+sCsSWyD9qNaejV3DFvhCKclKdizYaJUuHA83RLjb7nSuGnddCHGv0hk+KY7BMAlsWeK4Ueg6EV6XQg==
 
-"jquery@>=1.7.1 <4.0.0", jquery@^3.6.0:
-  version "3.6.0"
-  resolved "https://registry.yarnpkg.com/jquery/-/jquery-3.6.0.tgz#c72a09f15c1bdce142f49dbf1170bdf8adac2470"
-  integrity sha512-JVzAR/AjBvVt2BmYhxRCSYysDsPcssdmTFnzyLEts9qNwmjmu4JTAMYubEfwVOSwpQ1I1sKKFcxhZCI2buerfw==
+"jquery@>=3.4.0 <4.0.0", jquery@^3.6.0:
+  version "3.7.0"
+  resolved "https://registry.yarnpkg.com/jquery/-/jquery-3.7.0.tgz#fe2c01a05da500709006d8790fe21c8a39d75612"
+  integrity sha512-umpJ0/k8X0MvD1ds0P9SfowREz2LenHsQaxSohMZ5OMNEU2r0tf8pdeEFTHMFxWVxKNyU9rTtK3CWzUCTKJUeQ==
 
 js-cookie@^3.0.1:
   version "3.0.1"
