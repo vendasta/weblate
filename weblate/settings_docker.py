@@ -676,7 +676,7 @@ ROOT_URLCONF = "weblate.urls"
 # Django and Weblate apps
 INSTALLED_APPS = [
     # Docker customization app, listed first to allow overriding static files
-    "customize",
+    # "customize",
     # Weblate apps on top to override Django locales and templates
     "weblate.addons",
     "weblate.auth",
