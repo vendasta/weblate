@@ -1,0 +1,21 @@
+openapi: 3.0.0
+info:
+  title: weblate
+  x-cortex-git:
+    github:
+      repository: vendasta/weblate
+  x-cortex-tag: weblate
+  x-cortex-link:
+    - url: https://console.cloud.google.com/logs/query;query=resource.type%3D%22k8s_container%22%0Aresource.labels.cluster_name%3D%22vendasta-central%22%0Aresource.labels.namespace_name%3D%22weblate-prod%22?project=repcore-prod
+      name: weblate Logs (Prod)
+      type: Logs
+    - url: https://console.cloud.google.com/logs/query;query=resource.type%3D%22k8s_container%22%0Aresource.labels.cluster_name%3D%22vendasta-central%22%0Aresource.labels.namespace_name%3D%22weblate-demo%22?project=repcore-prod
+      name: weblate Logs (Demo)
+      type: Logs
+    - url: https://mission-control-prod.vendasta-internal.com/applications/weblate
+      name: Deploy Info
+      type: deploy_info
+  x-cortex-custom-metadata:
+    platform: gke
+    build-provider: CloudBuild
+    deploy-provider: Mission-Control
