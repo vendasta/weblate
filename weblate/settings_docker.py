@@ -822,11 +822,17 @@ if not HAVE_SYSLOG:
     del LOGGING["handlers"]["syslog"]
 
 # List of machine translations
-MT_SERVICES = (
-    "weblate.machinery.weblatetm.WeblateTranslation",
-    "weblate.memory.machine.WeblateMemory",
-    "weblate.machinery.googlev3.GoogleV3Translation",
-)
+if os.environ.get("ENVIRONMENT") == "prod":
+    MT_SERVICES = (
+        "weblate.machinery.weblatetm.WeblateTranslation",
+        "weblate.memory.machine.WeblateMemory",
+        "weblate.machinery.googlev3.GoogleV3Translation",
+    )
+else:
+    MT_SERVICES = (
+        "weblate.machinery.weblatetm.WeblateTranslation",
+        "weblate.memory.machine.WeblateMemory",
+    )
 
 # Machine translation API keys
 
