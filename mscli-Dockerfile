@@ -95,6 +95,7 @@ RUN \
     patch \
     unzip \
     xz-utils \
+    vim \
   && c_rehash \
   && echo "deb http://apt.postgresql.org/pub/repos/apt bullseye-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
   && curl -L https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
@@ -139,7 +140,6 @@ RUN \
     libssl-dev \
     libz-dev   \
     libjpeg62-turbo-dev \
-    vim \
   && apt-get -y purge --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
   && apt-get clean \
   && rm -rf /root/.cache /tmp/* /var/lib/apt/lists/*
