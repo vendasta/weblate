@@ -139,6 +139,7 @@ RUN \
     libssl-dev \
     libz-dev   \
     libjpeg62-turbo-dev \
+    vim \
   && apt-get -y purge --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
   && apt-get clean \
   && rm -rf /root/.cache /tmp/* /var/lib/apt/lists/*
