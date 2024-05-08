@@ -129,6 +129,11 @@ Before starting, your project needs a source translation file. This should typic
 1. Navigate to [Weblate](https://weblate.vendasta-internal.com) and login using Vendasta SSO.
 2. Navigate to the [Common](https://weblate.vendasta-internal.com/projects/common/) Weblate Project. Create a new component for your project by clicking `Add new translation component`.
     - If this project is not a common library, you might choose another Weblate Project, or create a new Weblate Project using the `+` in the navbar.
+    - Not everyone has permissions to create a new project. team-sre has permissions and can follow these steps:
+      - Log into weblate.apigateway.co using SSO
+      - Open Business App project and click info - this project website is the website that most projects use (according to Toni) 
+      - Create a new translation project where the Project name is capitalized and the project website is what is in Business App
+      - Click save. Everyone can add components to the project. 
 3. Click the `Translate document` tab.  
 4. Complete the form and click `Continue`.
     - Document to translate: Choose the `en_devel.json` source file.
