@@ -912,6 +912,7 @@ class Unit(models.Model, LoggerMixin):
                 continue
             if (
                 unit.change_set.count() > 0
+                and len(unit.change_set.content().order()) > 0
                 and unit.change_set.content().order()[0].action != Change.ACTION_AUTO
             ):
                 continue
