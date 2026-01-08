@@ -28,11 +28,6 @@ steps:
     env: ["APP_NAME=${_APP_NAME}"]
     secretEnv: ['DEFECT_DOJO_TOKEN']
     waitFor: ['semgrep', 'trufflehog', 'grype']
-    # This step pulls all active findings from DefectDojo and uploads them to Cortex (2023-08-02)
-  - name: 'gcr.io/repcore-prod/cortex-upload@sha256:2267d6ebca3b5c315a6a6f7fc31711541c9e200563a466fe4cbf03807b0a9a80'
-    env: ["APP_NAME=${_APP_NAME}"]
-    secretEnv: ['DEFECT_DOJO_TOKEN', 'CORTEX_TOKEN']
-    waitFor: ['-']
 artifacts:
   objects:
     location: 'gs://defect-dojo-scans/${_APP_NAME}/$BUILD_ID/'
@@ -41,8 +36,6 @@ availableSecrets:
   secretManager:
     - versionName: 'projects/repcore-prod/secrets/defect-dojo-token/versions/latest'
       env: 'DEFECT_DOJO_TOKEN'
-    - versionName: 'projects/repcore-prod/secrets/infosec-cortex-token/versions/latest'
-      env: 'CORTEX_TOKEN'
 tags:
   - 'SecurityBuild'
   - 'NotDeployable'
