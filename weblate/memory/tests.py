@@ -19,6 +19,7 @@ from weblate.memory.utils import CATEGORY_FILE
 from weblate.trans.tests.test_views import FixtureTestCase
 from weblate.trans.tests.utils import get_test_file
 from weblate.utils.db import using_postgresql
+from weblate.utils.state import STATE_TRANSLATED
 
 
 def add_document():
@@ -57,6 +58,7 @@ class MemoryModelTest(FixtureTestCase):
                     "origin": "File: test",
                     "source": "Hello",
                     "text": "Ahoj",
+                    "original_source": "Hello",
                     "show_quality": True,
                     "delete_url": None,
                 }
@@ -73,6 +75,7 @@ class MemoryModelTest(FixtureTestCase):
                     "service": "Weblate Translation Memory",
                     "origin": "File: test",
                     "source": "Hello",
+                    "original_source": "Hello",
                     "text": "Ahoj",
                     "show_quality": True,
                     "delete_url": f"/api/memory/{Memory.objects.first().pk}/",
@@ -149,6 +152,13 @@ class MemoryModelTest(FixtureTestCase):
 
     def test_import_unit(self):
         unit = self.get_unit()
+        handle_unit_translation_change(unit.id, self.user.id)
+        self.assertEqual(Memory.objects.count(), 0)
+        handle_unit_translation_change(unit.id, self.user.id)
+        self.assertEqual(Memory.objects.count(), 0)
+        unit.translate(self.user, "Nazdar", STATE_TRANSLATED)
+        self.assertEqual(Memory.objects.count(), 3)
+        Memory.objects.all().delete()
         handle_unit_translation_change(unit.id, self.user.id)
         self.assertEqual(Memory.objects.count(), 3)
         handle_unit_translation_change(unit.id, self.user.id)
@@ -265,21 +275,21 @@ class MemoryViewTest(FixtureTestCase):
         if fail:
             self.assertContains(response, "Permission Denied", status_code=403)
         else:
-            self.assertContains(response, "Failed to parse JSON file")
+            self.assertContains(response, "Could not parse JSON file")
 
         # Test invalid upload
         response = self.upload_file("memory-broken.json", **kwargs)
         if fail:
             self.assertContains(response, "Permission Denied", status_code=403)
         else:
-            self.assertContains(response, "Failed to parse JSON file")
+            self.assertContains(response, "Could not parse JSON file")
 
         # Test invalid upload
         response = self.upload_file("memory-invalid.json", **kwargs)
         if fail:
             self.assertContains(response, "Permission Denied", status_code=403)
         else:
-            self.assertContains(response, "Failed to parse JSON file")
+            self.assertContains(response, "Could not parse JSON file")
 
     def test_memory_project(self):
         self.test_memory("Number of entries for Test", True, kwargs=self.kw_project)

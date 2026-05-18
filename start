@@ -236,6 +236,9 @@ if [ "$1" = "runserver" ] ; then
     # Compress js and css
     run_weblate compress --force --traceback
 
+    # Deployment readiness check (non-blocking; logs warnings)
+    run_weblate check --deploy || true
+
     # uswgi dir
     mkdir -p /run/gunicorn/app/weblate
 

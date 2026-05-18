@@ -280,6 +280,14 @@ Translation types capabilities
      - no
      - no
      -
+   * - :ref:`markdown`
+     - mono
+     - no
+     - no
+     - no
+     - no
+     - no
+     -
    * - :ref:`odf`
      - mono
      - no
@@ -331,7 +339,7 @@ Translation types capabilities
    * - :ref:`stringsdict`
      - mono
      - yes
-     - yes
+     - no
      - no
      - no
      - no
@@ -347,10 +355,10 @@ Translation types capabilities
 
 .. [#m] See :ref:`bimono`
 .. [#p] See :ref:`format-plurals`
-.. [#n] Source string descriptions can be used to pass additional info about the string to translate.
-.. [#c] Context is used to differentiate identical strings used in different scopes (for example `Sun` can be used as an abbreviated name of the day "Sunday" or as the name of our closest star).
-.. [#l] Location of a string in source code might help proficient translators figure out how the string is used.
-.. [#a] Additional states supported by the file format in addition to "Untranslated" and "Translated".
+.. [#n] See :ref:`format-description`
+.. [#c] See :ref:`format-context`
+.. [#l] See :ref:`format-location`
+.. [#a] See :ref:`format-states`
 .. [#x] XML comment placed before the ``<string>`` element, parsed as a source string description.
 .. [#f] See :ref:`format-flags`.
 .. [#po] The gettext type comments are used as flags.
@@ -381,6 +389,49 @@ Additionally this workflow can be extended by utilizing
 :ref:`component-intermediate` to include strings provided by developers, but
 not to be used as is in the final strings.
 
+.. _format-states:
+
+String states
++++++++++++++
+
+Many file formats only differentiate "Untranslated" and "Translated" strings.
+With some formats it is possible to store more fine-grained state information,
+such as "Needs editing" or "Approved".
+
+.. _format-description:
+
+Source string description
++++++++++++++++++++++++++
+
+Source string descriptions can be used to pass additional info about the string to translate.
+
+Several formats have native support for providing additional info to
+translators (for example :ref:`xliff`, :ref:`gettext`, :ref:`webex`,
+:ref:`csv`, :ref:`xlsx`, :ref:`qtling`, :ref:`go-i18n-json`,
+:ref:`gotext-json`, :ref:`arb`, :ref:`dotnet`). Many other formats extract
+closest comment as source string description.
+
+.. _format-explanation:
+
+Explanation
++++++++++++
+
+The :ref:`additional-explanation` on strings can be stored and parsed from a
+few file formats.
+
+Currently supported only in :ref:`tbx`.
+
+.. _format-location:
+
+Source string location
+++++++++++++++++++++++
+
+Location of a string in source code might help proficient translators figure
+out how the string is used.
+
+This information is typically available in bilingual formats where strings are
+extracted from the source code using tools. For example :ref:`gettext` and :ref:`qtling`.
+
 .. _format-flags:
 
 Translation flags
@@ -403,10 +454,20 @@ defined in the XLIFF standard, see :ref:`xliff-flags`.
    :ref:`custom-checks`,
    `PO files documentation`_
 
-
-
 .. _PO files documentation: https://www.gnu.org/software/gettext/manual/html_node/PO-Files.html
 
+
+.. _format-context:
+
+Context
++++++++
+
+Context is used to differentiate identical strings in a bilingual format used
+in different scopes (for example `Sun` can be used as an abbreviated name of
+the day "Sunday" or as the name of our closest star).
+
+For monolingual formats the string identifier (often called key) can serve the
+same purpose and additional context is not necessary.
 
 .. _format-plurals:
 
@@ -427,8 +488,6 @@ for that.
 
 Read-only strings
 +++++++++++++++++
-
-.. versionadded:: 3.10
 
 Read-only strings from translation files will be included, but
 can not be edited in Weblate. This feature is natively supported by few formats

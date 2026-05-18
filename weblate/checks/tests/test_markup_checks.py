@@ -78,6 +78,19 @@ class XMLValidityCheckTest(CheckTestCase):
     def test_html(self):
         self.do_test(False, ("This is<br>valid HTML", "Toto je<br>platne HTML", ""))
 
+    def test_skip_mixed(self):
+        self.do_test(
+            False,
+            (
+                ["<emphasis>1st</emphasis>", "<invalid>"],
+                "<emphasis>not</ emphasis>",
+                "",
+            ),
+        )
+
+    def test_nonxml(self):
+        self.do_test(False, ("Source", "<<target>>", ""))
+
 
 class XMLTagsCheckTest(CheckTestCase):
     check = XMLTagsCheck()

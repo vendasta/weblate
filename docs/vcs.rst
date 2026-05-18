@@ -58,7 +58,7 @@ connect to the host should it be changed later (see :ref:`verify-ssh`).
 
 In case adjustment is needed, do so from the Weblate admin interface:
 
-.. image:: /screenshots/ssh-keys.png
+.. image:: /screenshots/ssh-keys.webp
 
 
 .. _weblate-ssh-key:
@@ -100,7 +100,7 @@ the hostname you are going to access (e.g. ``gitlab.com``), and press
 
 The added keys with fingerprints are shown in the confirmation message:
 
-.. image:: /screenshots/ssh-keys-added.png
+.. image:: /screenshots/ssh-keys-added.webp
 
 .. _vcs-repos-github:
 
@@ -295,8 +295,6 @@ Weblate settings to make this work. Once configured, you will see a
 GitLab merge requests
 ---------------------
 
-.. versionadded:: 3.9
-
 This just adds a thin layer atop :ref:`vcs-git` using the `GitLab API`_ to allow
 pushing translation changes as merge requests instead of
 pushing directly to the repository.
@@ -483,15 +481,10 @@ environment variable set to the :setting:`DATA_DIR`:
 Local files
 -----------
 
-Git
----
-
 .. hint::
 
    Underneath, this uses :ref:`vcs-git`. It requires Git installed and allows
    you to switch to using Git natively with full history of your translations.
-
-.. versionadded:: 3.8
 
 Weblate can also operate without a remote VCS. The initial translations are
 imported by uploading them. Later you can replace individual files by file upload,

@@ -12,7 +12,7 @@ import weblate.vcs.gpg
 from weblate.utils.checks import weblate_check
 from weblate.utils.data import data_dir
 from weblate.utils.lock import WeblateLock
-from weblate.vcs.base import RepositoryException
+from weblate.vcs.base import RepositoryError
 from weblate.vcs.git import GitRepository, SubversionRepository
 from weblate.vcs.ssh import ensure_ssh_key
 
@@ -42,6 +42,7 @@ def check_vcs(app_configs, **kwargs):
     ]
 
 
+# TODO: Drop in Weblate 5.1
 def check_vcs_deprecated(app_configs, **kwargs):
     from weblate.vcs.models import VCS_REGISTRY
 
@@ -96,12 +97,12 @@ class VCSConfig(AppConfig):
         with lockfile:
             try:
                 GitRepository.global_setup()
-            except RepositoryException as error:
+            except RepositoryError as error:
                 GIT_ERRORS.append(str(error))
             if SubversionRepository.is_supported():
                 try:
                     SubversionRepository.global_setup()
-                except RepositoryException as error:
+                except RepositoryError as error:
                     GIT_ERRORS.append(str(error))
 
         # Use it for *.po by default

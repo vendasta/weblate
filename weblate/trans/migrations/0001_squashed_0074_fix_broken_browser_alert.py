@@ -290,7 +290,6 @@ class Migration(migrations.Migration):
             options={"verbose_name": "Project", "verbose_name_plural": "Projects"},
             bases=(
                 models.Model,
-                weblate.trans.mixins.URLMixin,
                 weblate.trans.mixins.PathMixin,
             ),
         ),
@@ -392,7 +391,7 @@ class Migration(migrations.Migration):
                     "template",
                     models.CharField(
                         blank=True,
-                        help_text="Filename of translation base file, containing all strings and their source; it is recommended for monolingual translation formats.",
+                        help_text="Filename of translation base file, containing all strings and their source for monolingual translations.",
                         max_length=400,
                         validators=[weblate.utils.validators.validate_filename],
                         verbose_name="Monolingual base language file",
@@ -704,7 +703,6 @@ class Migration(migrations.Migration):
             },
             bases=(
                 models.Model,
-                weblate.trans.mixins.URLMixin,
                 weblate.trans.mixins.PathMixin,
             ),
         ),

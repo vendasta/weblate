@@ -55,6 +55,13 @@ class KeyURLMachineryForm(KeyMachineryForm, URLMachineryForm):
     pass
 
 
+class LibreTranslateMachineryForm(KeyURLMachineryForm):
+    key = forms.CharField(
+        label=pgettext_lazy("Automatic suggestion service configuration", "API key"),
+        required=False,
+    )
+
+
 class MyMemoryMachineryForm(BaseMachineryForm):
     email = forms.EmailField(
         label=pgettext_lazy(
@@ -182,7 +189,7 @@ class GoogleV3MachineryForm(BaseMachineryForm):
         try:
             json.loads(self.cleaned_data["credentials"])
         except json.JSONDecodeError as error:
-            raise ValidationError(gettext("Failed to parse JSON: %s") % error)
+            raise ValidationError(gettext("Could not parse JSON: %s") % error)
         return self.cleaned_data["credentials"]
 
 

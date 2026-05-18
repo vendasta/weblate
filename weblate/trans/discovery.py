@@ -43,6 +43,7 @@ COPY_ATTRIBUTES = (
     "edit_template",
     "manage_units",
     "variant_regex",
+    "category",
 )
 
 
@@ -128,9 +129,11 @@ class ComponentDiscovery:
 
                 # Calculate file mask for match
                 replacements = [(matches.start("language"), matches.end("language"))]
-                for group in matches.groupdict():
-                    if group.startswith("_language_"):
-                        replacements.append((matches.start(group), matches.end(group)))
+                replacements.extend(
+                    (matches.start(group), matches.end(group))
+                    for group in matches.groupdict()
+                    if group.startswith("_language_")
+                )
                 maskparts = []
                 maskpath = path
                 for start, end in sorted(replacements, reverse=True):

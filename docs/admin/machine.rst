@@ -8,10 +8,11 @@ Configuring automatic suggestions
    Prior to Weblate 4.13, the services were configured in the :ref:`config`.
 
 The support for several machine translation and translation memory services is
-built-in. Each service can be turned on by the administrator for whole site or
-at the project settings:
+built-in. Each service can be turned on by the administrator for whole site
+(under :guilabel:`Automatic suggestions` in :ref:`management-interface`) or at
+the project settings:
 
-.. image:: /screenshots/project-machinery.png
+.. image:: /screenshots/project-machinery.webp
 
 .. note::
 
@@ -69,8 +70,6 @@ The recommended way to use Apertium is to run your own Apertium-APy server.
 AWS
 ---
 
-.. versionadded:: 3.1
-
 :Service ID: ``aws``
 :Configuration: +------------+----------------+--+
                 | ``key``    | Access key ID  |  |
@@ -91,8 +90,6 @@ to and from English across a breadth of supported languages.
 
 Baidu
 -----
-
-.. versionadded:: 3.2
 
 :Service ID: ``baidu``
 :Configuration: +------------+---------------+--+
@@ -258,7 +255,7 @@ Language Portal through a web service.
 
 .. seealso::
 
-    `Microsoft Terminology Service API <https://www.microsoft.com/en-us/language/Microsoft-Terminology-API>`_
+    `Microsoft language resources <https://learn.microsoft.com/en-us/globalization/reference/microsoft-language-resources>`_
 
 
 .. _mt-microsoft-translator:
@@ -319,9 +316,9 @@ With new Azure keys, you also need to set ``region`` to locale of your service.
 
    `Cognitive Services - Text Translation API <https://azure.microsoft.com/en-us/products/cognitive-services/translator/>`_,
    `Microsoft Azure Portal <https://portal.azure.com/>`_,
-   `Base URLs <https://learn.microsoft.com/en-us/azure/cognitive-services/translator/reference/v3-0-reference#base-urls>`_,
-   `"Authenticating with a Multi-service resource" <https://learn.microsoft.com/en-us/azure/cognitive-services/translator/reference/v3-0-reference#authenticating-with-a-multi-service-resource>`_
-   `"Authenticating with an access token" section <https://learn.microsoft.com/en-us/azure/cognitive-services/translator/reference/v3-0-reference#authenticating-with-an-access-token>`_
+   `Base URLs <https://learn.microsoft.com/en-us/azure/ai-services/translator/reference/v3-0-reference#base-urls>`_,
+   `"Authenticating with a Multi-service resource" <https://learn.microsoft.com/en-us/azure/ai-services/translator/reference/v3-0-reference#authenticating-with-a-multi-service-resource>`_
+   `"Authenticating with an access token" section <https://learn.microsoft.com/en-us/azure/ai-services/translator/reference/v3-0-reference#authenticating-with-an-access-token>`_
 
 .. _mt-modernmt:
 
@@ -371,8 +368,6 @@ You can also ask them for more.
 
 Netease Sight
 -------------
-
-.. versionadded:: 3.3
 
 :Service ID: ``netease-sight``
 :Configuration: +------------+---------------+--+
@@ -483,7 +478,7 @@ The service offers multiple domain-specific models.
 
 .. seealso::
 
-    `Watson Language Translator <https://www.ibm.com/cloud/watson-language-translator>`_,
+    `Watson Language Translator <https://www.ibm.com/products/natural-language-processing>`_,
     `IBM Cloud API Docs <https://cloud.ibm.com/apidocs/language-translator>`_
 
 .. _mt-weblate:
@@ -534,8 +529,6 @@ This service uses a Translation API, and you need to obtain an API key from Yand
 
 Youdao Zhiyun
 -------------
-
-.. versionadded:: 3.2
 
 :Service ID: ``youdao-zhiyun``
 :Configuration: +------------+---------------+--+

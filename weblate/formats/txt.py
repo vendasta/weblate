@@ -4,13 +4,15 @@
 
 """Plain text file formats."""
 
+from __future__ import annotations
+
 import os
 from glob import glob
 from itertools import chain
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable
 
 from django.utils.functional import cached_property
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext_lazy
 
 from weblate.formats.base import TranslationFormat, TranslationUnit
 from weblate.utils.errors import report_error
@@ -67,7 +69,7 @@ class TextSerializer:
 
 
 class MultiParser:
-    filenames: Tuple[Tuple[str, str], ...] = ()
+    filenames: tuple[tuple[str, str], ...] = ()
 
     def __init__(self, storefile):
         if not isinstance(storefile, str):
@@ -160,7 +162,7 @@ class TextUnit(TranslationUnit):
             return self.mainunit.flags
         return ""
 
-    def set_target(self, target: Union[str, List[str]]):
+    def set_target(self, target: str | list[str]):
         """Set translation unit target."""
         self._invalidate_target()
         self.unit.text = target
@@ -171,7 +173,7 @@ class TextUnit(TranslationUnit):
 
 
 class AppStoreFormat(TranslationFormat):
-    name = _("App store metadata files")
+    name = gettext_lazy("App store metadata files")
     format_id = "appstore"
     can_add_unit = False
     can_delete_unit = True
@@ -187,8 +189,8 @@ class AppStoreFormat(TranslationFormat):
     def create_unit(
         self,
         key: str,
-        source: Union[str, List[str]],
-        target: Optional[Union[str, List[str]]] = None,
+        source: str | list[str],
+        target: str | list[str] | None = None,
     ):
         raise ValueError("Create not supported")
 
@@ -196,9 +198,9 @@ class AppStoreFormat(TranslationFormat):
     def create_new_file(
         cls,
         filename: str,
-        language: str,
-        base: str,
-        callback: Optional[Callable] = None,
+        language: str,  # noqa: ARG003
+        base: str,  # noqa: ARG003
+        callback: Callable | None = None,  # noqa: ARG003
     ):
         """Handle creation of new translation file."""
         os.makedirs(filename)
@@ -231,8 +233,8 @@ class AppStoreFormat(TranslationFormat):
     def is_valid_base_for_new(
         cls,
         base: str,
-        monolingual: bool,
-        errors: Optional[List] = None,
+        monolingual: bool,  # noqa: ARG003
+        errors: list | None = None,
         fast: bool = False,
     ) -> bool:
         """Check whether base is valid."""
@@ -241,12 +243,14 @@ class AppStoreFormat(TranslationFormat):
         try:
             if not fast:
                 AppStoreParser(base)
-        except Exception:
+        except Exception as exception:
+            if errors is not None:
+                errors.append(exception)
             report_error(cause="File parse error")
             return False
         return True
 
-    def delete_unit(self, ttkit_unit) -> Optional[str]:
+    def delete_unit(self, ttkit_unit) -> str | None:
         filename = self.store.get_filename(ttkit_unit.filename)
         os.unlink(filename)
         return filename

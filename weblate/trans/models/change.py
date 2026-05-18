@@ -11,8 +11,8 @@ from django.db.models import Count, Q
 from django.db.models.base import post_save
 from django.utils import timezone
 from django.utils.html import escape, format_html
-from django.utils.translation import gettext as _
 from django.utils.translation import (
+    gettext,
     gettext_lazy,
     ngettext,
     ngettext_lazy,
@@ -25,7 +25,7 @@ from weblate.lang.models import Language
 from weblate.trans.mixins import UserDisplayMixin
 from weblate.trans.models.alert import ALERTS
 from weblate.trans.models.project import Project
-from weblate.utils.fields import JSONField
+from weblate.utils.pii import mask_email
 from weblate.utils.state import STATE_LOOKUP
 
 
@@ -36,6 +36,12 @@ class ChangeQuerySet(models.QuerySet):
         if prefetch:
             base = base.prefetch()
         return base.filter(action__in=Change.ACTIONS_CONTENT)
+
+    def for_category(self, category):
+        return self.filter(component_id__in=category.all_component_ids)
+
+    def filter_announcements(self):
+        return self.filter(action=Change.ACTION_ANNOUNCEMENT)
 
     def count_stats(self, days: int, step: int, dtstart: datetime):
         """Count the number of changes in a given period grouped by step days."""
@@ -101,11 +107,13 @@ class ChangeQuerySet(models.QuerySet):
         """
         return self.prefetch_related(
             "user",
+            "author",
             "translation",
             "component",
             "project",
             "component__source_language",
             "unit",
+            "unit__source_unit",
             "translation__language",
             "translation__plural",
         )
@@ -214,7 +222,7 @@ class Change(models.Model, UserDisplayMixin):
     ACTION_NEW_SOURCE = 13
     ACTION_LOCK = 14
     ACTION_UNLOCK = 15
-    ACTION_DUPLICATE_STRING = 16
+    # Used to be ACTION_DUPLICATE_STRING = 16
     ACTION_COMMIT = 17
     ACTION_PUSH = 18
     ACTION_RESET = 19
@@ -238,7 +246,7 @@ class Change(models.Model, UserDisplayMixin):
     ACTION_MARKED_EDIT = 37
     ACTION_REMOVE_COMPONENT = 38
     ACTION_REMOVE_PROJECT = 39
-    ACTION_DUPLICATE_LANGUAGE = 40
+    # Used to be ACTION_DUPLICATE_LANGUAGE = 40
     ACTION_RENAME_PROJECT = 41
     ACTION_RENAME_COMPONENT = 42
     ACTION_MOVE_COMPONENT = 43
@@ -264,6 +272,10 @@ class Change(models.Model, UserDisplayMixin):
     ACTION_STRING_REMOVE = 63
     ACTION_COMMENT_DELETE = 64
     ACTION_COMMENT_RESOLVE = 65
+    ACTION_EXPLANATION = 66
+    ACTION_REMOVE_CATEGORY = 67
+    ACTION_RENAME_CATEGORY = 68
+    ACTION_MOVE_CATEGORY = 69
 
     ACTION_CHOICES = (
         # Translators: Name of event in the history
@@ -292,8 +304,6 @@ class Change(models.Model, UserDisplayMixin):
         (ACTION_LOCK, gettext_lazy("Component locked")),
         # Translators: Name of event in the history
         (ACTION_UNLOCK, gettext_lazy("Component unlocked")),
-        # Translators: Name of event in the history
-        (ACTION_DUPLICATE_STRING, gettext_lazy("Found duplicated string")),
         # Translators: Name of event in the history
         (ACTION_COMMIT, gettext_lazy("Committed changes")),
         # Translators: Name of event in the history
@@ -340,8 +350,6 @@ class Change(models.Model, UserDisplayMixin):
         (ACTION_REMOVE_COMPONENT, gettext_lazy("Removed component")),
         # Translators: Name of event in the history
         (ACTION_REMOVE_PROJECT, gettext_lazy("Removed project")),
-        # Translators: Name of event in the history
-        (ACTION_DUPLICATE_LANGUAGE, gettext_lazy("Found duplicated language")),
         # Translators: Name of event in the history
         (ACTION_RENAME_PROJECT, gettext_lazy("Renamed project")),
         # Translators: Name of event in the history
@@ -395,7 +403,18 @@ class Change(models.Model, UserDisplayMixin):
         # Translators: Name of event in the history
         (ACTION_COMMENT_DELETE, gettext_lazy("Removed comment")),
         # Translators: Name of event in the history
-        (ACTION_COMMENT_RESOLVE, gettext_lazy("Resolved comment")),
+        (
+            ACTION_COMMENT_RESOLVE,
+            pgettext_lazy("Name of event in the history", "Resolved comment"),
+        ),
+        # Translators: Name of event in the history
+        (ACTION_EXPLANATION, gettext_lazy("Explanation updated")),
+        # Translators: Name of event in the history
+        (ACTION_REMOVE_CATEGORY, gettext_lazy("Removed category")),
+        # Translators: Name of event in the history
+        (ACTION_RENAME_CATEGORY, gettext_lazy("Renamed category")),
+        # Translators: Name of event in the history
+        (ACTION_MOVE_CATEGORY, gettext_lazy("Moved category")),
     )
     ACTIONS_DICT = dict(ACTION_CHOICES)
     ACTION_STRINGS = {
@@ -430,6 +449,7 @@ class Change(models.Model, UserDisplayMixin):
         ACTION_APPROVE,
         ACTION_MARKED_EDIT,
         ACTION_SOURCE_CHANGE,
+        ACTION_EXPLANATION,
     }
 
     # Actions shown on the repository management page
@@ -444,7 +464,6 @@ class Change(models.Model, UserDisplayMixin):
         ACTION_FAILED_PUSH,
         ACTION_LOCK,
         ACTION_UNLOCK,
-        ACTION_DUPLICATE_LANGUAGE,
     }
 
     # Actions where target is rendered as translation string
@@ -480,60 +499,74 @@ class Change(models.Model, UserDisplayMixin):
         ),
     }
 
-    unit = models.ForeignKey("Unit", null=True, on_delete=models.deletion.CASCADE)
-    language = models.ForeignKey(
-        "lang.Language", null=True, on_delete=models.deletion.CASCADE
+    unit = models.ForeignKey(
+        "Unit", null=True, on_delete=models.deletion.CASCADE, db_index=False
     )
-    project = models.ForeignKey("Project", null=True, on_delete=models.deletion.CASCADE)
+    language = models.ForeignKey(
+        "lang.Language", null=True, on_delete=models.deletion.CASCADE, db_index=False
+    )
+    project = models.ForeignKey(
+        "Project", null=True, on_delete=models.deletion.CASCADE, db_index=False
+    )
     component = models.ForeignKey(
-        "Component", null=True, on_delete=models.deletion.CASCADE
+        "Component", null=True, on_delete=models.deletion.CASCADE, db_index=False
     )
     translation = models.ForeignKey(
-        "Translation", null=True, on_delete=models.deletion.CASCADE
+        "Translation", null=True, on_delete=models.deletion.CASCADE, db_index=False
     )
     comment = models.ForeignKey(
-        "Comment", null=True, on_delete=models.deletion.SET_NULL
+        "Comment", null=True, on_delete=models.deletion.SET_NULL, db_index=False
     )
     suggestion = models.ForeignKey(
-        "Suggestion", null=True, on_delete=models.deletion.SET_NULL
+        "Suggestion", null=True, on_delete=models.deletion.SET_NULL, db_index=False
     )
     announcement = models.ForeignKey(
-        "Announcement", null=True, on_delete=models.deletion.SET_NULL
+        "Announcement", null=True, on_delete=models.deletion.SET_NULL, db_index=False
     )
     screenshot = models.ForeignKey(
-        "screenshots.Screenshot", null=True, on_delete=models.deletion.SET_NULL
+        "screenshots.Screenshot",
+        null=True,
+        on_delete=models.deletion.SET_NULL,
+        db_index=False,
     )
-    alert = models.ForeignKey("Alert", null=True, on_delete=models.deletion.SET_NULL)
+    alert = models.ForeignKey(
+        "Alert", null=True, on_delete=models.deletion.SET_NULL, db_index=False
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, on_delete=models.deletion.CASCADE
     )
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
-        related_name="author_set",
+        related_name="+",
+        db_index=False,
         on_delete=models.deletion.CASCADE,
     )
     timestamp = models.DateTimeField(auto_now_add=True)
-    action = models.IntegerField(
-        choices=ACTION_CHOICES, default=ACTION_CHANGE, db_index=True
-    )
+    action = models.IntegerField(choices=ACTION_CHOICES, default=ACTION_CHANGE)
     target = models.TextField(default="", blank=True)
     old = models.TextField(default="", blank=True)
-    details = JSONField()
+    details = models.JSONField(default=dict)
 
     objects = ChangeManager.from_queryset(ChangeQuerySet)()
 
     class Meta:
         app_label = "trans"
-        index_together = [
-            ("timestamp", "project", "component", "language", "action"),
-            ("action", "translation", "timestamp"),
+        indexes = [
+            models.Index(fields=["timestamp", "action"]),
+            models.Index(fields=["project", "action", "timestamp"]),
+            models.Index(fields=["language", "action", "timestamp"]),
+            models.Index(fields=["project", "language", "action", "timestamp"]),
+            models.Index(fields=["component", "action", "timestamp"]),
+            models.Index(fields=["translation", "action", "timestamp"]),
+            models.Index(fields=["unit", "action", "timestamp"]),
+            models.Index(fields=["user", "action", "timestamp"]),
         ]
         verbose_name = "history event"
         verbose_name_plural = "history events"
 
     def __str__(self):
-        return _("%(action)s at %(time)s on %(translation)s by %(user)s") % {
+        return gettext("%(action)s at %(time)s on %(translation)s by %(user)s") % {
             "action": self.get_action_display(),
             "time": self.timestamp,
             "translation": self.translation,
@@ -634,6 +667,10 @@ class Change(models.Model, UserDisplayMixin):
         """Whether to show content as source change."""
         return self.action in (self.ACTION_SOURCE_CHANGE, self.ACTION_NEW_SOURCE)
 
+    def show_removed_string(self):
+        """Whether to show content as source change."""
+        return self.action == self.ACTION_STRING_REMOVE
+
     def show_content(self):
         """Whether to show content as translation."""
         return (
@@ -685,18 +722,20 @@ class Change(models.Model, UserDisplayMixin):
                 ),
             )
             if reason == "content changed":
-                return format_html(escape(_('The "{}" file was changed.')), filename)
+                return format_html(
+                    escape(gettext('The "{}" file was changed.')), filename
+                )
             if reason == "check forced":
                 return format_html(
-                    escape(_('Parsing of the "{}" file was enforced.')), filename
+                    escape(gettext('Parsing of the "{}" file was enforced.')), filename
                 )
             if reason == "new file":
-                return format_html(escape(_("File {} was added.")), filename)
+                return format_html(escape(gettext("File {} was added.")), filename)
             raise ValueError(f"Unknown reason: {reason}")
 
         if self.action == self.ACTION_LICENSE_CHANGE:
             not_available = pgettext("License information not available", "N/A")
-            return _(
+            return gettext(
                 'The license of the "%(component)s" component was changed '
                 "from %(old)s to %(target)s."
             ) % {
@@ -719,9 +758,13 @@ class Change(models.Model, UserDisplayMixin):
                     return name
             return "Unknown {}".format(details["access_control"])
         if self.action in user_actions:
+            if "username" in details:
+                result = details["username"]
+            else:
+                result = mask_email(details["email"])
             if "group" in details:
-                return "{username} ({group})".format(**details)
-            return details["username"]
+                result = "result ({details['group']})"
+            return result
         if self.action in (
             self.ACTION_ADDED_LANGUAGE,
             self.ACTION_REQUESTED_LANGUAGE,

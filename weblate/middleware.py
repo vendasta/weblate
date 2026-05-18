@@ -2,6 +2,8 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from __future__ import annotations
+
 from urllib.parse import urlparse
 
 from django.conf import settings
@@ -12,7 +14,7 @@ from django.http import Http404, HttpResponsePermanentRedirect
 from django.shortcuts import redirect
 from django.urls import is_valid_path, reverse
 from django.utils.http import escape_leading_slashes
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext_lazy
 
 from weblate.lang.models import Language
 from weblate.trans.models import Change, Component, Project
@@ -88,8 +90,9 @@ class RedirectMiddleware:
         # missing parameters.
         # Redirecting on API removes authentication headers in many cases,
         # so avoid that as well.
+        # Redirecting requests for Sourcemap files will not do anything good
         if (
-            path.endswith("/")
+            path.endswith(("/", ".map"))
             or request.method != "GET"
             or path.startswith(f"{settings.URL_PREFIX}/api")
         ):
@@ -140,13 +143,13 @@ class RedirectMiddleware:
         request.user.check_access_component(component)
         return component
 
-    def check_existing_translations(self, slug, project):
+    def check_existing_translations(self, name: str, project: Project):
         """
         Check in existing translations for specific language.
 
         Return False if language translation not present, else True.
         """
-        return any(lang.name == slug for lang in project.languages)
+        return any(lang.name == name for lang in project.languages)
 
     def process_exception(self, request, exception):
         if not isinstance(exception, Http404):
@@ -158,46 +161,47 @@ class RedirectMiddleware:
             return None
 
         kwargs = dict(resolver_match.kwargs)
-        new_lang = None
-        if "lang" in kwargs:
-            language = self.fixup_language(kwargs["lang"])
-            if language is None:
+        path = list(kwargs.get("path", ()))
+        language_name = None
+        if not path:
+            return None
+
+        # Try using last part as a language
+        if len(path) >= 3:
+            language = self.fixup_language(path[-1])
+            if language is not None:
+                path[-1] = language.code
+                language_name = language.name
+
+        project = self.fixup_project(path[0], request)
+        if project is None:
+            return None
+        path[0] = project.slug
+
+        if len(path) >= 2:
+            component = self.fixup_component(path[1], request, project)
+            if component is None:
                 return None
-            kwargs["lang"] = language.code
-            new_lang = language.name
+            path[1] = component.slug
 
-        if "project" in kwargs:
-            project = self.fixup_project(kwargs["project"], request)
-            if project is None:
-                return None
-            kwargs["project"] = project.slug
-
-            if "component" in kwargs:
-                component = self.fixup_component(kwargs["component"], request, project)
-                if component is None:
-                    return None
-                kwargs["component"] = component.slug
-
-                if new_lang:
-                    existing_trans = self.check_existing_translations(new_lang, project)
-                    if not existing_trans:
-                        messages.add_message(
-                            request,
-                            messages.INFO,
-                            _(
-                                "%s translation is currently not available, "
-                                "but can be added."
-                            )
-                            % new_lang,
+            if language_name:
+                existing_trans = self.check_existing_translations(
+                    language_name, project
+                )
+                if not existing_trans:
+                    messages.add_message(
+                        request,
+                        messages.INFO,
+                        gettext_lazy(
+                            "%s translation is currently not available, "
+                            "but can be added."
                         )
-                        return redirect(
-                            reverse(
-                                "component",
-                                args=[kwargs["project"], kwargs["component"]],
-                            )
-                        )
+                        % language_name,
+                    )
+                    return redirect(reverse("show", kwargs={"path": path[:-1]}))
 
-        if kwargs != resolver_match.kwargs:
+        if path != kwargs["path"]:
+            kwargs["path"] = path
             query = request.META["QUERY_STRING"]
             if query:
                 query = f"?{query}"

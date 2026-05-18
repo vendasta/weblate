@@ -18,6 +18,7 @@ from weblate.screenshots.models import Screenshot
 from weblate.trans.defines import BRANCH_LENGTH, LANGUAGE_NAME_LENGTH, REPO_LENGTH
 from weblate.trans.models import (
     AutoComponentList,
+    Category,
     Change,
     Component,
     ComponentList,
@@ -55,13 +56,21 @@ class MultiFieldHyperlinkedIdentityField(serializers.HyperlinkedIdentityField):
             return None
 
         kwargs = {}
+        was_slug = False
         for lookup in self.lookup_field:
             value = obj
             for key in lookup.split("__"):
                 # NULL value
                 if value is None:
                     return None
+                previous = value
                 value = getattr(value, key)
+                if key == "slug":
+                    if was_slug and previous.category:
+                        value = "%2F".join(
+                            (*previous.category.get_url_path()[1:], value)
+                        )
+                    was_slug = True
             if self.strip_parts:
                 lookup = "__".join(lookup.split("__")[self.strip_parts :])
             kwargs[lookup] = value
@@ -111,6 +120,7 @@ class LanguageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Language
         fields = (
+            "id",
             "code",
             "name",
             "plural",
@@ -193,6 +203,7 @@ class FullUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
+            "id",
             "email",
             "full_name",
             "username",
@@ -202,6 +213,7 @@ class FullUserSerializer(serializers.ModelSerializer):
             "is_active",
             "is_bot",
             "date_joined",
+            "last_login",
             "url",
             "statistics_url",
         )
@@ -214,6 +226,7 @@ class BasicUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
+            "id",
             "full_name",
             "username",
         )
@@ -244,6 +257,7 @@ class RoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Role
         fields = (
+            "id",
             "name",
             "permissions",
             "url",
@@ -314,6 +328,7 @@ class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
         fields = (
+            "id",
             "name",
             "defining_project",
             "project_selection",
@@ -347,6 +362,9 @@ class ProjectSerializer(serializers.ModelSerializer):
     statistics_url = serializers.HyperlinkedIdentityField(
         view_name="api:project-statistics", lookup_field="slug"
     )
+    categories_url = serializers.HyperlinkedIdentityField(
+        view_name="api:project-categories", lookup_field="slug"
+    )
     languages_url = serializers.HyperlinkedIdentityField(
         view_name="api:project-languages", lookup_field="slug"
     )
@@ -363,6 +381,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             "components_list_url",
             "repository_url",
             "statistics_url",
+            "categories_url",
             "changes_list_url",
             "languages_url",
             "translation_review",
@@ -451,6 +470,13 @@ class ComponentSerializer(RemovableSerializer):
 
     enforced_checks = serializers.JSONField(required=False)
 
+    category = serializers.HyperlinkedRelatedField(
+        view_name="api:category-detail",
+        queryset=Category.objects.none(),
+        required=False,
+        allow_null=True,
+    )
+
     task_url = RelatedTaskField(lookup_field="background_task_id")
 
     addons = serializers.HyperlinkedIdentityField(
@@ -474,6 +500,7 @@ class ComponentSerializer(RemovableSerializer):
             "branch",
             "push_branch",
             "filemask",
+            "screenshot_filemask",
             "template",
             "edit_template",
             "intermediate",
@@ -523,6 +550,7 @@ class ComponentSerializer(RemovableSerializer):
             "is_glossary",
             "glossary_color",
             "disable_autoshare",
+            "category",
         )
         extra_kwargs = {
             "url": {
@@ -530,6 +558,11 @@ class ComponentSerializer(RemovableSerializer):
                 "lookup_field": ("project__slug", "slug"),
             }
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if isinstance(self.instance, Component):
+            self.fields["category"].queryset = self.instance.project.category_set.all()
 
     def validate_enforced_checks(self, value):
         if not isinstance(value, list):
@@ -548,6 +581,7 @@ class ComponentSerializer(RemovableSerializer):
             result["repo"] = None
             result["branch"] = None
             result["filemask"] = None
+            result["screnshot_filemask"] = None
             result["push"] = None
         return result
 
@@ -599,9 +633,14 @@ class ComponentSerializer(RemovableSerializer):
             if self.instance and getattr(self.instance, field) == attrs[field]:
                 continue
             # Look for existing components
-            if attrs["project"].component_set.filter(**{field: attrs[field]}).exists():
+            project = attrs["project"]
+            field_filter = {field: attrs[field]}
+            if (
+                project.component_set.filter(**field_filter).exists()
+                or project.category_set.filter(**field_filter).exists()
+            ):
                 raise serializers.ValidationError(
-                    {field: f"Component with this {field} already exists."}
+                    {field: f"Component or category with this {field} already exists."}
                 )
 
         # Handle uploaded files
@@ -622,7 +661,7 @@ class ComponentSerializer(RemovableSerializer):
                 create_component_from_zip(attrs)
             except BadZipfile:
                 raise serializers.ValidationError(
-                    {"zipfile": "Failed to parse uploaded ZIP file."}
+                    {"zipfile": "Could not parse uploaded ZIP file."}
                 )
             attrs.pop("zipfile")
         # Handle non-component arg
@@ -854,6 +893,7 @@ class StatisticsSerializer(ReadOnlySerializer):
         result = {
             "total": stats.all,
             "total_words": stats.all_words,
+            "total_chars": stats.all_chars,
             "last_change": stats.last_changed,
             "recent_changes": stats.recent_changes,
             "translated": stats.translated,
@@ -862,7 +902,6 @@ class StatisticsSerializer(ReadOnlySerializer):
             "translated_words_percent": stats.translated_words_percent,
             "translated_chars": stats.translated_chars,
             "translated_chars_percent": stats.translated_chars_percent,
-            "total_chars": stats.all_chars,
             "fuzzy": stats.fuzzy,
             "fuzzy_percent": stats.fuzzy_percent,
             "failing": stats.allchecks,
@@ -1083,6 +1122,47 @@ class BilingualUnitSerializer(NewUnitSerializer):
         }
 
 
+class CategorySerializer(RemovableSerializer):
+    project = serializers.HyperlinkedRelatedField(
+        view_name="api:project-detail",
+        lookup_field="slug",
+        queryset=Project.objects.none(),
+        required=True,
+    )
+    category = serializers.HyperlinkedRelatedField(
+        view_name="api:category-detail",
+        queryset=Category.objects.none(),
+        required=False,
+    )
+
+    class Meta:
+        model = Category
+        fields = (
+            "name",
+            "slug",
+            "project",
+            "category",
+            "url",
+        )
+        extra_kwargs = {"url": {"view_name": "api:category-detail"}}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        user = self.context["request"].user
+        self.fields["project"].queryset = user.managed_projects
+
+    def validate(self, attrs):
+        # Call model validation here, DRF does not do that
+        if self.instance:
+            instance = copy(self.instance)
+            for key, value in attrs.items():
+                setattr(instance, key, value)
+        else:
+            instance = Category(**attrs)
+        instance.clean()
+        return attrs
+
+
 class ScreenshotSerializer(RemovableSerializer):
     translation = MultiFieldHyperlinkedIdentityField(
         view_name="api:translation-detail",
@@ -1102,14 +1182,30 @@ class ScreenshotSerializer(RemovableSerializer):
 
     class Meta:
         model = Screenshot
-        fields = ("name", "translation", "file_url", "units", "url")
+        fields = (
+            "id",
+            "name",
+            "repository_filename",
+            "translation",
+            "file_url",
+            "units",
+            "url",
+        )
         extra_kwargs = {"url": {"view_name": "api:screenshot-detail"}}
 
 
 class ScreenshotCreateSerializer(ScreenshotSerializer):
     class Meta:
         model = Screenshot
-        fields = ("name", "translation", "file_url", "units", "url", "image")
+        fields = (
+            "name",
+            "repository_filename",
+            "translation",
+            "file_url",
+            "units",
+            "url",
+            "image",
+        )
         extra_kwargs = {"url": {"view_name": "api:screenshot-detail"}}
 
 

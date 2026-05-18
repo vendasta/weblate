@@ -17,15 +17,25 @@ from weblate_language_data.languages import LANGUAGES
 from weblate_language_data.plurals import CLDRPLURALS, EXTRAPLURALS
 
 from weblate.lang import data
-from weblate.lang.models import Language, Plural, get_plural_type
+from weblate.lang.models import Language, Plural, PluralMapper, get_plural_type
+from weblate.trans.models import Unit
 from weblate.trans.tests.test_models import BaseTestCase
 from weblate.trans.tests.test_views import FixtureTestCase
+from weblate.trans.util import join_plural
 from weblate.utils.db import using_postgresql
 
 TEST_LANGUAGES = (
     ("cs_CZ", "cs", "ltr", "(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2", "Czech", False),
     ("cze_CZ", "cs", "ltr", "(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2", "Czech", False),
     ("ces_CZ", "cs", "ltr", "(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2", "Czech", False),
+    (
+        "cs_latn",
+        "cs_Latn",
+        "ltr",
+        "(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2",
+        "Czech (cs_Latn)",
+        True,
+    ),
     ("cs (2)", "cs", "ltr", "(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2", "Czech", False),
     ("cscz", "cs", "ltr", "(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2", "Czech", False),
     ("czech", "cs", "ltr", "(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2", "Czech", False),
@@ -186,7 +196,7 @@ class LanguagesTest(BaseTestCase, metaclass=TestSequenceMeta):
         self.assertEqual(
             create,
             not bool(lang.pk),
-            f"Failed to assert creation for {original}: {create}",
+            f"Could not assert creation for {original}: {create}",
         )
         # Create language
         lang = Language.objects.auto_get_or_create(original)
@@ -353,7 +363,15 @@ class LanguagesViewTest(FixtureTestCase):
 
     def test_project_language(self):
         response = self.client.get(
-            reverse("project-language", kwargs={"lang": "cs", "project": "test"})
+            reverse(
+                "project-language-redirect", kwargs={"lang": "cs", "project": "test"}
+            ),
+            follow=True,
+        )
+        self.assertRedirects(
+            response,
+            reverse("show", kwargs={"path": ["test", "-", "cs"]}),
+            status_code=301,
         )
         self.assertContains(response, "Czech")
         self.assertContains(response, "/projects/test/test/cs/")
@@ -512,3 +530,82 @@ class PluralTest(BaseTestCase):
         for plural in plurals:
             self.assertIn(plural, choices)
             self.assertIn(plural, data.PLURAL_NAMES)
+
+
+class PluralMapperTestCase(FixtureTestCase):
+    def test_english_czech(self):
+        english = Language.objects.get(code="en")
+        czech = Language.objects.get(code="cs")
+        mapper = PluralMapper(english.plural, czech.plural)
+        self.assertEqual(mapper._target_map, ((0, None), (None, None), (-1, None)))
+        unit = Unit.objects.get(
+            translation__language=english, id_hash=2097404709965985808
+        )
+        self.assertEqual(
+            mapper.map(unit),
+            ["Orangutan has %d banana.\n", "", "Orangutan has %d bananas.\n"],
+        )
+
+    def test_russian_english(self):
+        russian = Language.objects.get(code="ru")
+        english = Language.objects.get(code="en")
+        mapper = PluralMapper(russian.plural, english.plural)
+        self.assertEqual(mapper._target_map, ((0, "1"), (-1, None)))
+        # Use English here to test incomplete plural set in the source string
+        unit = Unit.objects.get(
+            translation__language=english, id_hash=2097404709965985808
+        )
+        self.assertEqual(
+            mapper.map(unit),
+            ["Orangutan has %d banana.\n", "Orangutan has %d bananas.\n"],
+        )
+
+    def test_russian_english_interpolate(self):
+        russian = Language.objects.get(code="ru")
+        english = Language.objects.get(code="en")
+        mapper = PluralMapper(russian.plural, english.plural)
+        self.assertEqual(mapper._target_map, ((0, "1"), (-1, None)))
+        # Use English here to test incomplete plural set in the source string
+        unit = Unit.objects.get(
+            translation__language=english, id_hash=2097404709965985808
+        )
+        unit.extra_flags = "python-brace-format"
+        unit.source = unit.source.replace("%d", "{count}")
+        self.assertEqual(
+            mapper.map(unit),
+            ["Orangutan has 1 banana.\n", "Orangutan has {count} bananas.\n"],
+        )
+
+    def test_russian_english_interpolate_double(self):
+        russian = Language.objects.get(code="ru")
+        english = Language.objects.get(code="en")
+        mapper = PluralMapper(russian.plural, english.plural)
+        self.assertEqual(mapper._target_map, ((0, "1"), (-1, None)))
+        # Use English here to test incomplete plural set in the source string
+        unit = Unit.objects.get(
+            translation__language=english, id_hash=2097404709965985808
+        )
+        unit.extra_flags = "python-brace-format"
+        unit.source = unit.source.replace("%d", "{count} {count}")
+        self.assertEqual(
+            mapper.map(unit),
+            [
+                "Orangutan has {count} {count} banana.\n",
+                "Orangutan has {count} {count} bananas.\n",
+            ],
+        )
+
+    def test_russian_english_interpolate_missing(self):
+        russian = Language.objects.get(code="ru")
+        english = Language.objects.get(code="en")
+        mapper = PluralMapper(russian.plural, english.plural)
+        self.assertEqual(mapper._target_map, ((0, "1"), (-1, None)))
+        unit = Unit.objects.get(
+            translation__language=english, id_hash=2097404709965985808
+        )
+        unit.extra_flags = "i18next-interpolation"
+        unit.source = join_plural(["{{periodNumber}}-я четверть"] * 3)
+        self.assertEqual(
+            mapper.map(unit),
+            ["{{periodNumber}}-я четверть", "{{periodNumber}}-я четверть"],
+        )

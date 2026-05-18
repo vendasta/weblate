@@ -11,15 +11,15 @@ text direction, plural definitions and language code is needed.
 Built-in language definitions
 -----------------------------
 
-Definitions for about 600 languages are included in Weblate and the list is
+Definitions for about 650 languages are included in Weblate and the list is
 extended in every release. Whenever Weblate is upgraded (more specifically
-whenever :program:`weblate migrate` is executed, see
+whenever :wladmin:`migrate` is executed, see
 :ref:`generic-upgrade-instructions`) the database of languages is updated to
 include all language definitions shipped in Weblate.
 
 This feature can be disable using :setting:`UPDATE_LANGUAGES`. You can also
 enforce updating the database to match Weblate built-in data using
-:djadmin:`setuplang`.
+:wladmin:`setuplang`.
 
 .. seealso::
 
@@ -132,6 +132,32 @@ Text direction
 Determines whether language is written right to left or left to right. This
 property is autodetected correctly for most of the languages.
 
+.. _language-population:
+
+Number of speakers
+++++++++++++++++++
+
+Number of worldwide speakers of this language.
+
+
+.. _plural-definitions:
+
+Plural definitions
+------------------
+
+Weblate comes with a built-in set of plural definitions. These are based on
+file-format specifications, CLDR, and other sources.
+
+.. warning::
+
+   Doing changes to the built-in plural definitions will most likely won't have
+   desired effect, as these rules need to match underlying implementation.
+
+   Changing plural number or formula will affect only displaying of the
+   strings, but not parsing and storing strings to the files. Should you think
+   Weblate behaves incorrectly, please file a issue in our issue tracker.
+
+
 .. _plural-number:
 
 Plural number
@@ -152,11 +178,4 @@ Gettext compatible plural formula used to determine which plural form is used fo
    `GNU gettext utilities: Plural forms <https://www.gnu.org/software/gettext/manual/html_node/Plural-forms.html>`_,
    `Language Plural Rules by the Unicode Consortium`_
 
-.. _Language Plural Rules by the Unicode Consortium: https://unicode-org.github.io/cldr-staging/charts/37/supplemental/language_plural_rules.html
-
-.. _language-population:
-
-Number of speakers
-++++++++++++++++++
-
-Number of worldwide speakers of this language.
+.. _Language Plural Rules by the Unicode Consortium: https://www.unicode.org/cldr/charts/43/supplemental/language_plural_rules.html

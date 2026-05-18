@@ -2,15 +2,16 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from __future__ import annotations
+
 import os
 import subprocess
 from contextlib import suppress
 from itertools import chain
-from typing import List, Optional, Tuple
 
 from django.core.exceptions import ValidationError
 from django.utils.functional import cached_property
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext
 
 from weblate.addons.events import (
     EVENT_COMPONENT_UPDATE,
@@ -34,7 +35,7 @@ from weblate.utils.validators import validate_filename
 class BaseAddon:
     """Base class for Weblate add-ons."""
 
-    events: Tuple[int, ...] = ()
+    events: tuple[int, ...] = ()
     settings_form = None
     name = ""
     compat = {}
@@ -45,7 +46,7 @@ class BaseAddon:
     project_scope = False
     repo_scope = False
     has_summary = False
-    alert: Optional[str] = None
+    alert: str | None = None
     trigger_update = False
     stay_on_create = False
 
@@ -163,7 +164,7 @@ class BaseAddon:
         self.instance.save(update_fields=["state"])
 
     @classmethod
-    def can_install(cls, component, user):
+    def can_install(cls, component, user):  # noqa: ARG003
         """Check whether add-on is compatible with given component."""
         return all(
             getattr(component, key) in values for key, values in cls.compat.items()
@@ -171,15 +172,15 @@ class BaseAddon:
 
     def pre_push(self, component):
         """Hook triggered before repository is pushed upstream."""
-        return
+        # To be implemented in a subclass
 
     def post_push(self, component):
         """Hook triggered after repository is pushed upstream."""
-        return
+        # To be implemented in a subclass
 
     def pre_update(self, component):
         """Hook triggered before repository is updated from upstream."""
-        return
+        # To be implemented in a subclass
 
     def post_update(self, component, previous_head: str, skip_push: bool):
         """
@@ -192,23 +193,23 @@ class BaseAddon:
                                underlying methods as ``commit_and_push`` or
                                ``commit_pending``.
         """
-        return
+        # To be implemented in a subclass
 
     def pre_commit(self, translation, author):
         """Hook triggered before changes are committed to the repository."""
-        return
+        # To be implemented in a subclass
 
     def post_commit(self, component):
         """Hook triggered after changes are committed to the repository."""
-        return
+        # To be implemented in a subclass
 
     def post_add(self, translation):
         """Hook triggered after new translation is added."""
-        return
+        # To be implemented in a subclass
 
     def unit_pre_create(self, unit):
         """Hook triggered before new unit is created."""
-        return
+        # To be implemented in a subclass
 
     def store_post_load(self, translation, store):
         """
@@ -219,14 +220,15 @@ class BaseAddon:
         This is useful to modify file format class parameters, for example
         adjust how the file will be saved.
         """
-        return
+        # To be implemented in a subclass
 
     def daily(self, component):
         """Hook triggered daily."""
-        return
+        # To be implemented in a subclass
 
     def component_update(self, component):
-        return
+        """Hook for component update."""
+        # To be implemented in a subclass
 
     def update_remote_branch(self, component):
         return
@@ -265,7 +267,7 @@ class BaseAddon:
             component.delete_alert(self.alert)
 
     def commit_and_push(
-        self, component, files: Optional[List[str]] = None, skip_push: bool = False
+        self, component, files: list[str] | None = None, skip_push: bool = False
     ):
         if files is None:
             files = list(
@@ -324,7 +326,7 @@ class BaseAddon:
             if component.repo_needs_merge():
                 messages.warning(
                     request,
-                    _(
+                    gettext(
                         "The repository is outdated, you might not get "
                         "expected results until you update it."
                     ),
@@ -369,7 +371,7 @@ class UpdateBaseAddon(BaseAddon):
         self.commit_and_push(component, skip_push=skip_push)
 
 
-class TestException(Exception):
+class TestError(Exception):
     pass
 
 
@@ -382,10 +384,10 @@ class TestCrashAddon(UpdateBaseAddon):
 
     def update_translations(self, component, previous_head):
         if previous_head:
-            raise TestException("Test error")
+            raise TestError("Test error")
 
     @classmethod
-    def can_install(cls, component, user):
+    def can_install(cls, component, user):  # noqa: ARG003
         return False
 
 

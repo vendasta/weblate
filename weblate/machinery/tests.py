@@ -2,15 +2,19 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from __future__ import annotations
+
 import json
 from copy import copy
-from typing import Type
+from io import StringIO
 from unittest import SkipTest
 from unittest.mock import Mock, patch
 from urllib.parse import parse_qs
 
 import responses
 from botocore.stub import ANY, Stubber
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from django.urls import reverse
 from google.cloud.translate_v3 import (
@@ -22,11 +26,12 @@ from google.cloud.translate_v3 import (
 import weblate.machinery.models
 from weblate.checks.tests.test_checks import MockUnit
 from weblate.configuration.models import Setting
+from weblate.lang.models import Language
 from weblate.machinery.apertium import ApertiumAPYTranslation
 from weblate.machinery.aws import AWSTranslation
 from weblate.machinery.baidu import BAIDU_API, BaiduTranslation
 from weblate.machinery.base import (
-    MachineryRateLimit,
+    MachineryRateLimitError,
     MachineTranslation,
     MachineTranslationError,
 )
@@ -148,7 +153,7 @@ SAPTRANSLATIONHUB_JSON = {
 TERMINOLOGY_LANGUAGES = b"""
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
-    <GetLanguagesResponse xmlns="http://api.terminology.microsoft.com/terminology">
+    <GetLanguagesResponse xmlns="https://api.terminology.microsoft.com/terminology">
       <GetLanguagesResult xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
         <Language>
           <Code>af-za</Code>
@@ -212,7 +217,7 @@ TERMINOLOGY_LANGUAGES = b"""
 TERMINOLOGY_TRANSLATE = b"""
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
-    <GetTranslationsResponse xmlns="http://api.terminology.microsoft.com/terminology">
+    <GetTranslationsResponse xmlns="https://api.terminology.microsoft.com/terminology">
       <GetTranslationsResult xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
         <Match>
           <ConfidenceLevel>100</ConfidenceLevel>
@@ -288,7 +293,7 @@ MS_SUPPORTED_LANG_RESP = {"translation": {"cs": "data", "en": "data", "es": "dat
 class BaseMachineTranslationTest(TestCase):
     """Testing of machine translation core."""
 
-    MACHINE_CLS: Type[MachineTranslation] = DummyTranslation
+    MACHINE_CLS: type[MachineTranslation] = DummyTranslation
     ENGLISH = "en"
     SUPPORTED = "cs"
     SUPPORTED_VARIANT = "cs_CZ"
@@ -421,6 +426,7 @@ class MachineTranslationTest(BaseMachineTranslationTest):
                         "quality": 100,
                         "service": "Dummy",
                         "source": "Hello, %s!",
+                        "original_source": "Hello, %s!",
                         "text": "Nazdar %s!",
                     }
                 ]
@@ -755,6 +761,23 @@ class GoogleV3TranslationTest(BaseMachineTranslationTest):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    def test_mapping(self):
+        machine = self.get_machine()
+        self.assertEqual(
+            list(
+                machine.get_language_possibilities(Language.objects.get(code="zh_Hant"))
+            ),
+            ["zh-TW", "zh"],
+        )
+        self.assertEqual(
+            list(
+                machine.get_language_possibilities(
+                    Language.objects.get(code="zh_Hant_HK")
+                )
+            ),
+            ["zh-Hant-HK", "zh-TW", "zh"],
+        )
+
 
 class AmagamaTranslationTest(BaseMachineTranslationTest):
     MACHINE_CLS = AmagamaTranslation
@@ -912,7 +935,7 @@ class BaiduTranslationTest(BaseMachineTranslationTest):
         responses.add(
             responses.GET, BAIDU_API, json={"error_code": "54003", "error_msg": "Error"}
         )
-        with self.assertRaises(MachineryRateLimit):
+        with self.assertRaises(MachineryRateLimitError):
             self.assert_translate(self.SUPPORTED, self.SOURCE_TRANSLATED, 0)
 
     @responses.activate
@@ -1057,15 +1080,17 @@ class DeepLTranslationTest(BaseMachineTranslationTest):
             status=500,
         )
 
-    def mock_languages(self):
+    @staticmethod
+    def mock_languages():
         responses.add(
             responses.GET,
             "https://api.deepl.com/v2/languages",
             json=DEEPL_LANG_RESPONSE,
         )
 
-    def mock_response(self):
-        self.mock_languages()
+    @classmethod
+    def mock_response(cls):
+        cls.mock_languages()
         responses.add(
             responses.POST,
             "https://api.deepl.com/v2/translate",
@@ -1272,6 +1297,7 @@ class AWSTranslationTest(BaseMachineTranslationTest):
                             "quality": 88,
                             "service": "AWS",
                             "source": "Hello",
+                            "original_source": "Hello",
                         }
                     ]
                 ],
@@ -1390,7 +1416,10 @@ class ViewsTest(FixtureTestCase):
                     "plural_form": 0,
                     "service": "Dummy",
                     "text": "Nazdar světe!",
+                    "original_source": "Hello, world!\n",
                     "source": "Hello, world!\n",
+                    "diff": "<ins>Nazdar světe!</ins>",
+                    "source_diff": "Hello, world!\n",
                 },
                 {
                     "quality": 100,
@@ -1398,6 +1427,9 @@ class ViewsTest(FixtureTestCase):
                     "service": "Dummy",
                     "text": "Ahoj světe!",
                     "source": "Hello, world!\n",
+                    "original_source": "Hello, world!\n",
+                    "diff": "<ins>Ahoj světe!</ins>",
+                    "source_diff": "Hello, world!\n",
                 },
             ],
         )
@@ -1448,6 +1480,11 @@ class ViewsTest(FixtureTestCase):
             ).exists()
         )
 
+        response = self.client.post(
+            reverse("machinery-edit", kwargs={"machinery": "INVALID"}), {"install": "1"}
+        )
+        self.assertEqual(response.status_code, 404)
+
     def test_configure_project(self):
         service = self.ensure_dummy_mt()
         list_url = reverse("machinery-list", kwargs={"project": self.project.slug})
@@ -1482,3 +1519,61 @@ class ViewsTest(FixtureTestCase):
         )
         project = Project.objects.get(pk=self.component.project_id)
         self.assertNotIn("dummy", project.machinery_settings)
+
+
+class CommandTest(FixtureTestCase):
+    """Test for management commands."""
+
+    def test_list_addons(self):
+        output = StringIO()
+        call_command("list_machinery", stdout=output)
+        self.assertIn("DeepL", output.getvalue())
+
+    def test_install_no_form(self):
+        output = StringIO()
+        call_command(
+            "install_machinery",
+            "--service",
+            "weblate",
+            stdout=output,
+            stderr=output,
+        )
+        self.assertIn("Service installed: Weblate", output.getvalue())
+
+    def test_install_missing_form(self):
+        output = StringIO()
+        with self.assertRaises(CommandError):
+            call_command(
+                "install_machinery",
+                "--service",
+                "deepl",
+                stdout=output,
+                stderr=output,
+            )
+
+    def test_install_wrong_form(self):
+        output = StringIO()
+        with self.assertRaises(CommandError):
+            call_command(
+                "install_machinery",
+                "--service",
+                "deepl",
+                "--configuration",
+                '{"wrong": ""}',
+                stdout=output,
+                stderr=output,
+            )
+
+    @responses.activate
+    def test_install_valid_form(self):
+        output = StringIO()
+        DeepLTranslationTest.mock_response()
+        call_command(
+            "install_machinery",
+            "--service",
+            "deepl",
+            "--configuration",
+            '{"key": "x", "url": "https://api.deepl.com/v2/"}',
+            stdout=output,
+            stderr=output,
+        )

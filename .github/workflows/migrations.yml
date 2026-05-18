@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   migrations:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         database: [postgresql, mysql]
@@ -35,15 +35,20 @@ jobs:
       DJANGO_SETTINGS_MODULE: weblate.settings_test
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Start services
       run: ./ci/services-up ${{ matrix.database }}
     - name: Install apt dependencies
       run: sudo ./ci/apt-install $CI_DATABASE
+    - name: Install additional deps
+      # TODO: Remove this in Weblate 5.1 once migtration from 4.x is not supported
+      run: sudo apt-get install libleptonica-dev libtesseract-dev tesseract-ocr
     - name: Set up Python 3.7
       uses: actions/setup-python@v4
       with:
-        python-version: 3.7
+        python-version: |
+          3.7
+          3.11
         cache: pip
         cache-dependency-path: '**/requirements*.txt'
     - name: Install pip dependencies
@@ -87,11 +92,17 @@ jobs:
       run: ./ci/run-migrate 4.15
     - name: Migrate from 4.16
       run: ./ci/run-migrate 4.16
+    - name: Migrate from 4.17
+      run: ./ci/run-migrate 4.17
+    - name: Migrate from 4.18
+      run: ./ci/run-migrate 4.18
+    - name: Migrate from 5.0
+      run: ./ci/run-migrate 5.0
     - name: Coverage
       run: |
         coverage combine
         coverage xml
-    - uses: codecov/codecov-action@v3.1.2
+    - uses: codecov/codecov-action@v3
       with:
         token: ${{secrets.CODECOV_TOKEN}}
         flags: migrations

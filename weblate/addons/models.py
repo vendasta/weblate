@@ -44,7 +44,6 @@ from weblate.trans.signals import (
 from weblate.utils.classloader import ClassLoader
 from weblate.utils.decorators import disable_for_loaddata
 from weblate.utils.errors import report_error
-from weblate.utils.fields import JSONField
 
 # Initialize addons registry
 ADDONS = ClassLoader("WEBLATE_ADDONS", False)
@@ -66,8 +65,8 @@ class AddonQuerySet(models.QuerySet):
 class Addon(models.Model):
     component = models.ForeignKey(Component, on_delete=models.deletion.CASCADE)
     name = models.CharField(max_length=100)
-    configuration = JSONField()
-    state = JSONField()
+    configuration = models.JSONField(default=dict)
+    state = models.JSONField(default=dict)
     project_scope = models.BooleanField(default=False, db_index=True)
     repo_scope = models.BooleanField(default=False, db_index=True)
 
@@ -110,14 +109,7 @@ class Addon(models.Model):
         )
 
     def get_absolute_url(self):
-        return reverse(
-            "addon-detail",
-            kwargs={
-                "project": self.component.project.slug,
-                "component": self.component.slug,
-                "pk": self.pk,
-            },
-        )
+        return reverse("addon-detail", kwargs={"pk": self.pk})
 
     def store_change(self, action):
         Change.objects.create(
@@ -160,7 +152,7 @@ class Addon(models.Model):
 
 
 class Event(models.Model):
-    addon = models.ForeignKey(Addon, on_delete=models.deletion.CASCADE)
+    addon = models.ForeignKey(Addon, on_delete=models.deletion.CASCADE, db_index=False)
     event = models.IntegerField(choices=EVENT_CHOICES)
 
     class Meta:
@@ -192,6 +184,7 @@ class AddonsConf(AppConf):
         "weblate.addons.generate.GenerateFileAddon",
         "weblate.addons.generate.PseudolocaleAddon",
         "weblate.addons.generate.PrefillAddon",
+        "weblate.addons.generate.FillReadOnlyAddon",
         "weblate.addons.json.JSONCustomizeAddon",
         "weblate.addons.xml.XMLCustomizeAddon",
         "weblate.addons.properties.PropertiesSortAddon",

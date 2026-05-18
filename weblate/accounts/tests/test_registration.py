@@ -17,7 +17,7 @@ from weblate.accounts.models import VerifiedEmail
 from weblate.accounts.tasks import cleanup_social_auth
 from weblate.auth.models import User
 from weblate.trans.tests.test_views import RegistrationTestMixin
-from weblate.trans.tests.utils import get_test_file
+from weblate.trans.tests.utils import get_test_file, social_core_override_settings
 from weblate.utils.django_hacks import immediate_on_commit, immediate_on_commit_leave
 from weblate.utils.ratelimit import reset_rate_limit
 
@@ -229,7 +229,7 @@ class RegistrationTest(BaseRegistrationTest):
         # Confirm account
         response = self.client.get(url, follow=True)
         self.assertRedirects(response, reverse("login"))
-        self.assertContains(response, "the verification token probably expired")
+        self.assertContains(response, "the confirmation link probably expired")
 
     @override_settings(REGISTRATION_CAPTCHA=False, AUTH_LOCK_ATTEMPTS=5)
     def test_reset_ratelimit(self):
@@ -553,7 +553,7 @@ class RegistrationTest(BaseRegistrationTest):
         self.assertRedirects(response, "/accounts/profile/#account")
 
     @responses.activate
-    @override_settings(AUTHENTICATION_BACKENDS=GH_BACKENDS)
+    @social_core_override_settings(AUTHENTICATION_BACKENDS=GH_BACKENDS)
     def test_github(self, confirm=None, fail=False):
         """Test GitHub integration."""
         responses.add(
@@ -617,7 +617,7 @@ class RegistrationTest(BaseRegistrationTest):
             self.assertContains(response, "is already in use for another account")
             return
         if confirm:
-            self.assertContains(response, "Confirm new association")
+            self.assertContains(response, "Confirm adding user identity")
             response = self.client.post(
                 reverse("confirm"), {"password": confirm}, follow=True
             )
@@ -675,7 +675,7 @@ class RegistrationTest(BaseRegistrationTest):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
 
-    @override_settings(
+    @social_core_override_settings(
         AUTHENTICATION_BACKENDS=SAML_BACKENDS,
         SOCIAL_AUTH_SAML_SP_PUBLIC_CERT=SAML_CERT,
         SOCIAL_AUTH_SAML_SP_PRIVATE_KEY=SAML_KEY,
@@ -719,7 +719,7 @@ class CookieRegistrationTest(BaseRegistrationTest):
             del self.client.cookies["sessionid"]
 
         response = self.client.get(url, follow=True)
-        self.assertContains(response, "the verification token probably expired")
+        self.assertContains(response, "the confirmation link probably expired")
 
     @override_settings(REGISTRATION_CAPTCHA=False)
     def test_reset(self):
@@ -745,7 +745,7 @@ class NoCookieCleanupRegistrationTest(CookieRegistrationTest):
     social_cleanup = True
 
 
-@override_settings(
+@social_core_override_settings(
     AUTHENTICATION_BACKENDS=[
         "social_core.backends.email.EmailAuth",
         "social_core.backends.username.UsernameAuth",

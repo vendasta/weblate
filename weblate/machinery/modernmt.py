@@ -19,6 +19,18 @@ class ModernMTTranslation(MachineTranslation):
     max_score = 90
     settings_form = ModernMTMachineryForm
 
+    language_map = {
+        "fa": "pes",
+        "pt": "pt-PT",
+        "sr": "sr-Cyrl",
+        "zh_Hant": "zh-TW",
+        "zh_Hans": "zh-CN",
+    }
+
+    def map_language_code(self, code):
+        """Convert language to service specific code."""
+        return super().map_language_code(code).replace("_", "-").split("@")[0]
+
     @staticmethod
     def migrate_settings():
         return {
@@ -78,8 +90,12 @@ class ModernMTTranslation(MachineTranslation):
             content = exc.read()
             try:
                 data = json.loads(content)
-                return data["error"]["message"]  # noqa: TRY300
-            except Exception:
+            except json.JSONDecodeError:
+                data = {}
+
+            try:
+                return data["error"]["message"]
+            except KeyError:
                 pass
 
         return super().get_error_message(exc)

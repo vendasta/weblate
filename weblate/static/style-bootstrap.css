@@ -4,6 +4,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+:root {
+  color-scheme: only light;
+}
+
 .avatar {
   -webkit-border-radius: 50%;
   -moz-border-radius: 50%;
@@ -55,6 +59,11 @@
 
 .navbar {
   margin-bottom: 0;
+  border: none;
+}
+
+.navbar-toggle {
+  border: none;
 }
 
 .navbar-brand {
@@ -70,6 +79,17 @@
   display: inline-block;
   width: 1.5em;
   max-height: 1.5em;
+}
+
+.navbar-form {
+  border: none;
+  box-shadow: none;
+}
+@media (max-width: 768px) {
+  .navbar-form {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
 }
 
 .dir-rtl .navbar-brand > svg {
@@ -1094,6 +1114,9 @@ a.green:hover path {
 .red path {
   fill: #f6664c;
 }
+.grey path {
+  fill: #e9eaec;
+}
 
 .panel-heading .doc-link path {
   fill: #2a3744;
@@ -1601,6 +1624,7 @@ a.language:hover {
 }
 
 .editor-wrap > textarea.form-control[readonly],
+.editor-wrap > textarea.form-control[disabled],
 .editor-wrap > textarea {
   position: relative;
   z-index: 1;
@@ -1613,6 +1637,7 @@ a.language:hover {
   z-index: 0;
   overflow: hidden;
 }
+.editor-wrap > .highlighted-output.disabled,
 .editor-wrap > .highlighted-output.readonly {
   background-color: #eee;
 }
@@ -1650,10 +1675,7 @@ a.language:hover {
 .token.function-name,
 .token.constant,
 .token.symbol,
-.token.deleted {
-  color: #c92c2c;
-}
-
+.token.deleted,
 .token.selector,
 .token.attr-name,
 .token.string,
@@ -1667,15 +1689,13 @@ a.language:hover {
 .token.operator,
 .token.entity,
 .token.url,
-.token.variable {
-  color: #a67f59;
-  background: rgba(255, 255, 255, 0.5);
-}
-
+.token.variable,
 .token.atrule,
 .token.attr-value,
 .token.keyword,
-.token.class-name {
+.token.class-name,
+.language-css .token.string,
+.style .token.string {
   color: #1990b8;
 }
 
@@ -1684,13 +1704,8 @@ a.language:hover {
   color: #e90;
 }
 
-.language-css .token.string,
-.style .token.string {
-  color: #a67f59;
-  background: rgba(255, 255, 255, 0.5);
-}
 .token.namespace {
-  opacity: 0.7;
+  opacity: 0.8;
 }
 .markdown p:last-child {
   margin-bottom: 0;
@@ -1849,6 +1864,45 @@ a.language:hover {
   animation: flags-updated ease-out 3000ms;
 }
 
+h5.list-group-item-heading {
+  font-weight: bolder;
+}
+
+.table-supportstatus .progress {
+  min-width: 100px;
+}
+
+.autoComplete:not([hidden]) {
+  display: block;
+}
+.autoComplete_wrapper {
+  position: relative;
+}
+.autoComplete {
+  position: absolute;
+  top: 100%;
+}
+.navbar .autoComplete {
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.sort-skip .btn-sm {
+  padding: 0;
+}
+
+.auth-token {
+  filter: blur(5px);
+  transition: all 70ms linear;
+}
+.auth-token.visible {
+  filter: none;
+}
+.breadcrumb .btn-group-settings a.btn-link {
+  padding: 0 8px;
+}
+
 @-webkit-keyframes flags-updated {
   0% {
     background-color: rgba(255, 165, 0, 255);
@@ -1867,4 +1921,8 @@ a.language:hover {
   100% {
     background-color: rgba(255, 165, 0, 0);
   }
+}
+
+#show-linked-repo-toggle:not(:checked) ~ .repo-linked {
+  display: none;
 }

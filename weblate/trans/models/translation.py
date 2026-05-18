@@ -2,12 +2,13 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from __future__ import annotations
+
 import codecs
 import os
 import tempfile
-from datetime import datetime
 from itertools import chain
-from typing import BinaryIO, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, BinaryIO
 
 import sentry_sdk
 from django.core.cache import cache
@@ -17,12 +18,12 @@ from django.db.models import F, Q
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext
 
 from weblate.checks.flags import Flags
 from weblate.checks.models import CHECKS
 from weblate.formats.auto import try_load
-from weblate.formats.base import UnitNotFound
+from weblate.formats.base import UnitNotFoundError
 from weblate.formats.helpers import CONTROLCHARS, BytesIOMode
 from weblate.lang.models import Language, Plural
 from weblate.trans.checklists import TranslationChecklist
@@ -30,7 +31,7 @@ from weblate.trans.defines import FILENAME_LENGTH
 from weblate.trans.exceptions import (
     FailedCommitError,
     FileParseError,
-    PluralFormsMismatch,
+    PluralFormsMismatchError,
 )
 from weblate.trans.mixins import CacheKeyMixin, LoggerMixin, URLMixin
 from weblate.trans.models.change import Change
@@ -50,6 +51,9 @@ from weblate.utils.state import (
     STATE_TRANSLATED,
 )
 from weblate.utils.stats import GhostStats, TranslationStats
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 class TranslationManager(models.Manager):
@@ -82,18 +86,26 @@ class TranslationManager(models.Manager):
 
 class TranslationQuerySet(models.QuerySet):
     def prefetch(self):
-        from weblate.trans.models import Alert
+        from weblate.trans.models import Alert, Component
 
         return self.prefetch_related(
-            "component",
+            models.Prefetch("component", queryset=Component.objects.defer_huge()),
             "component__project",
+            "component__category",
+            "component__category__project",
+            "component__category__category",
+            "component__category__category__project",
+            "component__category__category__category",
+            "component__category__category__category__project",
             "language",
-            "component__linked_component",
+            models.Prefetch(
+                "component__linked_component", queryset=Component.objects.defer_huge()
+            ),
             "component__linked_component__project",
             models.Prefetch(
                 "component__alert_set",
                 queryset=Alert.objects.filter(dismissed=False),
-                to_attr="all_alerts",
+                to_attr="all_active_alerts",
             ),
         )
 
@@ -115,7 +127,9 @@ class TranslationQuerySet(models.QuerySet):
 
 
 class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
-    component = models.ForeignKey("Component", on_delete=models.deletion.CASCADE)
+    component = models.ForeignKey(
+        "Component", on_delete=models.deletion.CASCADE, db_index=False
+    )
     language = models.ForeignKey(Language, on_delete=models.deletion.CASCADE)
     plural = models.ForeignKey(Plural, on_delete=models.deletion.CASCADE)
     revision = models.CharField(max_length=200, default="", blank=True)
@@ -133,7 +147,8 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
     objects = TranslationManager.from_queryset(TranslationQuerySet)()
 
     is_lockable = False
-    _reverse_url_name = "translation"
+    remove_permission = "translation.delete"
+    settings_permission = "component.edit"
 
     class Meta:
         app_label = "trans"
@@ -157,11 +172,9 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
         self._invalidate_scheduled = False
         self.update_changes = []
 
-    @cached_property
-    def full_slug(self):
-        return "/".join(
-            (self.component.project.slug, self.component.slug, self.language.code)
-        )
+    @property
+    def code(self):
+        return self.language.code
 
     def log_hook(self, level, msg, *args):
         self.component.store_log(self.full_slug, msg, *args)
@@ -197,7 +210,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
         """Validate that filename exists and can be opened using translate-toolkit."""
         if not os.path.exists(self.get_filename()):
             raise ValidationError(
-                _(
+                gettext(
                     "Filename %s not found in repository! To add new "
                     "translation, add language file into repository."
                 )
@@ -207,7 +220,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
             self.load_store()
         except Exception as error:
             raise ValidationError(
-                _("Failed to parse file %(file)s: %(error)s")
+                gettext("Could not parse file %(file)s: %(error)s")
                 % {"file": self.filename, "error": str(error)}
             )
 
@@ -225,22 +238,15 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
             )
             self.was_new = 0
 
-    def get_reverse_url_kwargs(self):
-        """Return kwargs for URL reversing."""
-        return {
-            "project": self.component.project.slug,
-            "component": self.component.slug,
-            "lang": self.language.code,
-        }
+    def get_url_path(self):
+        return (*self.component.get_url_path(), self.language.code)
 
     def get_widgets_url(self):
         """Return absolute URL for widgets."""
-        return get_site_url(
-            "{}?lang={}&component={}".format(
-                reverse("widgets", kwargs={"project": self.component.project.slug}),
-                self.language.code,
-                self.component.slug,
-            )
+        return "{}?lang={}&component={}".format(
+            self.component.project.get_widgets_url(),
+            self.language.code,
+            self.component.slug,
         )
 
     def get_share_url(self):
@@ -248,15 +254,12 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
         return get_site_url(
             reverse(
                 "engage",
-                kwargs={
-                    "project": self.component.project.slug,
-                    "lang": self.language.code,
-                },
+                kwargs={"path": [self.component.project.slug, "-", self.language.code]},
             )
         )
 
     def get_translate_url(self):
-        return reverse("translate", kwargs=self.get_reverse_url_kwargs())
+        return reverse("translate", kwargs={"path": self.get_url_path()})
 
     def get_filename(self):
         """Return absolute filename."""
@@ -285,6 +288,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                 language_code=self.language_code,
                 source_language=self.component.source_language.code,
                 is_template=self.is_template,
+                existing_units=self.unit_set.all(),
             )
             store_post_load.send(sender=self.__class__, translation=self, store=store)
             return store
@@ -304,8 +308,8 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
 
     def sync_unit(
         self,
-        dbunits: Dict[int, Unit],
-        updated: Dict[int, Unit],
+        dbunits: dict[int, Unit],
+        updated: dict[int, Unit],
         id_hash: int,
         unit,
         pos: int,
@@ -444,7 +448,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                             else:
                                 # Patch unit to have matching source
                                 unit.source = translated_unit.source
-                        except UnitNotFound:
+                        except UnitNotFoundError:
                             pass
 
                     try:
@@ -460,14 +464,6 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                             newunit,
                             repr(newunit.source),
                         )
-                        self.update_changes.append(
-                            Change(
-                                unit=newunit,
-                                action=Change.ACTION_DUPLICATE_STRING,
-                                user=user,
-                                author=user,
-                            )
-                        )
                         self.component.trigger_alert(
                             "DuplicateString",
                             language_code=self.language.code,
@@ -480,7 +476,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
 
             except FileParseError as error:
                 report_error(
-                    cause="Failed to parse file on update",
+                    cause="Could not parse file on update",
                     project=self.component.project,
                 )
                 self.log_warning("skipping update due to parse error: %s", error)
@@ -539,6 +535,9 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
 
     def do_file_sync(self, request=None):
         return self.component.do_file_sync(request)
+
+    def do_file_scan(self, request=None):
+        return self.component.do_file_scan(request)
 
     def can_push(self):
         return self.component.can_push()
@@ -608,7 +607,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
             store = self.store
         except FileParseError as error:
             report_error(
-                cause="Failed to parse file on commit", project=self.component.project
+                cause="Could not parse file on commit", project=self.component.project
             )
             self.log_error("skipping commit due to error: %s", error)
             return False
@@ -617,7 +616,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
             store.ensure_index()
         except ValueError as error:
             report_error(
-                cause="Failed to parse file on commit", project=self.component.project
+                cause="Could not parse file on commit", project=self.component.project
             )
             self.log_error("skipping commit due to error: %s", error)
             return False
@@ -682,10 +681,10 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
         self,
         user,
         author: str,
-        timestamp: Optional[datetime] = None,
+        timestamp: datetime | None = None,
         skip_push=False,
         signals=True,
-        template: Optional[str] = None,
+        template: str | None = None,
         store_hash: bool = True,
     ):
         """Wrapper for committing translation to git."""
@@ -721,6 +720,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
     def update_units(self, units, store, author_name, author_id):
         """Update backend file and unit."""
         updated = False
+        clear_pending = []
         for unit in units:
             # We reuse the queryset, so pending units might reappear here
             if not unit.pending:
@@ -739,12 +739,14 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                 pounit = store.new_unit(
                     unit.context, unit.get_source_plurals(), unit.get_target_plurals()
                 )
+                pounit.set_explanation(unit.explanation)
+                pounit.set_source_explanation(unit.source_unit.explanation)
                 updated = True
                 del details["add_unit"]
             else:
                 try:
                     pounit, add = store.find_unit(unit.context, unit.source)
-                except UnitNotFound:
+                except UnitNotFoundError:
                     # Bail out if we have not found anything
                     report_error(
                         cause="String disappeared", project=self.component.project
@@ -767,10 +769,12 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                         pounit.set_target(unit.get_target_plurals())
                     else:
                         pounit.set_target(unit.target)
+                    pounit.set_explanation(unit.explanation)
+                    pounit.set_source_explanation(unit.source_unit.explanation)
                 except Exception as error:
                     self.component.handle_parse_error(error, self, reraise=False)
                     report_error(
-                        cause="Failed to update unit", project=self.component.project
+                        cause="Could not update unit", project=self.component.project
                     )
                     continue
 
@@ -779,9 +783,16 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
             # Update fuzzy/approved flag
             pounit.set_state(unit.state)
 
-            unit.save(
-                update_fields=["pending", "details"], same_content=True, only_save=True
-            )
+            # Do not go via save() to avoid triggering signals
+            if unit.details:
+                Unit.objects.filter(pk=unit.pk).update(
+                    pending=unit.pending, details=unit.details
+                )
+            else:
+                clear_pending.append(unit.pk)
+
+        if clear_pending:
+            Unit.objects.filter(pk__in=clear_pending).update(pending=False, details={})
 
         # Did we do any updates?
         if not updated:
@@ -1014,7 +1025,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                 component.commit_pending("source update", request.user)
             except Exception as error:
                 raise FailedCommitError(
-                    _("Failed to commit pending changes: %s")
+                    gettext("Could not commit pending changes: %s")
                     % str(error).replace(self.component.full_path, "")
                 )
 
@@ -1096,7 +1107,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                     self.commit_pending("replace file", request.user)
             except Exception as error:
                 raise FailedCommitError(
-                    _("Failed to commit pending changes: %s")
+                    gettext("Could not commit pending changes: %s")
                     % str(error).replace(self.component.full_path, "")
                 )
             # This will throw an exception in case of error
@@ -1164,8 +1175,8 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
         request,
         fileobj: BinaryIO,
         conflicts: str,
-        author_name: Optional[str] = None,
-        author_email: Optional[str] = None,
+        author_name: str | None = None,
+        author_email: str | None = None,
         method: str = "translate",
         fuzzy: str = "",
     ):
@@ -1209,12 +1220,12 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                 filecopy = filecopy[3:]
 
             # Commit pending changes in template
-            if component.has_template():
+            if component.has_template() and component.source_translation.needs_commit():
                 try:
                     component.commit_pending("upload", request.user)
                 except Exception as error:
                     raise FailedCommitError(
-                        _("Failed to commit pending changes: %s")
+                        gettext("Could not commit pending changes: %s")
                         % str(error).replace(self.component.full_path, "")
                     )
 
@@ -1246,7 +1257,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                     pass
                 else:
                     if not self.plural.same_plural(number, formula):
-                        raise PluralFormsMismatch
+                        raise PluralFormsMismatchError
 
             if method in ("translate", "fuzzy", "approve"):
                 # Merge on units level
@@ -1306,6 +1317,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
         # Delete from the database
         self.stats.invalidate()
         self.delete()
+        transaction.on_commit(self.component.schedule_update_checks)
 
         # Record change
         Change.objects.create(
@@ -1345,27 +1357,37 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
         self,
         request,
         context: str,
-        source: Union[str, List[str]],
-        target: Optional[Union[str, List[str]]] = None,
+        source: str | list[str],
+        target: str | list[str] | None = None,
         extra_flags: str = "",
         explanation: str = "",
         auto_context: bool = False,
         is_batch_update: bool = False,
         skip_existing: bool = False,
-        sync_terminology: bool = True,
-        state: Optional[int] = None,
+        state: int | None = None,
     ):
         if isinstance(source, list):
             source = join_plural(source)
         user = request.user if request else None
         component = self.component
+        add_terminology = False
         if self.is_source:
-            translations = [self]
-            translations.extend(
-                component.translation_set.exclude(id=self.id).select_related("language")
+            translations = (
+                self,
+                *component.translation_set.exclude(id=self.id).select_related(
+                    "language"
+                ),
+            )
+        elif component.is_glossary and "terminology" in Flags(extra_flags):
+            add_terminology = True
+            translations = (
+                component.source_translation,
+                *component.translation_set.exclude(
+                    id=component.source_translation.id
+                ).select_related("language"),
             )
         else:
-            translations = [component.source_translation, self]
+            translations = (component.source_translation, self)
         has_template = component.has_template()
         source_unit = None
         result = None
@@ -1390,16 +1412,22 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                 kwargs["pending"] = not is_source
             if kwargs["pending"]:
                 kwargs["details"] = {"add_unit": True}
+            if (self.is_source and is_source) or (not self.is_source and not is_source):
+                kwargs["explanation"] = explanation
             if is_source:
                 current_target = source
                 kwargs["extra_flags"] = extra_flags
-                kwargs["explanation"] = explanation
+            elif add_terminology and translation != self:
+                current_target = ""
             else:
                 current_target = target
             if current_target is None:
                 current_target = ""
             if isinstance(current_target, list):
+                has_translation = any(current_target)
                 current_target = join_plural(current_target)
+            else:
+                has_translation = bool(current_target)
             id_hash = component.file_format_cls.unit_class.calculate_id_hash(
                 has_template, source, context
             )
@@ -1424,10 +1452,10 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                 except Unit.DoesNotExist:
                     pass
             if unit is None:
-                if state is None:
-                    unit_state = (
-                        STATE_TRANSLATED if bool(current_target) else STATE_EMPTY
-                    )
+                if has_translation and (state is None or state == STATE_EMPTY):
+                    unit_state = STATE_TRANSLATED
+                elif not has_translation and (state is None or state != STATE_EMPTY):
+                    unit_state = STATE_EMPTY
                 else:
                     unit_state = state
                 unit = Unit(
@@ -1450,12 +1478,12 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                             sync_terminology=False,
                         )
                         changes.append(
-                            Change(
-                                unit=unit,
-                                action=Change.ACTION_NEW_UNIT,
-                                target=current_target,
+                            unit.generate_change(
                                 user=user,
                                 author=user,
+                                change_action=Change.ACTION_NEW_UNIT,
+                                check_new=False,
+                                save=False,
                             )
                         )
                 except IntegrityError:
@@ -1478,8 +1506,6 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                 component.update_variants(
                     updated_units=Unit.objects.filter(pk__in=unit_ids)
                 )
-            if sync_terminology:
-                component.schedule_sync_terminology()
             component.invalidate_cache()
             component_post_update.send(sender=self.__class__, component=component)
             self.was_new = 1
@@ -1523,7 +1549,7 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                 # Does unit exist in the file?
                 try:
                     pounit, add = translation.store.find_unit(unit.context, unit.source)
-                except UnitNotFound:
+                except UnitNotFoundError:
                     continue
                 if add:
                     continue
@@ -1575,7 +1601,6 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                 "",
                 is_batch_update=True,
                 skip_existing=True,
-                sync_terminology=False,
             )
             self.was_new += 1
         self.notify_new(None)
@@ -1583,12 +1608,12 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
     def validate_new_unit_data(
         self,
         context: str,
-        source: Union[str, List[str]],
-        target: Optional[Union[str, List[str]]] = None,
+        source: str | list[str],
+        target: str | list[str] | None = None,
         auto_context: bool = False,
-        extra_flags: Optional[str] = None,
+        extra_flags: str | None = None,
         explanation: str = "",
-        state: Optional[int] = None,
+        state: int | None = None,
     ):
         extra = {}
         if isinstance(source, str):
@@ -1596,32 +1621,34 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
         for text in chain(source, [context]):
             if any(char in text for char in CONTROLCHARS):
                 raise ValidationError(
-                    _("String contains control character: %s") % repr(text)
+                    gettext("String contains control character: %s") % repr(text)
                 )
         if state is not None:
             if state == STATE_EMPTY and any(source):
                 raise ValidationError(
-                    _("Empty state is supported for blank strings only.")
+                    gettext("Empty state is supported for blank strings only.")
                 )
             if not any(source) and state != STATE_EMPTY:
-                raise ValidationError(_("Blank strings require an empty state."))
+                raise ValidationError(gettext("Blank strings require an empty state."))
             if state == STATE_APPROVED and not self.enable_review:
                 raise ValidationError(
-                    _("Approved state is not available as reviews are not enabled.")
+                    gettext(
+                        "Approved state is not available as reviews are not enabled."
+                    )
                 )
         if context:
             self.component.file_format_cls.validate_context(context)
         if not self.component.has_template():
             extra["source"] = join_plural(source)
         if not auto_context and self.unit_set.filter(context=context, **extra).exists():
-            raise ValidationError(_("This string seems to already exist."))
+            raise ValidationError(gettext("This string seems to already exist."))
         # Avoid using source translations without a filename
         if not self.filename:
             try:
                 translation = self.component.translation_set.exclude(pk=self.pk)[0]
             except IndexError:
                 raise ValidationError(
-                    _("Failed adding string: %s") % _("No translation found.")
+                    gettext("Failed adding string, no translation found.")
                 )
             translation.validate_new_unit_data(
                 context,
@@ -1632,6 +1659,10 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                 explanation=explanation,
             )
             return
+
+    @property
+    def all_repo_components(self):
+        return self.component.all_repo_components
 
 
 class GhostTranslation:

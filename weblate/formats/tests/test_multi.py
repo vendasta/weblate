@@ -8,14 +8,14 @@ from weblate.formats.multi import MultiCSVUtf8Format
 from weblate.trans.tests.utils import get_test_file
 from weblate.trans.util import join_plural
 
-from .test_formats import AutoFormatTest
+from .test_formats import BaseFormatTest
 
 TEST_CSV = get_test_file("fr-multi.csv")
 TEST_MONO_CSV = get_test_file("fr-multi-mono.csv")
 TEST_MONO_BASE_CSV = get_test_file("en-multi.csv")
 
 
-class MultiCSVUtf8FormatTest(AutoFormatTest):
+class MultiCSVUtf8FormatTest(BaseFormatTest):
     FORMAT = MultiCSVUtf8Format
     FILE = TEST_CSV
     MIME = "text/csv"
@@ -56,7 +56,7 @@ class MultiCSVUtf8FormatTest(AutoFormatTest):
         self.assertEqual(testdata.decode().splitlines(), newdata.decode().splitlines())
 
     def test_edit(self):
-        newdata = super().test_edit()
+        newdata = super()._test_save(self.EDIT_TARGET)
         self.maxDiff = None
         self.assertEqual(
             newdata.decode().splitlines(),
@@ -64,7 +64,7 @@ class MultiCSVUtf8FormatTest(AutoFormatTest):
         )
 
     def test_edit_add(self):
-        newdata = self.test_save(
+        newdata = self._test_save(
             [
                 "Infarctus myocardique",
                 "Infarctus du myocarde",
