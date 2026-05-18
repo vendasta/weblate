@@ -31,26 +31,13 @@ from weblate.utils.stats import (
     prefetch_stats,
 )
 from weblate.utils.views import get_project, optional_form
-from weblate.vendasta.constants import ACCESS_NAMESPACE, NAMESPACE_SEPARATOR
 
 
 def show_languages(request):
     if request.user.has_perm("language.edit"):
         languages = Language.objects.all()
     else:
-        languages = Language.objects.exclude(
-            Q(translation=None) | Q(code__contains=NAMESPACE_SEPARATOR)
-        )
-        namespace_query = request.user.groups.filter(
-            roles__name=ACCESS_NAMESPACE
-        ).order_by("name")
-        if bool(namespace_query.count()):
-            namespace = namespace_query[0].name
-            languages = Language.objects.filter(
-                ~Q(translation=None),
-                ~Q(code__contains=NAMESPACE_SEPARATOR)
-                | Q(code__contains=NAMESPACE_SEPARATOR + namespace),
-            )
+        languages = Language.objects.exclude(Q(translation=None))
 
     return render(
         request,

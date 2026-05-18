@@ -49,7 +49,6 @@ from weblate.trans.models import ComponentList, Project
 from weblate.utils.decorators import disable_for_loaddata
 from weblate.utils.fields import EmailField, UsernameField
 from weblate.utils.validators import CRUD_RE, validate_fullname, validate_username
-from weblate.vendasta.constants import ACCESS_NAMESPACE, NAMESPACE_SEPARATOR
 
 
 class Permission(models.Model):
@@ -481,17 +480,6 @@ class User(AbstractBaseUser):
 
         # Generic permission
         return check_permission(self, perm, obj)
-
-    def can_access_namespaced_lang(self, lang):
-        """Check access to given namespace."""
-        namespace_query = self.groups.filter(roles__name=ACCESS_NAMESPACE).order_by(
-            "name"
-        )
-        if bool(namespace_query.count()):
-            namespace = namespace_query[0].name
-            if NAMESPACE_SEPARATOR + namespace in lang:
-                return True
-        return False
 
     def can_access_project(self, project):
         """Check access to given project."""

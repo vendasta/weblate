@@ -44,7 +44,6 @@ import weblate.trans.views.search
 import weblate.trans.views.settings
 import weblate.trans.views.source
 import weblate.trans.views.widgets
-import weblate.vendasta.views
 import weblate.wladmin.sites
 import weblate.wladmin.views
 from weblate.auth.decorators import management_access
@@ -1125,12 +1124,6 @@ real_patterns = [
     path(
         ".well-known/change-password",
         RedirectView.as_view(url=f"/{URL_PREFIX}accounts/password/", permanent=True),
-    ),
-    # VENDASTA URLS BELOW
-    path(
-        "new-namespaced-lang/<name:project>/<name:component>",
-        weblate.vendasta.views.new_namespaced_language,
-        name="new-namespaced-language",
     ),
 ]
 
