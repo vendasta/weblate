@@ -198,9 +198,9 @@
       {% endif %}
     {% endwith %}
     <button class="btn btn-primary" type="submit" name="save" tabindex="150"
-    {% if locked or not user_can_translate and not user_can_access_namespace %}
+    {% if locked or not user_can_translate %}
         disabled="disabled"
-        {% if not user_can_translate and not user_can_access_namespace %}
+        {% if not user_can_translate %}
             {% if locked %}
                 title="{% trans "This translation is currently locked." %}"
             {% elif not user.is_authenticated %}

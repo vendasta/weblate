@@ -52,10 +52,6 @@ from weblate.utils.views import (
     show_form_errors,
     try_set_language,
 )
-from weblate.vendasta.aa_sdk import partner_has_customize_permissions
-from weblate.vendasta.constants import ACCESS_NAMESPACE, NAMESPACE_SEPARATOR
-
-
 @never_cache
 def list_projects(request):
     """List all projects."""
@@ -149,9 +145,6 @@ def show_project(request, project):
     obj = get_project(request, project)
     obj.stats.ensure_basic()
     user = request.user
-    user_namespace_query = user.groups.filter(roles__name=ACCESS_NAMESPACE).order_by(
-        "name"
-    )
 
     last_changes = obj.change_set.prefetch().order()[:10].preload()
     last_announcements = (
@@ -167,21 +160,6 @@ def show_project(request, project):
         component.is_shared = None if component.project == obj else component.project
 
     language_stats = obj.stats.get_language_stats()
-    if user_namespace_query.count():
-        user_namespace = user_namespace_query[0].name
-        result = []
-        obj_languages = (
-            Language.objects.filter(translation__component__project=obj)
-            .filter(
-                ~Q(code__contains=NAMESPACE_SEPARATOR)
-                | Q(code__contains=NAMESPACE_SEPARATOR + user_namespace)
-            )
-            .distinct()
-            .order()
-        )
-        for language in obj_languages:
-            result.append(obj.stats.get_single_language_stats(language))
-        language_stats = prefetch_stats(result)
 
     # Show ghost translations for user languages
     component = None
@@ -255,38 +233,10 @@ def show_component(request, project, component):
     obj = get_component(request, project, component)
     obj.stats.ensure_basic()
     user = request.user
-    user_can_access_namespace = False
-    namespace_has_customization_access = False
-    user_namespace_query = user.groups.filter(roles__name=ACCESS_NAMESPACE).order_by(
-        "name"
-    )
-    if user_namespace_query.count():
-        user_can_access_namespace = True
-        namespace = user_namespace_query[0].name
-        namespace_has_customization_access = partner_has_customize_permissions(
-            namespace
-        )
-        LOGGER.info(
-            "NAMESPACE HAS CUSTOMIZATION ACCESS: %s",
-            str(namespace_has_customization_access),
-        )
 
     last_changes = obj.change_set.prefetch().order()[:10].preload("component")
 
-    if request.user.has_perm("language.edit"):
-        translations_query = obj.translation_set
-    else:
-        translations_query = obj.translation_set.exclude(
-            language_code__contains=NAMESPACE_SEPARATOR
-        )
-        if user_namespace_query.count():
-            namespace = user_namespace_query[0].name
-            translations_query = obj.translation_set.filter(
-                ~Q(language_code__contains=NAMESPACE_SEPARATOR)
-                | Q(language_code__contains=NAMESPACE_SEPARATOR + namespace)
-            )
-
-    translations = prefetch_stats(list(translations_query.prefetch()))
+    translations = prefetch_stats(list(obj.translation_set.prefetch()))
 
     # Show ghost translations for user languages
     add_ghost_translations(obj, user, translations, GhostTranslation)
@@ -347,8 +297,6 @@ def show_component(request, project, component):
             "alerts": obj.all_alerts
             if "alerts" not in request.GET
             else obj.alert_set.all(),
-            "user_can_access_namespace": user_can_access_namespace,
-            "user_can_customize_text": namespace_has_customization_access,
         },
     )
 

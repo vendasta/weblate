@@ -34,7 +34,6 @@ from weblate.trans.mixins import CacheKeyMixin
 from weblate.trans.util import sort_objects, sort_unicode
 from weblate.utils.templatetags.icons import icon
 from weblate.utils.validators import validate_plural_formula
-from weblate.vendasta.constants import NAMESPACE_SEPARATOR
 
 PLURAL_RE = re.compile(
     r"\s*nplurals\s*=\s*([0-9]+)\s*;\s*plural\s*=\s*([()n0-9!=|&<>+*/%\s?:-]+)"
@@ -132,10 +131,6 @@ class LanguageQuerySet(models.QuerySet):
     @staticmethod
     def parse_lang_country(code):
         """Parse language and country from locale code."""
-        # Strip namespace
-        if NAMESPACE_SEPARATOR in code:
-            code = code.split(NAMESPACE_SEPARATOR)[0]
-
         # Parse private use subtag
         subtag_pos = code.find("-x-")
         if subtag_pos != -1:
@@ -625,10 +620,7 @@ class Language(models.Model, CacheKeyMixin):
 
     @property
     def show_language_code(self):
-        return (
-            self.code not in data.NO_CODE_LANGUAGES
-            and NAMESPACE_SEPARATOR not in self.code
-        )
+        return self.code not in data.NO_CODE_LANGUAGES
 
     def get_html(self):
         """

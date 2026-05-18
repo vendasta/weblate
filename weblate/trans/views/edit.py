@@ -639,9 +639,6 @@ def translate(request, project, component, lang):  # noqa: C901
             unit.translation.component, initial={"translation": unit.translation}
         )
 
-    # Access namespace
-    user_can_access_namespace = request.user.can_access_namespaced_lang(lang)
-
     return render(
         request,
         "translate.html",
@@ -687,7 +684,6 @@ def translate(request, project, component, lang):  # noqa: C901
             "machinery_services": json.dumps(
                 list(project.get_machinery_settings().keys())
             ),
-            "user_can_access_namespace": user_can_access_namespace,
             "new_unit_form": get_new_unit_form(
                 unit.translation, user, initial={"variant": unit.pk}
             ),
