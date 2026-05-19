@@ -37,7 +37,7 @@ ENV DJANGO_SETTINGS_MODULE=weblate.settings_docker
 # Avoid Python buffering stdout and delaying logs
 ENV PYTHONUNBUFFERED=1
 
-COPY setup-ci.py /usr/src/setup.py
+COPY pyproject.toml /usr/src/
 COPY requirements.txt /usr/src/
 COPY requirements-optional.txt /usr/src/
 COPY README.md /usr/src/

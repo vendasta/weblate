@@ -28,6 +28,7 @@ weblate-*.tar.*
 /weblate-*.pid
 /dev-docker/.env
 /dev-docker/data/
+/dev-docker/docker-compose.override.yml
 /dev-docker/weblate-dev/requirements.txt
 *~
 # Generated minimal deps
