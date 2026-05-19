@@ -17,14 +17,14 @@ permissions:
 
 jobs:
   setup:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     env:
       PYTHONUNBUFFERED: 1
       PYTHONWARNINGS: default,ignore:unclosed:ResourceWarning
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install apt dependencies
       run: sudo ./ci/apt-install
     - name: Set up Python
@@ -45,20 +45,20 @@ jobs:
       run: |
         coverage combine
         coverage xml
-    - uses: codecov/codecov-action@v3.1.2
+    - uses: codecov/codecov-action@v3
       with:
         flags: setup
         name: setup
 
   pip:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     env:
       PYTHONUNBUFFERED: 1
       PYTHONWARNINGS: default,ignore:unclosed:ResourceWarning
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install apt dependencies
       run: sudo ./ci/apt-install
     - name: Set up Python
@@ -72,18 +72,18 @@ jobs:
     - name: Install pip dependencies
       run: ./ci/pip-install
     - name: Install Weblate
-      run: pip install .
+      run: pip install '.[all]'
     - name: Check difference
       run: diff -ruNqp weblate $(python -c 'import weblate; import os; print(os.path.dirname(weblate.__file__))')
 
   dist:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     env:
       PYTHONUNBUFFERED: 1
       PYTHONWARNINGS: default,ignore:unclosed:ResourceWarning
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install apt dependencies
       run: sudo ./ci/apt-install
     - name: Setup Python
@@ -112,7 +112,21 @@ jobs:
       run: |
         coverage combine
         coverage xml
-    - uses: codecov/codecov-action@v3.1.2
+    - uses: codecov/codecov-action@v3
       with:
         flags: setup
         name: dist
+
+  macos:
+    # This verifies that installation instructions works, any changes here
+    # need to be reflected in docs/admin/install/venv-macos.rst
+    runs-on: macos-13
+    env:
+      PYTHONUNBUFFERED: 1
+      PYTHONWARNINGS: default,ignore:unclosed:ResourceWarning
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install brew dependencies
+      run: brew install python pango cairo gobject-introspection glib libyaml tvuotila/libxmlsec1/libxmlsec1@1.2.37
+    - name: Install Weblate
+      run: pip3 install -e .[all,test]

@@ -96,7 +96,13 @@
   {% for item in entries_origin %}
   <tr>
     <td></td>
-    <td>{{ item.origin }}</td>
+    <td>
+      {% if item.url %}
+        <a href="{{ item.url }}">{{ item.origin }}</a>
+      {% else %}
+        {{ item.origin }}
+      {% endif %}
+    </td>
     <td class="number">{{ item.id__count|intcomma }}</td>
     <td>
       <a href="{{ download_url }}?origin={{ item.origin }}" class="btn btn-primary">{% trans "Download as JSON" %}</a>
@@ -180,7 +186,7 @@
   <td>
     {% perm 'project.edit' project as user_can_edit_project %}
     {% if user_can_edit_project %}
-    <a href="{% url 'settings' project=project.slug %}#workflow" class="btn btn-primary">{% trans "Configure" %}</a>
+    <a href="{% url 'settings' path=project.get_url_path %}#workflow" class="btn btn-primary">{% trans "Configure" %}</a>
     {% endif %}
 
   </td>

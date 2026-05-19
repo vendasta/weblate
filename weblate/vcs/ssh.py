@@ -2,18 +2,18 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from __future__ import annotations
+
 import hashlib
 import os
 import stat
 import subprocess
 from base64 import b64decode, b64encode
-from typing import Dict, Tuple
 
 from django.conf import settings
 from django.core.management.utils import find_command
 from django.utils.functional import cached_property
-from django.utils.translation import gettext as _
-from django.utils.translation import pgettext_lazy
+from django.utils.translation import gettext, pgettext_lazy
 
 from weblate.trans.util import get_clean_env
 from weblate.utils import messages
@@ -67,7 +67,7 @@ def parse_hosts_line(line):
     fingerprint = b64encode(digest).rstrip(b"=").decode()
     if host.startswith("|1|"):
         # Translators: placeholder SSH hashed hostname
-        host = _("[hostname hashed]")
+        host = gettext("[hostname hashed]")
     return host, keytype, fingerprint
 
 
@@ -86,7 +86,9 @@ def get_host_keys():
     return result
 
 
-def get_key_data_raw(key_type: str = "rsa", kind: str = "public") -> Tuple[str, str]:
+def get_key_data_raw(
+    key_type: str = "rsa", kind: str = "public"
+) -> tuple[str, str | None]:
     """Returns raw public key data."""
     # Read key data if it exists
     filename = KEYS[key_type][kind]
@@ -97,7 +99,7 @@ def get_key_data_raw(key_type: str = "rsa", kind: str = "public") -> Tuple[str, 
     return filename, None
 
 
-def get_key_data(key_type: str = "rsa") -> Dict[str, str]:
+def get_key_data(key_type: str = "rsa") -> dict[str, str]:
     """Parse host key and returns it."""
     filename, key_data = get_key_data_raw(key_type)
     if key_data is not None:
@@ -117,7 +119,7 @@ def get_key_data(key_type: str = "rsa") -> Dict[str, str]:
     }
 
 
-def get_all_key_data() -> Dict[str, Dict[str, str]]:
+def get_all_key_data() -> dict[str, dict[str, str]]:
     """Return all supported SSH keys."""
     return {key_type: get_key_data(key_type) for key_type in KEYS}
 
@@ -161,7 +163,8 @@ def generate_ssh_key(request, key_type: str = "rsa"):
         )
     except (subprocess.CalledProcessError, OSError) as exc:
         messages.error(
-            request, _("Failed to generate key: %s") % getattr(exc, "output", str(exc))
+            request,
+            gettext("Could not generate key: %s") % getattr(exc, "output", str(exc)),
         )
         return
 
@@ -169,13 +172,13 @@ def generate_ssh_key(request, key_type: str = "rsa"):
     os.chmod(keyfile, stat.S_IWUSR | stat.S_IRUSR)
     os.chmod(pubkeyfile, stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
 
-    messages.success(request, _("Created new SSH key."))
+    messages.success(request, gettext("Created new SSH key."))
 
 
 def add_host_key(request, host, port=""):
     """Add host key for a host."""
     if not host:
-        messages.error(request, _("Invalid host name given!"))
+        messages.error(request, gettext("Invalid host name given!"))
     else:
         cmdline = ["ssh-keyscan"]
         if port:
@@ -198,7 +201,7 @@ def add_host_key(request, host, port=""):
                 host, keytype, fingerprint = parse_hosts_line(key)
                 messages.warning(
                     request,
-                    _(
+                    gettext(
                         "Added host key for %(host)s with fingerprint "
                         "%(fingerprint)s (%(keytype)s), "
                         "please verify that it is correct."
@@ -219,13 +222,16 @@ def add_host_key(request, host, port=""):
                             handle.write(key)
                             handle.write("\n")
             else:
-                messages.error(request, _("Failed to fetch public key for a host!"))
+                messages.error(
+                    request, gettext("Could not fetch public key for a host!")
+                )
         except subprocess.CalledProcessError as exc:
             messages.error(
-                request, _("Failed to get host key: %s") % exc.stderr or exc.stdout
+                request,
+                gettext("Could not get host key: %s") % exc.stderr or exc.stdout,
             )
         except OSError as exc:
-            messages.error(request, _("Failed to get host key: %s") % str(exc))
+            messages.error(request, gettext("Could not get host key: %s") % str(exc))
 
 
 GITHUB_RSA_KEY = (
@@ -341,7 +347,7 @@ class SSHWrapper:
             with open(filename, "w") as handle:
                 handle.write(self.get_content(find_command(command)))
 
-            os.chmod(filename, 0o755)  # nosec
+            os.chmod(filename, 0o755)  # noqa: S103, nosec
 
 
 SSH_WRAPPER = SSHWrapper()

@@ -69,6 +69,7 @@ class WeblateChecksConf(AppConf):
         "weblate.checks.consistency.PluralsCheck",
         "weblate.checks.consistency.SamePluralsCheck",
         "weblate.checks.consistency.ConsistencyCheck",
+        "weblate.checks.consistency.ReusedCheck",
         "weblate.checks.consistency.TranslatedCheck",
         "weblate.checks.chars.EscapedNewlineCountingCheck",
         "weblate.checks.chars.NewLineCountCheck",
@@ -91,6 +92,12 @@ class WeblateChecksConf(AppConf):
         "weblate.checks.source.LongUntranslatedCheck",
         "weblate.checks.format.MultipleUnnamedFormatsCheck",
         "weblate.checks.glossary.GlossaryCheck",
+        "weblate.checks.fluent.syntax.FluentSourceSyntaxCheck",
+        "weblate.checks.fluent.syntax.FluentTargetSyntaxCheck",
+        "weblate.checks.fluent.parts.FluentPartsCheck",
+        "weblate.checks.fluent.references.FluentReferencesCheck",
+        "weblate.checks.fluent.inner_html.FluentSourceInnerHTMLCheck",
+        "weblate.checks.fluent.inner_html.FluentTargetInnerHTMLCheck",
     )
 
     class Meta:
@@ -111,7 +118,9 @@ class CheckQuerySet(models.QuerySet):
 
 
 class Check(models.Model):
-    unit = models.ForeignKey("trans.Unit", on_delete=models.deletion.CASCADE)
+    unit = models.ForeignKey(
+        "trans.Unit", on_delete=models.deletion.CASCADE, db_index=False
+    )
     name = models.CharField(max_length=50, choices=CHECKS.get_choices())
     dismissed = models.BooleanField(db_index=True, default=False)
 

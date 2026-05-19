@@ -32,13 +32,13 @@ sources.
    .. code-block:: sh
 
       virtualenv .venv
-      .venv/bin/activate
+      . .venv/bin/activate
 
 3. Install Weblate (for this you need some system dependencies, see :doc:`../admin/install/source`):
 
    .. code-block:: sh
 
-      pip install -e .
+      pip install -e '.[all]'
 
 3. Install all dependencies useful for development:
 
@@ -74,7 +74,7 @@ sources.
 Running Weblate locally in Docker
 ---------------------------------
 
-If you have Docker and docker-compose installed, you can spin up the development
+If you have Docker and docker-compose-plugin installed, you can spin up the development
 environment by simply running:
 
 .. code-block:: sh
@@ -125,8 +125,8 @@ Running the script without arguments will re-create the Docker container and res
 Bootstrapping your devel instance
 ---------------------------------
 
-You might want to use :djadmin:`import_demo` to create demo translations and
-:djadmin:`createadmin` to make an admin user.
+You might want to use :wladmin:`import_demo` to create demo translations and
+:wladmin:`createadmin` to make an admin user.
 
 Coding Weblate with PyCharm
 ---------------------------

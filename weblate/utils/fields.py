@@ -6,13 +6,37 @@ import json
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext_lazy
 
 from weblate.trans.defines import EMAIL_LENGTH
 from weblate.utils import forms
 from weblate.utils.validators import validate_email
 
 
+# TODO: Drop this in Weblate 5.1
+def migrate_json_field(model, db_alias: str, field: str):
+    """Migration from custom JSONField to Django native one."""
+    updates = []
+    new_field = f"{field}_new"
+
+    for obj in model.objects.using(db_alias).iterator():
+        value = getattr(obj, field)
+        # Skip anything blank, it is the default value of the field
+        if not value:
+            continue
+
+        setattr(obj, new_field, value)
+        updates.append(obj)
+        if len(updates) > 1000:
+            model.objects.using(db_alias).bulk_update(updates, [new_field])
+            updates = []
+
+    if updates:
+        model.objects.using(db_alias).bulk_update(updates, [new_field])
+        updates = []
+
+
+# TODO: Drop this in Weblate 5.1
 class JSONField(models.TextField):
     """JSON serializaed TextField."""
 
@@ -73,8 +97,10 @@ class UsernameField(CaseInsensitiveFieldMixin, models.CharField):
 
 class EmailField(CaseInsensitiveFieldMixin, models.CharField):
     default_validators = [validate_email]
-    description = _("E-mail")
-    default_error_messages = {"unique": _("A user with this e-mail already exists.")}
+    description = gettext_lazy("E-mail")
+    default_error_messages = {
+        "unique": gettext_lazy("A user with this e-mail already exists.")
+    }
 
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("max_length", EMAIL_LENGTH)

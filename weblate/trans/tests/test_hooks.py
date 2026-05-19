@@ -1158,12 +1158,14 @@ class HooksViewTest(ViewTestCase):
 
     @override_settings(ENABLE_HOOKS=True)
     def test_hook_project(self):
-        response = self.client.get(reverse("hook-project", kwargs=self.kw_project))
+        response = self.client.get(
+            reverse("update-hook", kwargs={"path": self.project.get_url_path()})
+        )
         self.assertContains(response, "Update triggered")
 
     @override_settings(ENABLE_HOOKS=True)
     def test_hook_component(self):
-        response = self.client.get(reverse("hook-component", kwargs=self.kw_component))
+        response = self.client.get(reverse("update-hook", kwargs=self.kw_component))
         self.assertContains(response, "Update triggered")
 
     @override_settings(ENABLE_HOOKS=True)
@@ -1174,7 +1176,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "github"}),
             {"payload": GITHUB_PAYLOAD},
-            HTTP_X_GITHUB_EVENT="push",
+            headers={"x-github-event": "push"},
         )
         self.assertContains(response, "Update triggered")
 
@@ -1186,7 +1188,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "github"}),
             {"payload": GITHUB_NEW_PAYLOAD},
-            HTTP_X_GITHUB_EVENT="push",
+            headers={"x-github-event": "push"},
         )
         self.assertContains(response, "Update triggered")
 
@@ -1234,7 +1236,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "github"}),
             {"payload": GITHUB_PAYLOAD},
-            HTTP_X_GITHUB_EVENT="push",
+            headers={"x-github-event": "push"},
         )
         self.assertContains(response, "Update triggered")
 
@@ -1248,7 +1250,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "github"}),
             {"payload": GITHUB_PAYLOAD},
-            HTTP_X_GITHUB_EVENT="push",
+            headers={"x-github-event": "push"},
         )
         self.assertContains(
             response, "No matching repositories found!", status_code=202
@@ -1259,7 +1261,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "github"}),
             {"payload": GITHUB_PAYLOAD},
-            HTTP_X_GITHUB_EVENT="push",
+            headers={"x-github-event": "push"},
         )
         self.assertContains(
             response, "No matching repositories found!", status_code=202
@@ -1281,7 +1283,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "bitbucket"}),
             {"payload": '{"foo": "bar"}'},
-            HTTP_X_EVENT_KEY="diagnostics:ping",
+            headers={"x-event-key": "diagnostics:ping"},
         )
         self.assertContains(response, "Hook working", status_code=201)
 
@@ -1290,7 +1292,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "bitbucket"}),
             {"payload": BITBUCKET_PAYLOAD_GIT},
-            HTTP_X_EVENT_KEY="repo:push",
+            headers={"x-event-key": "repo:push"},
         )
         self.assertContains(
             response, "No matching repositories found!", status_code=202
@@ -1301,7 +1303,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "bitbucket"}),
             {"payload": BITBUCKET_PAYLOAD_HG},
-            HTTP_X_EVENT_KEY="repo:push",
+            headers={"x-event-key": "repo:push"},
         )
         self.assertContains(
             response, "No matching repositories found!", status_code=202
@@ -1312,7 +1314,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "bitbucket"}),
             {"payload": BITBUCKET_PAYLOAD_HG_NO_COMMIT},
-            HTTP_X_EVENT_KEY="repo:push",
+            headers={"x-event-key": "repo:push"},
         )
         self.assertContains(
             response, "No matching repositories found!", status_code=202
@@ -1323,7 +1325,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "bitbucket"}),
             {"payload": BITBUCKET_PAYLOAD_WEBHOOK},
-            HTTP_X_EVENT_KEY="repo:push",
+            headers={"x-event-key": "repo:push"},
         )
         self.assertContains(
             response, "No matching repositories found!", status_code=202
@@ -1334,7 +1336,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "bitbucket"}),
             {"payload": BITBUCKET_PAYLOAD_HOSTED},
-            HTTP_X_EVENT_KEY="repo:push",
+            headers={"x-event-key": "repo:push"},
         )
         self.assertContains(
             response, "No matching repositories found!", status_code=202
@@ -1345,7 +1347,7 @@ class HooksViewTest(ViewTestCase):
         response = self.client.post(
             reverse("webhook", kwargs={"service": "bitbucket"}),
             {"payload": BITBUCKET_PAYLOAD_WEBHOOK_CLOSED},
-            HTTP_X_EVENT_KEY="repo:push",
+            headers={"x-event-key": "repo:push"},
         )
         self.assertContains(
             response, "No matching repositories found!", status_code=202
@@ -1379,9 +1381,11 @@ class HooksViewTest(ViewTestCase):
         self.assert_disabled()
 
     def assert_disabled(self):
-        response = self.client.get(reverse("hook-project", kwargs=self.kw_project))
+        response = self.client.get(
+            reverse("update-hook", kwargs={"path": self.project.get_url_path()})
+        )
         self.assertEqual(response.status_code, 405)
-        response = self.client.get(reverse("hook-component", kwargs=self.kw_component))
+        response = self.client.get(reverse("update-hook", kwargs=self.kw_component))
         self.assertEqual(response.status_code, 405)
 
     @override_settings(ENABLE_HOOKS=True)

@@ -80,7 +80,7 @@ LANGUAGES = (
     ("ar", "العربية"),
     ("az", "Azərbaycan"),
     ("be", "Беларуская"),
-    ("be@latin", "Biełaruskaja"),
+    ("be-latn", "Biełaruskaja"),
     ("bg", "Български"),
     ("br", "Brezhoneg"),
     ("ca", "Català"),
@@ -130,10 +130,6 @@ SITE_ID = 1
 # If you set this to False, Django will make some optimizations so as not
 # to load the internationalization machinery.
 USE_I18N = True
-
-# If you set this to False, Django will not format dates, numbers and
-# calendars according to the current locale.
-USE_L10N = True
 
 # If you set this to False, Django will not use timezone-aware datetimes.
 USE_TZ = True
@@ -214,6 +210,7 @@ AUTHENTICATION_BACKENDS = (
     "social_core.backends.email.EmailAuth",
     # "social_core.backends.google.GoogleOAuth2",
     # "social_core.backends.github.GithubOAuth2",
+    # "social_core.backends.github_enterprise.GithubEnterpriseOAuth2",
     # "social_core.backends.bitbucket.BitbucketOAuth2",
     # "social_core.backends.suse.OpenSUSEOpenId",
     # "social_core.backends.ubuntu.UbuntuOpenId",
@@ -237,6 +234,12 @@ SOCIAL_AUTH_GITHUB_ORG_NAME = ""
 SOCIAL_AUTH_GITHUB_TEAM_KEY = ""
 SOCIAL_AUTH_GITHUB_TEAM_SECRET = ""
 SOCIAL_AUTH_GITHUB_TEAM_ID = ""
+
+SOCIAL_AUTH_GITHUB_ENTERPRISE_KEY = ""
+SOCIAL_AUTH_GITHUB_ENTERPRISE_SECRET = ""
+SOCIAL_AUTH_GITHUB_ENTERPRISE_URL = ""
+SOCIAL_AUTH_GITHUB_ENTERPRISE_API_URL = ""
+SOCIAL_AUTH_GITHUB_ENTERPRISE_SCOPE = ""
 
 SOCIAL_AUTH_BITBUCKET_OAUTH2_KEY = ""
 SOCIAL_AUTH_BITBUCKET_OAUTH2_SECRET = ""
@@ -274,6 +277,7 @@ SOCIAL_AUTH_PIPELINE = (
     "weblate.accounts.pipeline.user_full_name",
     "weblate.accounts.pipeline.store_email",
     "weblate.accounts.pipeline.notify_connect",
+    "weblate.accounts.pipeline.handle_invite",
     "weblate.accounts.pipeline.password_reset",
 )
 SOCIAL_AUTH_DISCONNECT_PIPELINE = (
@@ -419,8 +423,11 @@ HAVE_SYSLOG = False
 if platform.system() != "Windows":
     try:
         handler = SysLogHandler(address="/dev/log", facility=SysLogHandler.LOG_LOCAL2)
+        # Since Python 3.7 connect failures are silently discarded, so
+        # the exception is almost never raised here. Instead we look whether the socket
+        # to syslog is open after init.
+        HAVE_SYSLOG = handler.socket.fileno() != -1
         handler.close()
-        HAVE_SYSLOG = True
     except OSError:
         HAVE_SYSLOG = False
 
@@ -613,7 +620,7 @@ SESSION_COOKIE_HTTPONLY = True
 # SSL redirect
 SECURE_SSL_REDIRECT = ENABLE_HTTPS
 SECURE_SSL_HOST = SITE_DOMAIN
-# Sent referrrer only for same origin links
+# Sent referrer only for same origin links
 SECURE_REFERRER_POLICY = "same-origin"
 # SSL redirect URL exemption list
 SECURE_REDIRECT_EXEMPT = (r"healthz/$",)  # Allowing HTTP access to health check
@@ -660,7 +667,7 @@ ANONYMOUS_USER_NAME = "anonymous"
 # Reverse proxy settings
 IP_PROXY_HEADER = "HTTP_X_FORWARDED_FOR"
 IP_BEHIND_REVERSE_PROXY = False
-IP_PROXY_OFFSET = 0
+IP_PROXY_OFFSET = -1
 
 # Sending HTML in mails
 EMAIL_SEND_HTML = True
@@ -725,6 +732,7 @@ CRISPY_TEMPLATE_PACK = "bootstrap3"
 #     "weblate.checks.consistency.PluralsCheck",
 #     "weblate.checks.consistency.SamePluralsCheck",
 #     "weblate.checks.consistency.ConsistencyCheck",
+#     "weblate.checks.consistency.ReusedCheck",
 #     "weblate.checks.consistency.TranslatedCheck",
 #     "weblate.checks.chars.EscapedNewlineCountingCheck",
 #     "weblate.checks.chars.NewLineCountCheck",
@@ -747,6 +755,12 @@ CRISPY_TEMPLATE_PACK = "bootstrap3"
 #     "weblate.checks.source.LongUntranslatedCheck",
 #     "weblate.checks.format.MultipleUnnamedFormatsCheck",
 #     "weblate.checks.glossary.GlossaryCheck",
+#     "weblate.checks.fluent.syntax.FluentSourceSyntaxCheck",
+#     "weblate.checks.fluent.syntax.FluentTargetSyntaxCheck",
+#     "weblate.checks.fluent.parts.FluentPartsCheck",
+#     "weblate.checks.fluent.references.FluentReferencesCheck",
+#     "weblate.checks.fluent.inner_html.FluentSourceInnerHTMLCheck",
+#     "weblate.checks.fluent.inner_html.FluentTargetInnerHTMLCheck",
 # )
 
 # List of automatic fixups
@@ -755,6 +769,8 @@ CRISPY_TEMPLATE_PACK = "bootstrap3"
 #     "weblate.trans.autofixes.chars.ReplaceTrailingDotsWithEllipsis",
 #     "weblate.trans.autofixes.chars.RemoveZeroSpace",
 #     "weblate.trans.autofixes.chars.RemoveControlChars",
+#     "weblate.trans.autofixes.chars.DevanagariDanda",
+#     "weblate.trans.autofixes.html.BleachHTML",
 # )
 
 # List of enabled addons
@@ -777,6 +793,7 @@ CRISPY_TEMPLATE_PACK = "bootstrap3"
 #     "weblate.addons.generate.GenerateFileAddon",
 #     "weblate.addons.generate.PseudolocaleAddon",
 #     "weblate.addons.generate.PrefillAddon",
+#     "weblate.addons.generate.FillReadOnlyAddon",
 #     "weblate.addons.json.JSONCustomizeAddon",
 #     "weblate.addons.xml.XMLCustomizeAddon",
 #     "weblate.addons.properties.PropertiesSortAddon",
@@ -801,7 +818,7 @@ ALLOWED_HOSTS = ["*"]
 # Configuration for caching
 CACHES = {
     "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
+        "BACKEND": "redis_lock.django_cache.RedisCache",
         "LOCATION": "redis://127.0.0.1:6379/1",
         # If redis is running on same host as Weblate, you might
         # want to use unix sockets instead:
@@ -859,10 +876,8 @@ FONTS_CDN_URL = None
 
 # Django compressor offline mode
 COMPRESS_OFFLINE = False
-COMPRESS_OFFLINE_CONTEXT = [
-    {"fonts_cdn_url": FONTS_CDN_URL, "STATIC_URL": STATIC_URL, "LANGUAGE_BIDI": True},
-    {"fonts_cdn_url": FONTS_CDN_URL, "STATIC_URL": STATIC_URL, "LANGUAGE_BIDI": False},
-]
+COMPRESS_OFFLINE_CONTEXT = "weblate.utils.compress.offline_context"
+COMPRESS_CSS_HASHING_METHOD = "content"
 
 # Require login for all URLs
 if REQUIRE_LOGIN:

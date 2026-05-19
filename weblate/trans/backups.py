@@ -4,18 +4,21 @@
 
 """Project level backups."""
 
+from __future__ import annotations
+
 import json
 import os
 from datetime import datetime
 from itertools import chain
 from shutil import copyfileobj
-from typing import Callable, Dict, List, Optional
+from typing import Callable
 from zipfile import ZipFile
 
 from django.conf import settings
 from django.core.files import File
 from django.db import connection, transaction
 from django.db.models.fields.files import FieldFile
+from django.db.models.signals import pre_save
 from django.utils import timezone
 from weblate_schemas import load_schema, validate_schema
 
@@ -34,7 +37,6 @@ from weblate.trans.models import (
     Unit,
     Vote,
 )
-from weblate.trans.tasks import update_checks
 from weblate.utils.data import data_dir
 from weblate.utils.hash import checksum_to_hash, hash_to_checksum
 from weblate.utils.validators import validate_filename
@@ -46,7 +48,7 @@ class ProjectBackup:
     VCS_PREFIX = "vcs/"
     VCS_PREFIX_LEN = len(VCS_PREFIX)
 
-    def __init__(self, filename: Optional[str] = None):
+    def __init__(self, filename: str | None = None):
         self.data = {}
         self.filename = filename
         self.timestamp = timezone.now()
@@ -65,7 +67,7 @@ class ProjectBackup:
         validate_schema(self.data, "weblate-backup.schema.json")
 
     def backup_property(
-        self, obj, field: str, extras: Optional[Dict[str, Callable]] = None
+        self, obj, field: str, extras: dict[str, Callable] | None = None
     ):
         if extras and field in extras:
             return extras[field](obj)
@@ -90,7 +92,7 @@ class ProjectBackup:
         return value
 
     def backup_object(
-        self, obj, properties: List[str], extras: Optional[Dict[str, Callable]] = None
+        self, obj, properties: list[str], extras: dict[str, Callable] | None = None
     ):
         return {field: self.backup_property(obj, field, extras) for field in properties}
 
@@ -322,7 +324,7 @@ class ProjectBackup:
         validate_schema(data, "weblate-memory.schema.json")
         return data
 
-    def load_components(self, zipfile, callback: Optional[Callable] = None):
+    def load_components(self, zipfile, callback: Callable | None = None):
         for component in self.list_components(zipfile):
             with zipfile.open(component) as handle:
                 data = json.load(handle)
@@ -366,9 +368,7 @@ class ProjectBackup:
 
         return self.user_cache[username]
 
-    def restore_with_user(
-        self, data, field: str = "user", remove: Optional[str] = None
-    ):
+    def restore_with_user(self, data, field: str = "user", remove: str | None = None):
         data = data.copy()
         if remove is not None:
             data.pop(remove)
@@ -380,17 +380,17 @@ class ProjectBackup:
         source_language = kwargs["source_language"] = self.import_language(
             kwargs["source_language"]
         )
-        # Regenerate git export URL
-        if "weblate.gitexport" in settings.INSTALLED_APPS:
-            from weblate.gitexport.models import get_export_url_path
-
-            kwargs["git_export"] = get_export_url_path(
-                self.project.slug, kwargs["slug"]
-            )
-        # Use bulk create to avoid triggering save() and any signals
-        component = Component.objects.bulk_create(
-            [Component(project=self.project, **kwargs)]
-        )[0]
+        component = Component(project=self.project, **kwargs)
+        # Trigger pre_save to update git export URL
+        pre_save.send(
+            sender=component.__class__,
+            instance=component,
+            raw=False,
+            using=None,
+            update_fields=None,
+        )
+        # Use bulk create to avoid triggering save() and any post_save signals
+        component = Component.objects.bulk_create([component])[0]
 
         # Create translations
         translations = []
@@ -514,7 +514,7 @@ class ProjectBackup:
             screenshot.import_handle.close()
 
         # Trigger checks update, the implementation might have changed
-        transaction.on_commit(lambda: update_checks.delay(component.id))
+        component.schedule_update_checks()
 
     def import_language(self, code: str):
         if self.languages_cache is None:

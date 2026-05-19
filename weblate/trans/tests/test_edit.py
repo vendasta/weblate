@@ -32,7 +32,6 @@ class EditTest(ViewTestCase):
 
     def setUp(self):
         super().setUp()
-        self.translation = self.get_translation()
         self.translate_url = reverse("translate", kwargs=self.kw_translation)
 
     def test_edit(self):
@@ -109,10 +108,10 @@ class EditTest(ViewTestCase):
         self.assertEqual(unit.target, self.target)
         self.assertFalse(unit.has_failing_check)
 
-        # Should have was translated check
+        # Should not have was translated check
         self.edit_unit(self.source, "")
         unit = self.get_unit(source=self.source)
-        self.assertTrue(unit.has_failing_check)
+        self.assertFalse(unit.has_failing_check)
 
     def add_unit(self, key, force_source: bool = False):
         if force_source or self.component.has_template():
@@ -127,9 +126,7 @@ class EditTest(ViewTestCase):
             reverse(
                 "new-unit",
                 kwargs={
-                    "project": self.component.project.slug,
-                    "component": self.component.slug,
-                    "lang": language,
+                    "path": [self.component.project.slug, self.component.slug, language]
                 },
             ),
             args,
@@ -301,7 +298,7 @@ class EditLanguageTest(EditTest):
         super().setUp()
         self.translate_url = reverse(
             "translate",
-            kwargs={"project": self.project.slug, "lang": "cs", "component": "-"},
+            kwargs={"path": [self.project.slug, "-", "cs"]},
         )
 
     def edit_unit(self, source, target, language="cs", **kwargs):
@@ -325,7 +322,8 @@ class EditResourceSourceTest(ViewTestCase):
 
     def test_edit(self):
         translate_url = reverse(
-            "translate", kwargs={"project": "test", "component": "test", "lang": "en"}
+            "translate",
+            kwargs={"path": self.component.source_translation.get_url_path()},
         )
 
         response = self.edit_unit("Hello, world!\n", "Nazdar svete!\n", "en")
@@ -489,7 +487,7 @@ class EditJSONMonoTest(EditTest):
         self.assertContains(response, "New string has been added")
         response = self.add_unit("key.['foo']")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Failed to parse the key:")
+        self.assertContains(response, "Could not parse the key:")
 
 
 class EditJavaTest(EditTest):
@@ -610,12 +608,14 @@ class ZenViewTest(ViewTestCase):
 
     def test_load_zen_offset(self):
         response = self.client.get(
-            reverse("load_zen", kwargs=self.kw_translation), {"offset": "2"}
+            reverse("load_zen", kwargs=self.kw_translation),
+            {"offset": "2"},
         )
         self.assertNotContains(response, "Hello, world")
         self.assertContains(response, "Orangutan has %d bananas")
         response = self.client.get(
-            reverse("load_zen", kwargs=self.kw_translation), {"offset": "bug"}
+            reverse("load_zen", kwargs=self.kw_translation),
+            {"offset": "bug"},
         )
         self.assertContains(response, "Hello, world")
 
@@ -629,7 +629,8 @@ class ZenViewTest(ViewTestCase):
             "review": "20",
         }
         response = self.client.post(
-            reverse("save_zen", kwargs=self.kw_translation), params
+            reverse("save_zen", kwargs=self.kw_translation),
+            params,
         )
         self.assertContains(
             response,
@@ -649,7 +650,8 @@ class ZenViewTest(ViewTestCase):
             "review": "20",
         }
         response = self.client.post(
-            reverse("save_zen", kwargs=self.kw_translation), params
+            reverse("save_zen", kwargs=self.kw_translation),
+            params,
         )
         self.assertContains(
             response, "Insufficient privileges for saving translations."
@@ -658,7 +660,10 @@ class ZenViewTest(ViewTestCase):
     def test_browse(self):
         response = self.client.get(reverse("browse", kwargs=self.kw_translation))
         self.assertContains(response, "Thank you for using Weblate.")
-        self.assertContains(response, "Orangutan has %d banana")
+        self.assertContains(
+            response,
+            'Orangutan has <span class="hlcheck" data-value="%d"><span class="highlight-number"></span>%d</span> banana.',
+        )
 
 
 class EditComplexTest(ViewTestCase):
@@ -943,9 +948,7 @@ class EditComplexTest(ViewTestCase):
         url = self.get_unit("Hello, world!\n").get_absolute_url()
         response = self.client.get(url)
         form = response.context["form"]
-        params = {}
-        for field in form.fields:
-            params[field] = form[field].value()
+        params = {field: form[field].value() for field in form.fields}
         params["target_0"] = "Nazdar svete!\n"
         response = self.client.post(url, params)
         unit = self.get_unit()

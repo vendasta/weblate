@@ -54,8 +54,16 @@
             {% if details %}
                 {{ details }}
             {% elif change.show_content and change.unit %}
+                {% if change.details.rejection_reason %}
+                <label>{% trans "Rejection reason" %}</label>
+                <div class="list-group">
+                  <div class="list-group-item sidebar-button">
+                    {{ change.details.rejection_reason }}
+                  </div>
+                </div>
+                {% endif %}
                 <label>{{ change.unit.translation.component.source_language }}</label>
-                {% format_translation change.get_source change.unit.translation.component.source_language %}
+                {% format_unit_source change.unit value=change.get_source %}
                 <label>
                     {{ change.unit.translation.language }}
                     {% comment %}Translators: Number of edits on a change in Damerau–Levenshtein distance{% endcomment %}
@@ -67,9 +75,20 @@
                       <span class="badge">{{ change.get_state_display }}</span>
                     {% endif %}
                 </label>
-                {% format_translation change.target change.unit.translation.language change.unit.translation.plural diff=change.old %}
+                {% format_unit_target change.unit value=change.target diff=change.old %}
             {% elif change.show_source %}
-                {% format_translation change.target change.component.source_language diff=change.old %}
+              {% if change.target %}
+                {% format_unit_target change.unit value=change.target diff=change.old %}
+              {% else %}
+                {% format_unit_source change.unit %}
+              {% endif %}
+            {% elif change.show_removed_string %}
+                <label>{{ change.component.source_translation.language }}</label>
+                {% format_language_string change.details.source change.component.source_translation %}
+                {% if change.details.target and not change.translation.is_source %}
+                  <label>{{ change.translation.language }}</label>
+                  {% format_language_string change.details.target change.translation %}
+                {% endif %}
             {% elif change.target %}
                 <pre>{{ change.target }}</pre>
             {% else %}

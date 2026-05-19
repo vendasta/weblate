@@ -10,9 +10,9 @@ translation component.
 .. hint::
 
    You can also configure add-ons using :ref:`API <addons-api>`,
-   :setting:`DEFAULT_ADDONS`, or :djadmin:`install_addon`.
+   :setting:`DEFAULT_ADDONS`, or :wladmin:`install_addon`.
 
-.. image:: /screenshots/addons.png
+.. image:: /screenshots/addons.webp
 
 Built-in add-ons
 ++++++++++++++++
@@ -22,8 +22,6 @@ Built-in add-ons
 
 Automatic translation
 ---------------------
-
-.. versionadded:: 3.9
 
 :Add-on ID: ``weblate.autotranslate.autotranslate``
 :Configuration: +-----------------+----------------------------------+------------------------------------------------------------------------------------------------------+
@@ -55,7 +53,7 @@ Automatic translation
                 |                 |                                  |                                                                                                      |
                 |                 |                                  | ``mt`` -- Machine translation                                                                        |
                 +-----------------+----------------------------------+------------------------------------------------------------------------------------------------------+
-                | ``component``   | Components                       | Enter slug of a component to use as source, keep blank to use all components in the current project. |
+                | ``component``   | Component                        | Enter slug of a component to use as source, keep blank to use all components in the current project. |
                 +-----------------+----------------------------------+------------------------------------------------------------------------------------------------------+
                 | ``engines``     | Machine translation engines      |                                                                                                      |
                 +-----------------+----------------------------------+------------------------------------------------------------------------------------------------------+
@@ -202,19 +200,113 @@ Component discovery
 Automatically adds or removes project components based on file changes in the
 version control system.
 
-Triggered each time the VCS is updated, and otherwise similar to
-the :djadmin:`import_project` management command. This way you can track
-multiple translation components within one VCS.
-
 The matching is done using regular expressions
 enabling complex configuration, but some knowledge is required to do so.
 Some examples for common use cases can be found in
 the add-on help section.
 
+The regular expression to match translation files has to contain two named
+groups to match component and language. All named groups in the regular
+expression can be used as variables in the template fields.
+
+You can use Django template markup in all filename fields, for example:
+
+``{{ component }}``
+   Component filename match
+``{{ component|title }}``
+   Component filename with upper case first letter
+``{{ path }}: {{ component }}``
+   Custom match group from the regular expression
+
 Once you hit :guilabel:`Save`, a preview of matching components will be presented,
 from where you can check whether the configuration actually matches your needs:
 
-.. image:: /screenshots/addon-discovery.png
+.. image:: /screenshots/addon-discovery.webp
+
+Component discovery examples
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+One folder per language
+#######################
+
+One folder per language containing translation files for components.
+
+Regular expression:
+   ``(?P<language>[^/.]*)/(?P<component>[^/]*)\.po``
+Matching files:
+   - :file:`cs/application.po`
+   - :file:`cs/website.po`
+   - :file:`de/application.po`
+   - :file:`de/website.po`
+
+Gettext locales layout
+######################
+
+Usual structure for storing gettext PO files.
+
+Regular expression:
+   ``locale/(?P<language>[^/.]*)/LC_MESSAGES/(?P<component>[^/]*)\.po``
+Matching files:
+   - :file:`locale/cs/LC_MESSAGES/application.po`
+   - :file:`locale/cs/LC_MESSAGES/website.po`
+   - :file:`locale/de/LC_MESSAGES/application.po`
+   - :file:`locale/de/LC_MESSAGES/website.po`
+
+Complex filenames
+#################
+
+Using both component and language name within filename.
+
+Regular expression:
+   ``src/locale/(?P<component>[^/]*)\.(?P<language>[^/.]*)\.po``
+Matching files:
+   - :file:`src/locale/application.cs.po`
+   - :file:`src/locale/website.cs.po`
+   - :file:`src/locale/application.de.po`
+   - :file:`src/locale/website.de.po`
+
+Repeated language code
+######################
+
+Using language in both path and filename.
+
+Regular expression:
+   ``locale/(?P<language>[^/.]*)/(?P<component>[^/]*)/(?P=language)\.po``
+Matching files:
+   - :file:`locale/cs/application/cs.po`
+   - :file:`locale/cs/website/cs.po`
+   - :file:`locale/de/application/de.po`
+   - :file:`locale/de/website/de.po`
+
+
+Split Android strings
+#####################
+
+Android resource strings, split into several files.
+
+Regular expression:
+   ``res/values-(?P<language>[^/.]*)/strings-(?P<component>[^/]*)\.xml``
+Matching files:
+   - :file:`res/values-cs/strings-about.xml`
+   - :file:`res/values-cs/strings-help.xml`
+   - :file:`res/values-de/strings-about.xml`
+   - :file:`res/values-de/strings-help.xml`
+
+Matching multiple paths
+#######################
+
+Multi-module Maven project with Java properties translations.
+
+Regular expression:
+   ``(?P<originalHierarchy>.+/)(?P<component>[^/]*)/src/main/resources/ApplicationResources_(?P<language>[^/.]*)\.properties``
+Component name:
+   ``{{ originalHierarchy }}: {{ component }}``
+Matching files:
+   - :file:`parent/module1/submodule/src/main/resources/ApplicationResources_fr.properties`
+   - :file:`parent/module1/submodule/src/main/resources/ApplicationResource_es.properties`
+   - :file:`parent/module2/src/main/resources/ApplicationResource_de.properties`
+   - :file:`parent/module2/src/main/resources/ApplicationResource_ro.properties`
+
 
 .. hint::
 
@@ -227,14 +319,13 @@ from where you can check whether the configuration actually matches your needs:
 
 .. seealso::
 
-    :ref:`markup`
+   :ref:`markup`,
+   :wladmin:`import_project`
 
 .. _addon-weblate.flags.bulk:
 
 Bulk edit
 ---------
-
-.. versionadded:: 3.11
 
 :Add-on ID: ``weblate.flags.bulk``
 :Configuration: +-------------------+-----------------------------+-------------------------+
@@ -297,8 +388,6 @@ Other automated operations for Weblate metadata can also be done.
 Flag unchanged translations as "Needs editing"
 ----------------------------------------------
 
-.. versionadded:: 3.1
-
 :Add-on ID: ``weblate.flags.same_edit``
 :Configuration: `This add-on has no configuration.`
 :Triggers: unit post-create
@@ -349,6 +438,19 @@ translations created by the developers.
 .. seealso::
 
    :ref:`states`
+
+.. _addon-weblate.generate.fill_read_only:
+
+Fill read-only strings with source
+----------------------------------
+
+.. versionadded:: 4.18
+
+:Add-on ID: ``weblate.generate.fill_read_only``
+:Configuration: `This add-on has no configuration.`
+:Triggers: component update, daily
+
+Fills in translation of read-only strings with source string.
 
 .. _addon-weblate.generate.generate:
 
@@ -686,8 +788,6 @@ Formats and sorts the Java properties file.
 Stale comment removal
 ---------------------
 
-.. versionadded:: 3.7
-
 :Add-on ID: ``weblate.removal.comments``
 :Configuration: +---------+--------------+--+
                 | ``age`` | Days to keep |  |
@@ -704,8 +804,6 @@ getting old does not mean they have lost their importance.
 
 Stale suggestion removal
 ------------------------
-
-.. versionadded:: 3.7
 
 :Add-on ID: ``weblate.removal.suggestions``
 :Configuration: +-----------+------------------+-------------------------------------------------------------------------+
@@ -725,8 +823,6 @@ don't receive enough positive votes in a given timeframe.
 
 Update RESX files
 -----------------
-
-.. versionadded:: 3.9
 
 :Add-on ID: ``weblate.resx.update``
 :Configuration: `This add-on has no configuration.`
@@ -757,15 +853,12 @@ Customize XML output
                 +------------------+----------------------------------------+--+
 :Triggers: storage post-load
 
-Allows adjusting XML output behavior, for example closing tags instead of self-
-closing tags for empty tags.
+Allows adjusting XML output behavior, for example closing tags.
 
 .. _addon-weblate.yaml.customize:
 
 Customize YAML output
 ---------------------
-
-.. versionadded:: 3.10.2
 
 :Add-on ID: ``weblate.yaml.customize``
 :Configuration: +----------------+---------------------+------------------------------------+
@@ -879,37 +972,25 @@ Additionally, the following environment variables are available:
 
 .. envvar:: WL_COMPONENT_SLUG
 
-   .. versionadded:: 3.9
-
    Component slug used to construct URL.
 
 .. envvar:: WL_PROJECT_SLUG
-
-   .. versionadded:: 3.9
 
    Project slug used to construct URL.
 
 .. envvar:: WL_COMPONENT_NAME
 
-   .. versionadded:: 3.9
-
    Component name.
 
 .. envvar:: WL_PROJECT_NAME
-
-   .. versionadded:: 3.9
 
    Project name.
 
 .. envvar:: WL_COMPONENT_URL
 
-   .. versionadded:: 3.9
-
    Component URL.
 
 .. envvar:: WL_ENGAGE_URL
-
-   .. versionadded:: 3.9
 
    Project engage URL.
 

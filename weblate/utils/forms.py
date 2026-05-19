@@ -5,13 +5,39 @@
 from crispy_forms.layout import Div, Field
 from crispy_forms.utils import TEMPLATE_PACK
 from django import forms
+from django.core.exceptions import ValidationError
+from django.db.models import Q
 from django.template.loader import render_to_string
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext, gettext_lazy
 
 from weblate.trans.defines import EMAIL_LENGTH, USERNAME_LENGTH
 from weblate.trans.filter import FILTERS
 from weblate.trans.util import sort_unicode
+from weblate.utils.search import parse_query
 from weblate.utils.validators import validate_email, validate_username
+
+
+class QueryField(forms.CharField):
+    def __init__(self, parser: str = "unit", **kwargs):
+        if "label" not in kwargs:
+            kwargs["label"] = gettext("Query")
+        if "required" not in kwargs:
+            kwargs["required"] = False
+        self.parser = parser
+        super().__init__(**kwargs)
+
+    def clean(self, value):
+        if not value:
+            if self.required:
+                raise ValidationError(gettext("Missing query string."))
+            return ""
+        try:
+            parse_query(value, parser=self.parser)
+        except Exception as error:
+            raise ValidationError(
+                gettext("Could not parse query string: {}").format(error)
+            ) from error
+        return value
 
 
 class UsernameField(forms.CharField):
@@ -20,17 +46,55 @@ class UsernameField(forms.CharField):
     def __init__(self, *args, **kwargs):
         params = {
             "max_length": USERNAME_LENGTH,
-            "help_text": _(
+            "help_text": gettext_lazy(
                 "Username may only contain letters, "
                 "numbers or the following characters: @ . + - _"
             ),
-            "label": _("Username"),
+            "label": gettext_lazy("Username"),
             "required": True,
         }
         params.update(kwargs)
         self.valid = None
 
         super().__init__(*args, **params)
+
+
+class UserField(forms.CharField):
+    def __init__(
+        self,
+        queryset=None,
+        empty_label="---------",
+        to_field_name=None,
+        limit_choices_to=None,
+        blank=None,
+        **kwargs,
+    ):
+        # This swallows some parameters to mimic ModelChoiceField API
+        super().__init__(**kwargs)
+
+    def widget_attrs(self, widget):
+        attrs = super().widget_attrs(widget)
+        attrs["dir"] = "ltr"
+        attrs["class"] = "user-autocomplete"
+        attrs["spellcheck"] = "false"
+        attrs["autocorrect"] = "off"
+        attrs["autocomplete"] = "off"
+        attrs["autocapitalize"] = "off"
+        return attrs
+
+    def clean(self, value):
+        from weblate.auth.models import User
+
+        if not value:
+            if self.required:
+                raise ValidationError(gettext("Missing username or e-mail."))
+            return None
+        try:
+            return User.objects.get(Q(username=value) | Q(email=value))
+        except User.DoesNotExist:
+            raise ValidationError(gettext("Could not find any such user."))
+        except User.MultipleObjectsReturned:
+            raise ValidationError(gettext("More possible users were found."))
 
 
 class EmailField(forms.EmailField):
@@ -110,10 +174,3 @@ class SearchField(Field):
             (key, FILTERS.get_filter_name(key), FILTERS.get_filter_query(key))
             for key in filter_keys
         ]
-
-
-class FilterForm(forms.Form):
-    project = forms.SlugField(required=False)
-    component = forms.SlugField(required=False)
-    lang = forms.SlugField(required=False)
-    user = UsernameField(required=False)

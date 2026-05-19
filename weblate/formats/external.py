@@ -4,12 +4,14 @@
 
 """External file format specific behavior."""
 
+from __future__ import annotations
+
 import os
 from io import BytesIO, StringIO
-from typing import Callable, Optional
+from typing import Callable
 from zipfile import BadZipFile
 
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext_lazy
 from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE, TYPE_STRING
 from translate.storage.csvl10n import csv
@@ -19,7 +21,7 @@ from weblate.formats.ttkit import CSVFormat
 
 
 class XlsxFormat(CSVFormat):
-    name = _("Excel Open XML")
+    name = gettext_lazy("Excel Open XML")
     format_id = "xlsx"
     autoload = ("*.xlsx",)
 
@@ -104,7 +106,7 @@ class XlsxFormat(CSVFormat):
         filename: str,
         language: str,
         base: str,
-        callback: Optional[Callable] = None,
+        callback: Callable | None = None,
     ):
         """Handle creation of new translation file."""
         if not base:

@@ -2,17 +2,18 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from typing import List, Optional
+from __future__ import annotations
 
 from celery import current_task
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.db.models.functions import MD5, Lower
 
 from weblate.machinery.models import MACHINERY
 from weblate.trans.models import Change, Component, Suggestion, Unit
 from weblate.trans.util import split_plural
-from weblate.utils.state import STATE_FUZZY, STATE_TRANSLATED
+from weblate.utils.state import STATE_APPROVED, STATE_FUZZY, STATE_TRANSLATED
 
 
 class AutoTranslate:
@@ -31,7 +32,11 @@ class AutoTranslate:
         self.mode = mode
         self.updated = 0
         self.progress_steps = 0
-        self.target_state = STATE_FUZZY if mode == "fuzzy" else STATE_TRANSLATED
+        self.target_state = STATE_TRANSLATED
+        if mode == "fuzzy":
+            self.target_state = STATE_FUZZY
+        elif mode == "approved":
+            self.target_state = STATE_APPROVED
         self.component_wide = component_wide
 
     def get_units(self, filter_mode=True):
@@ -74,7 +79,7 @@ class AutoTranslate:
                 self.user.profile.increase_count("translated", self.updated)
 
     @transaction.atomic
-    def process_others(self, source: Optional[int]):
+    def process_others(self, source: int | None):
         """Perform automatic translation based on other components."""
         kwargs = {
             "translation__plural": self.translation.plural,
@@ -87,9 +92,13 @@ class AutoTranslate:
 
             if (
                 not component.project.contribute_shared_tm
-                and not component.project != self.translation.component.project
-            ) or component.source_language != source_language:
-                raise PermissionDenied
+                and component.project != self.translation.component.project
+            ):
+                raise PermissionDenied(
+                    "Project has disabled contribution to shared translation memory."
+                )
+            if component.source_language != source_language:
+                raise PermissionDenied("Component have different source languages.")
             kwargs["translation__component"] = component
         else:
             project = self.translation.component.project
@@ -111,7 +120,9 @@ class AutoTranslate:
         translations = {
             source: split_plural(target)
             for source, state, target in sources.filter(
-                source__in=self.get_units().values("source")
+                source__lower__md5__in=self.get_units()
+                .annotate(source__lower__md5=MD5(Lower("source")))
+                .values("source__lower__md5")
             ).values_list("source", "state", "target")
         }
 
@@ -179,7 +190,7 @@ class AutoTranslate:
             if unit.machinery and any(unit.machinery["quality"])
         }
 
-    def process_mt(self, engines: List[str], threshold: int):
+    def process_mt(self, engines: list[str], threshold: int):
         """Perform automatic translation based on machine translation."""
         translations = self.fetch_mt(engines, int(threshold))
 

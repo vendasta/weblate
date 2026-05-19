@@ -7,7 +7,7 @@ from copy import copy
 from django.conf import settings
 from django.db import models, transaction
 from django.db.models import Q, Sum
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext
 
 from weblate.checks.models import CHECKS, Check
 from weblate.trans.mixins import UserDisplayMixin
@@ -15,7 +15,6 @@ from weblate.trans.models.change import Change
 from weblate.trans.util import join_plural, split_plural
 from weblate.utils import messages
 from weblate.utils.antispam import report_spam
-from weblate.utils.fields import JSONField
 from weblate.utils.request import get_ip_address, get_user_agent_raw
 from weblate.utils.state import STATE_TRANSLATED
 
@@ -97,7 +96,7 @@ class Suggestion(models.Model, UserDisplayMixin):
         blank=True,
         on_delete=models.deletion.CASCADE,
     )
-    userdetails = JSONField()
+    userdetails = models.JSONField(default=dict)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     votes = models.ManyToManyField(
@@ -119,7 +118,7 @@ class Suggestion(models.Model, UserDisplayMixin):
     @transaction.atomic
     def accept(self, request, permission="suggestion.accept"):
         if not request.user.has_perm(permission, self.unit):
-            messages.error(request, _("Failed to accept suggestion!"))
+            messages.error(request, gettext("Could not accept suggestion!"))
             return
 
         # Skip if there is no change
@@ -139,14 +138,25 @@ class Suggestion(models.Model, UserDisplayMixin):
         # Delete the suggestion
         self.delete()
 
-    def delete_log(self, user, change=Change.ACTION_SUGGESTION_DELETE, is_spam=False):
+    def delete_log(
+        self,
+        user,
+        change=Change.ACTION_SUGGESTION_DELETE,
+        is_spam: bool = False,
+        rejection_reason: str = "",
+    ):
         """Delete with logging change."""
         if is_spam and self.userdetails:
             report_spam(
                 self.userdetails["address"], self.userdetails["agent"], self.target
             )
         Change.objects.create(
-            unit=self.unit, action=change, user=user, target=self.target, author=user
+            unit=self.unit,
+            action=change,
+            user=user,
+            target=self.target,
+            author=user,
+            details={"rejection_reason": rejection_reason},
         )
         self.delete()
 
@@ -195,7 +205,9 @@ class Suggestion(models.Model, UserDisplayMixin):
 class Vote(models.Model):
     """Suggestion voting."""
 
-    suggestion = models.ForeignKey(Suggestion, on_delete=models.deletion.CASCADE)
+    suggestion = models.ForeignKey(
+        Suggestion, on_delete=models.deletion.CASCADE, db_index=False
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.deletion.CASCADE
     )

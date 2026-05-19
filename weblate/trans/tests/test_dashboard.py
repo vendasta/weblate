@@ -102,16 +102,16 @@ class DashboardTest(ViewTestCase):
         # add a subscription
         self.user.profile.watched.add(self.project)
         response = self.client.get(reverse("home"))
-        self.assertEqual(len(response.context["usersubscriptions"]), 2)
+        self.assertEqual(len(response.context["usersubscriptions"]), 1)
 
     def test_user_nolang(self):
         self.user.profile.languages.clear()
         # This picks up random language
-        self.client.get(reverse("home"), HTTP_ACCEPT_LANGUAGE="en")
+        self.client.get(reverse("home"), headers={"accept-language": "en"})
         self.client.get(reverse("home"))
 
         # Pick language from request
-        response = self.client.get(reverse("home"), HTTP_ACCEPT_LANGUAGE="cs")
+        response = self.client.get(reverse("home"), headers={"accept-language": "cs"})
         self.assertTrue(response.context["suggestions"])
         self.assertFalse(self.user.profile.languages.exists())
 
@@ -125,12 +125,12 @@ class DashboardTest(ViewTestCase):
     @override_settings(SINGLE_PROJECT=True)
     def test_single_project(self):
         response = self.client.get(reverse("home"))
-        self.assertRedirects(response, reverse("component", kwargs=self.kw_component))
+        self.assertRedirects(response, self.component.get_absolute_url())
 
     @override_settings(SINGLE_PROJECT="test")
     def test_single_project_slug(self):
         response = self.client.get(reverse("home"))
-        self.assertRedirects(response, reverse("project", kwargs=self.kw_project))
+        self.assertRedirects(response, self.project.get_absolute_url())
 
     @override_settings(SINGLE_PROJECT=True)
     def test_single_project_restricted(self):

@@ -379,6 +379,9 @@ function initHighlight(root) {
     if (editor.readOnly) {
       highlight.classList.add("readonly");
     }
+    if (editor.disabled) {
+      highlight.classList.add("disabled");
+    }
     highlight.setAttribute("role", "status");
     if (editor.hasAttribute("dir")) {
       highlight.setAttribute("dir", editor.getAttribute("dir"));
@@ -628,82 +631,6 @@ $(function () {
     e.preventDefault();
     $("form#disconnect-form").attr("action", $(this).attr("href")).submit();
   });
-
-  /* Check if browser provides native datepicker */
-  if (Modernizr.inputtypes.date) {
-    $(document).off(".datepicker.data-api");
-  }
-
-  /* Datepicker localization */
-  var week_start = "1";
-
-  if (typeof django !== "undefined") {
-    week_start = django.formats.FIRST_DAY_OF_WEEK;
-  }
-  $.fn.datepicker.dates.en = {
-    days: [
-      gettext("Sunday"),
-      gettext("Monday"),
-      gettext("Tuesday"),
-      gettext("Wednesday"),
-      gettext("Thursday"),
-      gettext("Friday"),
-      gettext("Saturday"),
-      gettext("Sunday"),
-    ],
-    daysShort: [
-      pgettext("Short (for example three letter) name of day in week", "Sun"),
-      pgettext("Short (for example three letter) name of day in week", "Mon"),
-      pgettext("Short (for example three letter) name of day in week", "Tue"),
-      pgettext("Short (for example three letter) name of day in week", "Wed"),
-      pgettext("Short (for example three letter) name of day in week", "Thu"),
-      pgettext("Short (for example three letter) name of day in week", "Fri"),
-      pgettext("Short (for example three letter) name of day in week", "Sat"),
-      pgettext("Short (for example three letter) name of day in week", "Sun"),
-    ],
-    daysMin: [
-      pgettext("Minimal (for example two letter) name of day in week", "Su"),
-      pgettext("Minimal (for example two letter) name of day in week", "Mo"),
-      pgettext("Minimal (for example two letter) name of day in week", "Tu"),
-      pgettext("Minimal (for example two letter) name of day in week", "We"),
-      pgettext("Minimal (for example two letter) name of day in week", "Th"),
-      pgettext("Minimal (for example two letter) name of day in week", "Fr"),
-      pgettext("Minimal (for example two letter) name of day in week", "Sa"),
-      pgettext("Minimal (for example two letter) name of day in week", "Su"),
-    ],
-    months: [
-      gettext("January"),
-      gettext("February"),
-      gettext("March"),
-      gettext("April"),
-      gettext("May"),
-      gettext("June"),
-      gettext("July"),
-      gettext("August"),
-      gettext("September"),
-      gettext("October"),
-      gettext("November"),
-      gettext("December"),
-    ],
-    monthsShort: [
-      pgettext("Short name of month", "Jan"),
-      pgettext("Short name of month", "Feb"),
-      pgettext("Short name of month", "Mar"),
-      pgettext("Short name of month", "Apr"),
-      pgettext("Short name of month", "May"),
-      pgettext("Short name of month", "Jun"),
-      pgettext("Short name of month", "Jul"),
-      pgettext("Short name of month", "Aug"),
-      pgettext("Short name of month", "Sep"),
-      pgettext("Short name of month", "Oct"),
-      pgettext("Short name of month", "Nov"),
-      pgettext("Short name of month", "Dec"),
-    ],
-    today: gettext("Today"),
-    clear: gettext("Clear"),
-    weekStart: week_start,
-    titleFormat: "MM yyyy",
-  };
 
   $(".dropdown-menu")
     .find("form")
@@ -1219,24 +1146,143 @@ $(function () {
     $(this).closest("tr").toggleClass("warning", this.checked);
   });
 
+  /* Suggestion rejection */
+  $(".rejection-reason").on("keydown", function (event) {
+    if (event.key === "Enter") {
+      $(this).closest("form").find("[name='delete']").click();
+      event.preventDefault();
+      return false;
+    }
+  });
+
+  /* User autocomplete */
+  document
+    .querySelectorAll(".user-autocomplete")
+    .forEach((autoCompleteInput) => {
+      let autoCompleteJS = new autoComplete({
+        selector: () => {
+          return autoCompleteInput;
+        },
+        debounce: 300,
+        resultsList: {
+          class: "autoComplete dropdown-menu",
+        },
+        resultItem: {
+          class: "autoComplete_result",
+          element: (item, data) => {
+            item.textContent = "";
+            let child = document.createElement("a");
+            child.textContent = data.value.full_name;
+            item.appendChild(child);
+          },
+          selected: "autoComplete_selected",
+        },
+        data: {
+          keys: ["username"],
+          src: async (query) => {
+            try {
+              // Fetch Data from external Source
+              const source = await fetch(`/api/users/?username=${query}`);
+              // Data should be an array of `Objects` or `Strings`
+              const data = await source.json();
+              return data.results.map((user) => {
+                return {
+                  username: user.username,
+                  full_name: `${user.full_name} (${user.username})`,
+                };
+              });
+            } catch (error) {
+              return error;
+            }
+          },
+        },
+        events: {
+          input: {
+            focus() {
+              if (autoCompleteInput.value.length) autoCompleteJS.start();
+            },
+            selection(event) {
+              const feedback = event.detail;
+              autoCompleteInput.blur();
+              const selection =
+                feedback.selection.value[feedback.selection.key];
+              autoCompleteInput.value = selection;
+            },
+          },
+        },
+      });
+    });
+
+  /* Site-wide search */
+  let siteSearch = new autoComplete({
+    /*name: "sitewide-search",*/
+    selector: "#sitewide-search",
+    debounce: 300,
+    resultsList: {
+      class: "autoComplete dropdown-menu",
+    },
+    resultItem: {
+      class: "autoComplete_result",
+      element: (item, data) => {
+        item.textContent = "";
+        let child = document.createElement("a");
+        child.setAttribute("href", data.value.url);
+        child.textContent = `${data.value.name} `;
+        let category = document.createElement("span");
+        category.setAttribute("class", "badge");
+        category.textContent = data.value.category;
+        child.appendChild(category);
+        item.appendChild(child);
+      },
+      selected: "autoComplete_selected",
+    },
+    data: {
+      keys: ["name"],
+      src: async (query) => {
+        try {
+          const source = await fetch(`/api/search/?q=${query}`);
+          const data = await source.json();
+          return data;
+        } catch (error) {
+          return error;
+        }
+      },
+    },
+    events: {
+      input: {
+        focus() {
+          if (siteSearch.input.value.length) siteSearch.start();
+        },
+      },
+    },
+  });
+
+  document.querySelectorAll("[data-visibility]").forEach((toggle) => {
+    toggle.addEventListener("click", (event) => {
+      document
+        .querySelectorAll(toggle.getAttribute("data-visibility"))
+        .forEach((element) => {
+          element.classList.toggle("visible");
+        });
+    });
+  });
+
   /* Warn users that they do not want to use developer console in most cases */
   console.log(
-    "%c" +
-      pgettext("Alert to user when opening browser developer console", "Stop!"),
+    "%c%s",
     "color: red; font-weight: bold; font-size: 50px; font-family: sans-serif; -webkit-text-stroke: 1px black;",
+    pgettext("Alert to user when opening browser developer console", "Stop!"),
   );
   console.log(
-    "%c" +
-      gettext(
-        "This is a browser feature intended for developers. If someone told you to copy-paste something here, they are likely trying to compromise your Weblate account.",
-      ),
+    "%c%s",
     "font-size: 20px; font-family: sans-serif",
+    gettext(
+      "This is a browser feature intended for developers. If someone told you to copy-paste something here, they are likely trying to compromise your Weblate account.",
+    ),
   );
   console.log(
-    "%c" +
-      gettext(
-        "See https://en.wikipedia.org/wiki/Self-XSS for more information.",
-      ),
+    "%c%s",
     "font-size: 20px; font-family: sans-serif",
+    gettext("See https://en.wikipedia.org/wiki/Self-XSS for more information."),
   );
 });

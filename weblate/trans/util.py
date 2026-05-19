@@ -2,21 +2,21 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from __future__ import annotations
+
 import locale
 import os
 import sys
 from types import GeneratorType
-from typing import Dict
+from typing import Any
 from urllib.parse import urlparse
 
+import django.shortcuts
 from django.core.cache import cache
 from django.http import HttpResponseRedirect
-from django.shortcuts import redirect
-from django.shortcuts import render as django_render
-from django.shortcuts import resolve_url
+from django.shortcuts import redirect, resolve_url
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.utils.translation import gettext as _
-from django.utils.translation import gettext_lazy
+from django.utils.translation import gettext, gettext_lazy
 from lxml import etree
 from translate.misc.multistring import multistring
 from translate.storage.placeables.lisa import parse_xliff, strelem_to_xml
@@ -114,7 +114,7 @@ def translation_percent(translated, total, zero_complete=True):
     return perc
 
 
-def get_clean_env(extra: Dict = None, extra_path: str = None):
+def get_clean_env(extra: dict | None = None, extra_path: str | None = None):
     """Return cleaned up environment for subprocess execution."""
     environ = {
         "LANG": "C.UTF-8",
@@ -208,19 +208,34 @@ def get_project_description(project):
     if count is None:
         count = project.stats.languages
         cache.set(cache_key, count, 6 * 3600)
-    return _(
+    return gettext(
         "{0} is being translated into {1} languages using Weblate. "
         "Join the translation or start translating your own project."
     ).format(project, count)
 
 
-def render(request, template, context=None, status=None):
+def render(
+    request,
+    template_name: str,
+    context: dict[str, Any] | None = None,
+    content_type: str | None = None,
+    status: int | None = None,
+    using=None,
+):
     """Wrapper around Django render to extend context."""
     if context is None:
         context = {}
     if "project" in context and context["project"] is not None:
         context["description"] = get_project_description(context["project"])
-    return django_render(request, template, context, status=status)
+
+    return django.shortcuts.render(
+        request,
+        template_name=template_name,
+        context=context,
+        content_type=content_type,
+        status=status,
+        using=using,
+    )
 
 
 def path_separator(path):
@@ -312,3 +327,8 @@ def check_upload_method_permissions(user, translation, method: str):
     if method == "replace":
         return translation.filename and user.has_perm("component.edit", translation)
     raise ValueError(f"Invalid method: {method}")
+
+
+def is_unused_string(string: str):
+    """Check whether string should not be used."""
+    return string.startswith("<unused singular")

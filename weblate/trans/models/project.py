@@ -2,16 +2,16 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from __future__ import annotations
+
 import os
 import os.path
 from datetime import datetime
-from typing import Optional
 
 from django.conf import settings
-from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
-from django.db.models import Count, Value
+from django.db.models import Count, Q, Value
 from django.db.models.functions import Replace
 from django.urls import reverse
 from django.utils.functional import cached_property
@@ -23,7 +23,7 @@ from weblate.formats.models import FILE_FORMATS
 from weblate.lang.models import Language
 from weblate.memory.tasks import import_memory
 from weblate.trans.defines import PROJECT_NAME_LENGTH
-from weblate.trans.mixins import CacheKeyMixin, PathMixin, URLMixin
+from weblate.trans.mixins import CacheKeyMixin, PathMixin
 from weblate.utils.data import data_dir
 from weblate.utils.site import get_site_url
 from weblate.utils.stats import ProjectStats
@@ -38,6 +38,9 @@ from weblate.utils.validators import (
 class ProjectQuerySet(models.QuerySet):
     def order(self):
         return self.order_by("name")
+
+    def search(self, query: str):
+        return self.filter(Q(name__icontains=query) | Q(slug__icontains=query))
 
 
 def prefetch_project_flags(projects):
@@ -65,7 +68,7 @@ def prefetch_project_flags(projects):
     return projects
 
 
-class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
+class Project(models.Model, PathMixin, CacheKeyMixin):
     ACCESS_PUBLIC = 0
     ACCESS_PROTECTED = 1
     ACCESS_PRIVATE = 100
@@ -167,7 +170,8 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
     machinery_settings = models.JSONField(default=dict, blank=True)
 
     is_lockable = True
-    _reverse_url_name = "project"
+    remove_permission = "project.edit"
+    settings_permission = "project.edit"
 
     objects = ProjectQuerySet.as_manager()
 
@@ -251,7 +255,7 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
             return {}
         return dict(part.split(":") for part in self.language_aliases.split(","))
 
-    def add_user(self, user, group: Optional[str] = None):
+    def add_user(self, user, group: str | None = None):
         """Add user based on username or email address."""
         implicit_group = False
         if group is None:
@@ -277,24 +281,20 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
         groups = self.defined_groups.all()
         user.groups.remove(*groups)
 
-    def get_reverse_url_kwargs(self):
-        """Return kwargs for URL reversing."""
-        return {"project": self.slug}
+    def get_url_path(self):
+        return (self.slug,)
 
     def get_widgets_url(self):
         """Return absolute URL for widgets."""
-        return get_site_url(reverse("widgets", kwargs={"project": self.slug}))
+        return get_site_url(reverse("widgets", kwargs={"path": self.get_url_path()}))
 
     def get_share_url(self):
         """Return absolute URL usable for sharing."""
-        return get_site_url(reverse("engage", kwargs={"project": self.slug}))
+        return get_site_url(reverse("engage", kwargs={"path": self.get_url_path()}))
 
     @cached_property
     def locked(self):
         return self.component_set.filter(locked=False).count() == 0
-
-    def _get_path(self):
-        return os.path.join(data_dir("vcs"), self.slug)
 
     @cached_property
     def languages(self):
@@ -355,8 +355,12 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
         return self.on_repo_components(True, "do_cleanup", request)
 
     def do_file_sync(self, request=None):
-        """Push all Git repos."""
+        """Force updating of all files."""
         return self.on_repo_components(True, "do_file_sync", request)
+
+    def do_file_scan(self, request=None):
+        """Rescanls all VCS repos."""
+        return self.on_repo_components(True, "do_file_scan", request)
 
     def has_push_configuration(self):
         """Check whether any suprojects can push."""
@@ -420,7 +424,7 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
         )
 
     @cached_property
-    def all_alerts(self):
+    def all_active_alerts(self):
         from weblate.trans.models import Alert
 
         result = Alert.objects.filter(component__project=self, dismissed=False)
@@ -429,7 +433,7 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
 
     @cached_property
     def has_alerts(self):
-        return self.all_alerts.exists()
+        return self.all_active_alerts.exists()
 
     @cached_property
     def all_admins(self):
@@ -437,23 +441,37 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
 
         return User.objects.all_admins(self).select_related("profile")
 
-    def get_child_components_access(self, user):
+    def get_child_components_access(self, user, filter_callback=None):
         """
         Lists child components.
 
         This is slower than child_components, but allows additional
         filtering on the result.
         """
-        child_components = (
-            self.component_set.distinct() | self.shared_components.distinct()
-        )
-        return child_components.filter_access(user).order()
+
+        def filter_access(qs):
+            if filter_callback:
+                qs = filter_callback(qs)
+            return qs.filter_access(user).prefetch()
+
+        return self.get_child_components_filter(filter_access).order()
+
+    def get_child_components_filter(self, filter_callback):
+        own = filter_callback(self.component_set.defer_huge())
+        shared = filter_callback(self.shared_components.defer_huge())
+        return own.union(shared)
 
     @cached_property
     def child_components(self):
-        own = self.component_set.all()
-        shared = self.shared_components.all()
-        return own.union(shared)
+        return self.get_child_components_filter(lambda qs: qs)
+
+    @cached_property
+    def source_language_ids(self):
+        return set(
+            self.get_child_components_filter(
+                lambda qs: qs.values_list("source_language_id", flat=True).distinct()
+            )
+        )
 
     def scratch_create_component(
         self,
@@ -461,7 +479,7 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
         slug: str,
         source_language,
         file_format: str,
-        has_template: Optional[bool] = None,
+        has_template: bool | None = None,
         is_glossary: bool = False,
         **kwargs,
     ):
@@ -493,16 +511,11 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
 
     @cached_property
     def glossaries(self):
-        return [
-            component for component in self.child_components if component.is_glossary
-        ]
-
-    @cached_property
-    def glossary_automaton_key(self):
-        return f"project-glossary-{self.pk}"
+        return list(
+            self.get_child_components_filter(lambda qs: qs.filter(is_glossary=True))
+        )
 
     def invalidate_glossary_cache(self):
-        cache.delete(self.glossary_automaton_key)
         if "glossary_automaton" in self.__dict__:
             del self.__dict__["glossary_automaton"]
 
@@ -510,11 +523,7 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
     def glossary_automaton(self):
         from weblate.glossary.models import get_glossary_automaton
 
-        result = cache.get(self.glossary_automaton_key)
-        if result is None:
-            result = get_glossary_automaton(self)
-            cache.set(self.glossary_automaton_key, result, 24 * 3600)
-        return result
+        return get_glossary_automaton(self)
 
     def get_machinery_settings(self):
         settings = Setting.objects.get_settings_dict(Setting.CATEGORY_MT)
@@ -540,7 +549,9 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
                         "name": entry.name,
                         "path": os.path.join(backup_dir, entry.name),
                         "timestamp": make_aware(
-                            datetime.fromtimestamp(int(entry.name.split(".")[0]))
+                            datetime.fromtimestamp(  # noqa: DTZ006
+                                int(entry.name.split(".")[0])
+                            )
                         ),
                         "size": entry.stat().st_size // 1024,
                     }
@@ -550,3 +561,7 @@ class Project(models.Model, URLMixin, PathMixin, CacheKeyMixin):
     @cached_property
     def enable_review(self):
         return self.translation_review or self.source_review
+
+    def do_lock(self, user, lock: bool = True, auto: bool = False):
+        for component in self.component_set.iterator():
+            component.do_lock(user, lock=lock, auto=auto)

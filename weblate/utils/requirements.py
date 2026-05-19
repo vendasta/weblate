@@ -3,12 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import sys
-
-# Once we depedend on Python 3.8+ this should be changed to importlib.metadata
-try:
-    import importlib.metadata as importlib_metadata
-except ImportError:
-    import importlib_metadata
+from importlib.metadata import PackageNotFoundError, metadata
 
 from django.conf import settings
 from django.core.cache import cache
@@ -59,7 +54,7 @@ REQUIRES = [
     "GitPython",
     "borgbackup",
     "pyparsing",
-    "pyahocorasick",
+    "ahocorasick_rs",
     "python-redis-lock",
     "charset-normalizer",
 ]
@@ -86,17 +81,26 @@ def get_version_module(name, optional=False):
     On error raises verbose exception with name and URL.
     """
     try:
-        metadata = importlib_metadata.metadata(name)
-    except importlib_metadata.PackageNotFoundError:
+        package = metadata(name)
+    except PackageNotFoundError as exc:
         if optional:
             return None
         raise ImproperlyConfigured(
-            "Missing dependency {0}, please install using: pip install {0}".format(name)
-        )
+            f"Missing dependency {name}, please install using: pip install {name}"
+        ) from exc
+    url = package.get("Home-page")
+    if url is None:
+        for project_url in package.get_all("Project-URL"):
+            name, current_url = project_url.split(",", 1)
+            if name.lower().strip() == "homepage":
+                url = current_url.strip()
+                break
+    if url is None:
+        url = f"https://pypi.org/project/{name}/"
     return (
-        name,
-        metadata.get("Home-page"),
-        metadata.get("Version"),
+        package.get("Name"),
+        url,
+        package.get("Version"),
     )
 
 
@@ -143,8 +147,8 @@ def get_versions():
 
     try:
         result.append(("Git", "https://git-scm.com/", GitRepository.get_version()))
-    except OSError:
-        raise ImproperlyConfigured("Failed to run git, please install it.")
+    except OSError as exc:
+        raise ImproperlyConfigured("Could not run git, please install it.") from exc
 
     return result
 

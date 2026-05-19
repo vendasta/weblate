@@ -1,3 +1,7 @@
+# Copyright © Michal Čihař <michal@weblate.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Configuration file for the Sphinx documentation builder.
 #
 # This file only contains a selection of the most common options. For a full
@@ -23,8 +27,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 def setup(app):
-    app.add_css_file("https://s.weblate.org/cdn/font-source/source-sans-3.css")
-    app.add_css_file("https://s.weblate.org/cdn/font-source/source-code-pro.css")
     # Used in Sphinx docs, needed for intersphinx links to it
     app.add_object_type(
         "confval",
@@ -41,7 +43,7 @@ copyright = "Michal Čihař"
 author = "Michal Čihař"
 
 # The full version, including alpha/beta/rc tags
-release = "4.17"
+release = "5.0.2"
 
 
 # -- General configuration ---------------------------------------------------
@@ -302,6 +304,10 @@ linkcheck_ignore = [
     "https://translate.yandex.com/",
     # These are PDF and fails with Unicode decode error
     "http://ftp.pwg.org/",
+    # Access to our service has been temporarily blocked
+    "https://yandex.com/dev/translate/",
+    # TODO: Expired SSL certificate
+    "https://docs.oasis-open.org/",
 ]
 
 # HTTP docs
@@ -329,6 +335,7 @@ autodoc_mock_imports = [
     "siphashc",
     "git",
     "PIL",
+    "borg",
     "weblate.addons.models",
     "weblate.trans.models",
     "weblate.lang.models",

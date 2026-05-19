@@ -10,11 +10,6 @@ set -e
 cd scripts/yarn/
 
 yarn install --check-files
-yarn run build --scripts-prepend-node-path
-
-# Bootstrap Datepicker
-cp node_modules/bootstrap-datepicker/dist/css/bootstrap-datepicker3.css ../../weblate/static/vendor/bootstrap/css/
-cp node_modules/bootstrap-datepicker/dist/js/bootstrap-datepicker.js ../../weblate/static/vendor/bootstrap/js/
 
 # Autosize
 cp node_modules/autosize/dist/autosize.js ../../weblate/static/vendor/
@@ -41,12 +36,12 @@ cp node_modules/prismjs/components/prism-rest.js ../../weblate/static/vendor/pri
 cp node_modules/prismjs/components/prism-markdown.js ../../weblate/static/vendor/prism/
 cp node_modules/prismjs/components/prism-icu-message-format.js ../../weblate/static/vendor/prism/
 
+# autocomplete
+cp node_modules/@tarekraafat/autocomplete.js/dist/autoComplete.js ../../weblate/static/vendor/
+
 # multi.js
 cp node_modules/multi.js/src/multi.js ../../weblate/static/vendor/
 cp node_modules/multi.js/src/multi.css ../../weblate/static/vendor/
-
-# Modernizr
-mv modernizr.js ../../weblate/static/vendor/
 
 # Slugify
 cp node_modules/slugify/slugify.js ../../weblate/static/vendor/slugify.js
@@ -77,9 +72,6 @@ find node_modules/source-sans/WOFF node_modules/source-sans/WOFF2 node_modules/s
     fi
     cp "$name" "$target"
 done
-
-# DejaVu font
-cp node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf node_modules/dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf ../../weblate/static/vendor/font-dejavu
 
 # Not updated:
 # Bootstrap, use online customizer

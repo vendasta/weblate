@@ -21,7 +21,6 @@ weblate-*.tar.*
 /venv
 *.DS_Store
 /weblate-env/
-/.tesseract/
 /test-images/
 /cc-test-reporter
 # Celery logs/pids
@@ -29,6 +28,7 @@ weblate-*.tar.*
 /weblate-*.pid
 /dev-docker/.env
 /dev-docker/data/
+/dev-docker/docker-compose.override.yml
 /dev-docker/weblate-dev/requirements.txt
 *~
 # Generated minimal deps

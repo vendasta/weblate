@@ -6,12 +6,13 @@ from django.db import transaction
 
 from weblate.checks.flags import Flags
 from weblate.trans.models import Change, Component, Unit
+from weblate.trans.models.label import TRANSLATION_LABELS
 from weblate.utils.state import STATE_APPROVED, STATE_FUZZY, STATE_TRANSLATED
 
 EDITABLE_STATES = STATE_FUZZY, STATE_TRANSLATED, STATE_APPROVED
 
 
-def bulk_perform(
+def bulk_perform(  # noqa: C901
     user,
     unit_set,
     query,
@@ -32,6 +33,8 @@ def bulk_perform(
     target_state = int(target_state)
     add_flags = Flags(add_flags)
     remove_flags = Flags(remove_flags)
+    add_labels_pks = {label.pk for label in add_labels}
+    remove_labels_pks = {label.pk for label in remove_labels}
 
     update_source = add_flags or remove_flags or add_labels or remove_labels
 
@@ -111,18 +114,32 @@ def bulk_perform(
                             source_unit.save(update_fields=["extra_flags"])
                             changed = True
 
-                    if add_labels:
-                        source_unit.is_batch_update = True
-                        source_unit.labels.add(*add_labels)
-                        changed = True
+                    if add_labels or remove_labels:
+                        unit_label_pks = {
+                            label.pk for label in source_unit.labels.all()
+                        }
 
-                    if remove_labels:
-                        source_unit.is_batch_update = True
-                        source_unit.labels.remove(*remove_labels)
-                        changed = True
+                        if add_labels_pks - unit_label_pks:
+                            source_unit.is_batch_update = True
+                            source_unit.labels.add(*add_labels)
+                            changed = True
+
+                        if unit_label_pks & remove_labels_pks:
+                            source_unit.is_batch_update = True
+                            source_unit.labels.remove(*remove_labels)
+                            changed = True
 
                     if changed:
                         updated += 1
+
+            # Handle translation labels
+            translation_labels = [
+                label for label in remove_labels if label.name in TRANSLATION_LABELS
+            ]
+            if translation_labels:
+                for unit in component_units.filter(labels__in=translation_labels):
+                    unit.labels.remove(*translation_labels)
+                    updated += 1
 
         component.invalidate_cache()
         component.update_source_checks()

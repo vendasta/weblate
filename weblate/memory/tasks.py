@@ -2,18 +2,19 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from typing import Optional
+from __future__ import annotations
 
 from django.db import transaction
 
 from weblate.machinery.base import get_machinery_language
 from weblate.memory.models import Memory
+from weblate.memory.utils import is_valid_entry
 from weblate.utils.celery import app
 from weblate.utils.state import STATE_TRANSLATED
 
 
 @app.task(trail=False)
-def import_memory(project_id: int, component_id: Optional[int] = None):
+def import_memory(project_id: int, component_id: int | None = None):
     from weblate.trans.models import Project, Unit
 
     project = Project.objects.get(pk=project_id)
@@ -62,6 +63,9 @@ def update_memory(user, unit, component=None, project=None):
         "target": unit.target,
         "origin": component.full_slug,
     }
+
+    if not is_valid_entry(**params):
+        return
 
     add_project = True
     add_shared = project.contribute_shared_tm

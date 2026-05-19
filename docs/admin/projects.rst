@@ -4,11 +4,16 @@ Translation projects
 Translation organization
 ------------------------
 
-Weblate organizes translatable VCS content of project/components into a tree-like structure.
+Weblate organizes translatable VCS content of project/components into a
+tree-like structure. You can additionally organize components within a project
+using categories.
 
 * The bottom level object is :ref:`project`, which should hold all translations belonging
   together (for example translation of an application in several versions
   and/or accompanying documentation).
+
+* The middle level is optionally created by :ref:`category`. The categories can
+  be nested to achieve more complex structure.
 
 * On the level above, :ref:`component`, which is
   actually the component to translate, you define the VCS repository to use, and
@@ -32,16 +37,6 @@ monolingual ones) supported by Translate Toolkit, see :ref:`formats`.
 Adding translation projects and components
 ------------------------------------------
 
-.. versionchanged:: 3.2
-
-   An interface for adding projects and components is included,
-   and you no longer have to use :ref:`admin-interface`.
-
-.. versionchanged:: 3.4
-
-   The process of adding components is now multi staged,
-   with automated discovery of most parameters.
-
 Based on your permissions, new translation projects and components can be
 created. It is always permitted for users with the :guilabel:`Add new projects`
 permission, and if your instance uses billing (e.g. like
@@ -50,16 +45,16 @@ based on your plans allowance from the user account that manages billing.
 
 You can view your current billing plan on a separate page:
 
-.. image:: /screenshots/user-billing.png
+.. image:: /screenshots/user-billing.webp
 
 The project creation can be initiated from there, or using the menu in the navigation
 bar, filling in basic info about the translation project to complete addition of it:
 
-.. image:: /screenshots/user-add-project.png
+.. image:: /screenshots/user-add-project.webp
 
 After creating the project, you are taken directly to the project page:
 
-.. image:: /screenshots/user-add-project-done.png
+.. image:: /screenshots/user-add-project-done.webp
 
 Creating a new translation component can be initiated via a single click there.
 The process of creating a component is multi-staged and automatically detects most
@@ -85,15 +80,15 @@ for additional files or branches using same repository.
 
 First you need to fill in name and repository location:
 
-.. image:: /screenshots/user-add-component-init.png
+.. image:: /screenshots/user-add-component-init.webp
 
 On the next page, you are presented with a list of discovered translatable resources:
 
-.. image:: /screenshots/user-add-component-discovery.png
+.. image:: /screenshots/user-add-component-discovery.webp
 
 As a last step, you review the translation component info and fill in optional details:
 
-.. image:: /screenshots/user-add-component.png
+.. image:: /screenshots/user-add-component.webp
 
 .. seealso::
 
@@ -183,9 +178,13 @@ Contribute to shared translation memory
 
 Whether to contribute to shared translation memory, see :ref:`shared-tm` for more details.
 
+This also affects whether the project can be used as source for :ref:`automatic-translation`.
+
 The default value can be changed by :setting:`DEFAULT_SHARED_TM`.
 
-.. include:: /snippets/not-hosted.rst
+.. note::
+
+    This option is unavailable on Hosted Weblate, it is toggled together with :ref:`project-use_shared_tm`.
 
 .. _project-access_control:
 
@@ -343,9 +342,9 @@ VCS repository used to pull changes.
 Repository push URL
 +++++++++++++++++++
 
-Repository URL used for pushing. This setting is used only for :ref:`vcs-git`
-and :ref:`vcs-mercurial` and push support is turned off for these when this is
-empty.
+Repository URL used for pushing. The behavior of this depends on
+:ref:`component-vcs`, and this is in more detail covered in
+:ref:`push-changes`.
 
 For linked repositories, this is not used and setting from linked component applies.
 
@@ -427,6 +426,38 @@ to be escaped as ``[[]`` or ``[]]``.
 
    :ref:`bimono`,
    :ref:`faq-duplicate-files`
+
+.. _component-screenshot_filemask:
+
+Screenshot file mask
+++++++++++++++++++++
+
+This feature allows the discovery and updating of screenshots through screenshot file masks, using paths from the VCS repository.
+This operates at the component level and necessitates the use of an asterisk "*" to replace the screenshot file name.
+
+Allowed formats are WebP, JPEG, PNG, APNG and GIF.
+
+Note:
+
+1. The file mask and screenshot file mask are not related. Configure them separately.
+2. It is a manual job to link a discovered screenshot in a component to a specific translation key.
+
+For example:
+
+Let's assume your VCS repository has a structure like this:
+
+.. code-block:: text
+
+    component_A
+    └── docs
+        ├── image1.png
+        └── image2.jpg
+
+For component_A, you want to allow discovery and updates of PNG screenshots.
+You'd set the screenshot file mask for component_A as ``component_A/docs/*.png``.
+This means any PNG images under docs in component_A can be discovered and updated.
+So, if you want to update ``image1.png``, the new screenshot you provide should be named ``image1.png``,
+matching the existing ``filename``, and stored under ``component_A/docs/``.
 
 .. _component-template:
 
@@ -664,6 +695,9 @@ POSIX style using underscore as a separator
 POSIX style using underscore as a separator, including country code
    POSIX style language code including the country code even when not necessary
    (for example ``cs_CZ``).
+POSIX style using underscore as a separator, including country code (lowercase)
+   POSIX style language code including the country code even when not necessary (lowercase)
+   (for example ``cs_cz``).
 BCP style using hyphen as a separator
    Typically used on web platforms, produces language codes like
    ``pt-BR``.
@@ -755,7 +789,7 @@ Age of changes to commit
 ++++++++++++++++++++++++
 
 Sets how old (in hours) changes have to be before they are committed by
-background task or the :djadmin:`commit_pending` management command. All
+background task or the :wladmin:`commit_pending` management command. All
 changes in a component are committed once there is at least one change
 older than this period.
 
@@ -918,6 +952,14 @@ Glossary color
 
 Display color for a glossary used when showing word matches.
 
+.. _category:
+
+Category
+--------
+
+Categories are there to give structure to components within a project. You can
+nest them to achieve a more complex structure.
+
 .. _markup:
 
 Template markup
@@ -982,6 +1024,10 @@ The following variables are available in the repository browser or editor templa
    line in file
 ``{{filename}}``
    filename, you can also strip leading parts using the ``parentdir`` filter, for example ``{{filename|parentdir}}``
+
+.. hint::
+
+   In some places additional variables can be available, see :ref:`addon-weblate.discovery.discovery`.
 
 You can combine them with filters:
 
@@ -1064,7 +1110,7 @@ Automatic creation of components
 In case your project has dozen of translation files (e.g. for different
 gettext domains, or parts of Android apps), you might want to import them
 automatically. This can either be achieved from the command-line by using
-:djadmin:`import_project` or :djadmin:`import_json`, or by installing the
+:wladmin:`import_project` or :wladmin:`import_json`, or by installing the
 :ref:`addon-weblate.discovery.discovery` add-on.
 
 To use the add-on, you first need to create a component for one translation
@@ -1072,8 +1118,8 @@ file (choose the one that is the least likely to be renamed or removed in future
 and install the add-on on this component.
 
 For the management commands, you need to create a project which will contain all
-components and then run :djadmin:`import_project` or
-:djadmin:`import_json`.
+components and then run :wladmin:`import_project` or
+:wladmin:`import_json`.
 
 .. seealso::
 
